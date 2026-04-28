@@ -1,6 +1,6 @@
 # Task 005: M1 retrospective + GO/NO-GO decision
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 1 — M1 spike
 **Estimate:** 1–2 hours
 **Depends on:** task-004

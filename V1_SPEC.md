@@ -127,10 +127,25 @@ V1 explicitly addresses pains 1 and 2. Pain 3 is v2.
 {
   "from": "auth/middleware",
   "to": "auth/jwt",
-  "kind": "imports | calls | depends_on | implements | replaces | contradicts",
+  "kind": "imports | calls | depends_on | implements | replaces | contradicts | derived_from | mirrors",
   "note": "optional 1-line context"
 }
 ```
+
+**Edge `kind` enum** (8 values, strict):
+
+| Kind | Use when |
+|---|---|
+| `imports` | A code-level `import` / `require` from one node's source to another's. |
+| `calls` | A function or method invocation across two nodes. |
+| `depends_on` | A conceptual or behavioral dependency that isn't a literal import or call. Catch-all when no specific kind fits. |
+| `implements` | One node implements an interface, contract, or pattern defined by another. |
+| `replaces` | Supersedes another (typically pairs with `status: "deprecated"` on the replaced node). |
+| `contradicts` | Two nodes describe mutually exclusive truths. Surfaces conflicts. |
+| `derived_from` | One node exists or is shaped because of another — Y is the *originating reason* for X. Stronger than `depends_on`: captures provenance. |
+| `mirrors` | Two nodes follow the same pattern or convention without one depending on the other. Sibling, not parent-child. |
+
+`derived_from` and `mirrors` were added after the M1 trial showed agents naturally reach for these semantic distinctions; without them, post-tightening edges collapsed into a `depends_on` monoculture (7/9 edges).
 
 **Edge identity:** uniquely keyed by the triple `(from, to, kind)`. Calling `link()` again with the same triple **updates** `note`. Stored as keyed map (see §6.3) to keep diffs sane.
 

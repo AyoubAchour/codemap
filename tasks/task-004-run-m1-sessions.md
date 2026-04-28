@@ -1,6 +1,6 @@
 # Task 004: Run M1 spike sessions
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 1 — M1 spike
 **Estimate:** ~1 week (4–6 sessions × 1–2 hours each, spread across days)
 **Depends on:** task-002, task-003

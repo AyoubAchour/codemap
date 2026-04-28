@@ -92,6 +92,7 @@ export const NodeSchema = z.object({
 
 export const EdgeKindSchema = z.enum([
   "imports", "calls", "depends_on", "implements", "replaces", "contradicts",
+  "derived_from", "mirrors",
 ]);
 
 export const EdgeSchema = z.object({
