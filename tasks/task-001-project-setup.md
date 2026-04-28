@@ -1,6 +1,6 @@
 # Task 001: Project setup
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 0 — Setup
 **Estimate:** 3–5 hours
 **Depends on:** —

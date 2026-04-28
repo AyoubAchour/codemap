@@ -5,3 +5,8 @@ dist/
 .DS_Store
 .env
 .env.local
+
+# Project planning notes that may reference private targets (voice2work etc).
+# Keep local, do not publish to the public codemap repo.
+notes/
+m1/

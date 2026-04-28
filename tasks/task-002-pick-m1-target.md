@@ -1,6 +1,6 @@
 # Task 002: Pick the M1 target codebase
 
-**Status:** todo
+**Status:** in-progress
 **Phase:** Phase 0 — Setup
 **Estimate:** 30 minutes – 1 hour
 **Depends on:** —
