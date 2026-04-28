@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import * as path from "node:path";
 import {
   EdgeKindSchema,
   EdgeSchema,
@@ -10,6 +12,11 @@ import {
   TopicSchema,
   edgeKey,
 } from "../../src/schema.js";
+
+const FIXTURES_DIR = path.resolve(__dirname, "..", "..", "fixtures");
+function loadFixture(name: string): unknown {
+  return JSON.parse(readFileSync(path.join(FIXTURES_DIR, name), "utf8"));
+}
 
 // =============================================================
 // SourceRef
@@ -466,6 +473,38 @@ describe("GraphFileSchema", () => {
         edges: {},
       }),
     ).toThrow();
+  });
+});
+
+// =============================================================
+// Fixture-driven parametric tests (task-010)
+// =============================================================
+
+const SCHEMA_VALID_FIXTURES = [
+  "empty.json",
+  "small.json",
+  "with-aliases.json",
+  "with-collision-pairs.json",
+  "with-deprecated.json",
+  "knowledge-kinds.json",
+  "dangling-edges.json",
+  "alias-collision.json",
+  "missing-topic.json",
+  "mixed.json",
+  "oversize.json",
+];
+
+describe("GraphFileSchema — fixture corpus", () => {
+  for (const fixture of SCHEMA_VALID_FIXTURES) {
+    test(`parses ${fixture} cleanly`, () => {
+      const data = loadFixture(fixture);
+      expect(() => GraphFileSchema.parse(data)).not.toThrow();
+    });
+  }
+
+  test("rejects malformed-schema.json (intentionally invalid)", () => {
+    const data = loadFixture("malformed-schema.json");
+    expect(() => GraphFileSchema.parse(data)).toThrow();
   });
 });
 

@@ -337,6 +337,16 @@ export class GraphStore {
     try {
       const tmp = `${this.path}.tmp`;
       await fs.writeFile(tmp, this.serialize(), "utf8");
+      // Test-only debug pause between writeFile and rename. Used by the
+      // atomic-save crash-injection test to land a SIGKILL during this window.
+      // Belt-and-suspenders: gated on BOTH env vars to make accidental
+      // production activation impossible.
+      if (
+        process.env.NODE_ENV === "test" &&
+        process.env.CODEMAP_DEBUG_SLOW_SAVE === "1"
+      ) {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
       await fs.rename(tmp, this.path);
     } finally {
       await release();
