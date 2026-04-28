@@ -137,10 +137,12 @@ export class GraphStore {
 
       let score = 0;
       for (const token of tokens) {
-        if (tagsLower.includes(token)) score += 2;
+        // Substring match across all fields for symmetry with name/summary.
+        // Higher-signal channels (tag, alias) keep their higher weight.
+        if (tagsLower.some((t) => t.includes(token))) score += 2;
         if (nameLower.includes(token)) score += 1;
         if (summaryLower.includes(token)) score += 1;
-        if (aliasesLower.includes(token)) score += 1.5;
+        if (aliasesLower.some((a) => a.includes(token))) score += 1.5;
       }
 
       if (score > 0) {
@@ -155,9 +157,18 @@ export class GraphStore {
     const nodes: Node[] = top.map((s) => ({ id: s.id, ...s.node }));
     const edges: Edge[] = [];
     for (const [key, value] of Object.entries(this.data.edges)) {
-      const parts = key.split("|");
-      if (parts.length !== 3) continue;
-      const [from, to, kind] = parts as [string, string, EdgeKind];
+      // Parse from the right so the kind suffix is unambiguous even if a node
+      // id ever contained '|'. The schema forbids '|' in ids, so this is
+      // belt-and-suspenders defense — a manual edit that bypasses validation
+      // shouldn't silently drop an edge.
+      const lastBar = key.lastIndexOf("|");
+      if (lastBar <= 0) continue;
+      const secondLastBar = key.lastIndexOf("|", lastBar - 1);
+      if (secondLastBar <= 0) continue;
+      const from = key.slice(0, secondLastBar);
+      const to = key.slice(secondLastBar + 1, lastBar);
+      const kind = key.slice(lastBar + 1) as EdgeKind;
+      if (from.length === 0 || to.length === 0) continue;
       if (topIds.has(from) && topIds.has(to)) {
         const edge: Edge = { from, to, kind };
         if (value.note !== undefined) {
@@ -222,8 +233,12 @@ export class GraphStore {
     if (opts.activeTopic && !tags.includes(opts.activeTopic)) {
       tags.push(opts.activeTopic);
     }
-    this.data.nodes[node.id] = { ...incoming, tags };
-    return { merged: false, createdId: node.id };
+    // Use targetId — when opts.mergeWith was set but the target didn't exist,
+    // the caller's intent ("write to this canonical id") wins over node.id.
+    // Without this, a `mergeWith` to a missing id would silently create at
+    // node.id, abandoning the caller's contract.
+    this.data.nodes[targetId] = { ...incoming, tags };
+    return { merged: false, createdId: targetId };
   }
 
   /**
@@ -261,8 +276,11 @@ export class GraphStore {
     await fs.mkdir(path.dirname(this.path), { recursive: true });
 
     // proper-lockfile requires the target file to exist. If this is the first save
-    // (no file yet), write a minimal valid graph synchronously before locking.
-    // No concurrent writer can race us here because the file doesn't exist yet.
+    // (no file yet), seed it with a minimal valid graph so lock() has something to
+    // attach to. Two concurrent first-saves *can* both observe ENOENT and both run
+    // the seed write — neither corrupts data because the seed content is throw-away
+    // (the lock-protected atomic rename below is what actually commits this
+    // process's data, regardless of which seed briefly landed first).
     try {
       await fs.access(this.path);
     } catch {

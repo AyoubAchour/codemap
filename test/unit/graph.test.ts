@@ -256,6 +256,23 @@ describe("GraphStore.upsertNode", () => {
     expect(store._data().nodes["auth/duplicate"]).toBeUndefined();
   });
 
+  test("mergeWith targeting a missing id creates at the target id (not node.id)", async () => {
+    // Greptile P1: previously this branch silently created at node.id,
+    // abandoning the caller's "write to this canonical id" intent.
+    const store = await GraphStore.load(tmpRoot);
+    const result = store.upsertNode(
+      makeNode({ id: "auth/incoming", tags: ["new"] }),
+      { mergeWith: "auth/canonical" },
+    );
+    expect(result.merged).toBe(false); // target didn't exist; this was a creation
+    expect(result.createdId).toBe("auth/canonical");
+    expect(store.getNode("auth/canonical")?.tags).toEqual(
+      expect.arrayContaining(["new"]),
+    );
+    // Crucially: NOT created at node.id
+    expect(store._data().nodes["auth/incoming"]).toBeUndefined();
+  });
+
   test("status: incoming wins (allows deprecation)", async () => {
     const store = await GraphStore.load(tmpRoot);
     store.upsertNode(makeNode({ id: "auth/x", status: "active" }));
@@ -379,5 +396,37 @@ describe("GraphStore.query", () => {
     }
     const result = store.query("auth", 3);
     expect(result.nodes).toHaveLength(3);
+  });
+
+  test("tag matching is substring (consistent with name/summary)", async () => {
+    // Greptile P2: tagsLower.includes(token) was exact-match while name/summary
+    // used substring — so a tag "authentication" wouldn't match query "auth"
+    // even though the same word in name would. Now symmetric.
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode(
+      makeNode({
+        id: "auth/x",
+        name: "x",
+        summary: "x",
+        tags: ["authentication"],
+      }),
+    );
+    const result = store.query("auth", 5);
+    expect(result.nodes.map((n) => n.id)).toEqual(["auth/x"]);
+  });
+
+  test("alias matching is substring (consistent with name/summary)", async () => {
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode(
+      makeNode({
+        id: "auth/x",
+        name: "x",
+        summary: "x",
+        tags: [],
+        aliases: ["authentication"],
+      }),
+    );
+    const result = store.query("auth", 5);
+    expect(result.nodes.map((n) => n.id)).toEqual(["auth/x"]);
   });
 });
