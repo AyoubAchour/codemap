@@ -88,8 +88,8 @@ Maintained manually. Update status as tasks land.
 | 006 | Implement zod schemas                 | done        | M2 / Sprint 2.1 | [task-006-implement-zod-schemas.md](task-006-implement-zod-schemas.md)         |
 | 007 | Implement GraphStore class            | done        | M2 / Sprint 2.1 | [task-007-implement-graph-store.md](task-007-implement-graph-store.md)         |
 | 008 | Implement validator                   | in-progress | M2 / Sprint 2.1 | [task-008-implement-validator.md](task-008-implement-validator.md)             |
-| 009 | Build fixture corpus                  | in-progress | M2 / Sprint 2.1 | [task-009-build-fixture-corpus.md](task-009-build-fixture-corpus.md)           |
-| 010 | Unit tests for schema/store/validator | todo   | M2 / Sprint 2.1 | [task-010-graph-store-validator-tests.md](task-010-graph-store-validator-tests.md) |
+| 009 | Build fixture corpus                  | done        | M2 / Sprint 2.1 | [task-009-build-fixture-corpus.md](task-009-build-fixture-corpus.md)           |
+| 010 | Unit tests for schema/store/validator | in-progress | M2 / Sprint 2.1 | [task-010-graph-store-validator-tests.md](task-010-graph-store-validator-tests.md) |
 | 011 | Pick the M3 cross-codebase target (Phase 3c) | todo | M3 prep    | [task-011-pick-m3-3c-target.md](task-011-pick-m3-3c-target.md)                     |
 
 
