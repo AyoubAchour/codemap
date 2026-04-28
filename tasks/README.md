@@ -81,7 +81,7 @@ Maintained manually. Update status as tasks land.
 | #   | Title                                 | Status | Phase           | File                                                                               |
 | --- | ------------------------------------- | ------ | --------------- | ---------------------------------------------------------------------------------- |
 | 001 | Project setup                         | done   | Phase 0         | [task-001-project-setup.md](task-001-project-setup.md)                             |
-| 002 | Pick the M1 target codebase           | in-progress | Phase 0    | [task-002-pick-m1-target.md](task-002-pick-m1-target.md)                           |
+| 002 | Pick the M1 target codebase           | done        | Phase 0    | [task-002-pick-m1-target.md](task-002-pick-m1-target.md)                           |
 | 003 | Author M1 spike materials             | todo   | M1              | [task-003-author-m1-spike-materials.md](task-003-author-m1-spike-materials.md)     |
 | 004 | Run M1 spike sessions                 | todo   | M1              | [task-004-run-m1-sessions.md](task-004-run-m1-sessions.md)                         |
 | 005 | M1 retrospective + GO/NO-GO           | todo   | M1              | [task-005-m1-retrospective.md](task-005-m1-retrospective.md)                       |
