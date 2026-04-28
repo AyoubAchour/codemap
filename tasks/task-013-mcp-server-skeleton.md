@@ -15,6 +15,7 @@ After this task: `bun build --compile bin/codemap-mcp.ts --outfile dist/codemap-
 ## Context
 
 References:
+
 - `V1_SPEC.md` §7.1 / §7.2 / §7.4 / §7.5 — the four tool contracts.
 - `TECH_SPEC.md` §5 — current draft of MCP tool wiring. **Note:** §5's example uses the old `server.tool(...)` API; the current SDK (≥1.x) uses `server.registerTool(name, config, handler)`. Update §5 in this task.
 - `TECH_SPEC.md` §6 — stdio transport entry pattern.
@@ -120,7 +121,7 @@ Loads the store, calls `ensureTopic(name)`, sets the in-memory active topic (use
 
 ## Implementation notes
 
-- **`McpServer` lifecycle:** one server instance per process. Created in `bin/codemap-mcp.ts`, lives until stdio closes. The `repoRoot` is `process.cwd()` (per V1_SPEC §10).
+- `**McpServer` lifecycle:** one server instance per process. Created in `bin/codemap-mcp.ts`, lives until stdio closes. The `repoRoot` is `process.cwd()` (per V1_SPEC §10).
 - **GraphStore per call vs cached:** simplest is to `load()` per tool call. That's slow on large graphs but consistent. Cache + invalidate-on-write is task-019 (telemetry / perf) territory; don't over-optimize here.
 - **Active-topic state:** module-scoped `let activeTopic: string | null = null;` with getter/setter. Reset on a new `set_active_topic` call. Per-turn cap reset (which currently lives nowhere) lands in task-014.
 - **Error handling:** every tool returns `{ ok: false, error: { code, message } }` instead of throwing — the SDK surfaces these cleanly (TECH_SPEC §9).
@@ -138,11 +139,11 @@ Loads the store, calls `ensureTopic(name)`, sets the in-memory active topic (use
 
 ## Exit criteria
 
-- [ ] All 4 tools registered and callable.
-- [ ] Unit + integration tests pass.
-- [ ] `bun build --compile` produces a working binary.
-- [ ] TECH_SPEC §5 patched.
-- [ ] CI green.
+- All 4 tools registered and callable.
+- Unit + integration tests pass.
+- `bun build --compile` produces a working binary.
+- TECH_SPEC §5 patched.
+- CI green.
 
 ## Notes
 
@@ -160,3 +161,4 @@ Loads the store, calls `ensureTopic(name)`, sets the in-memory active topic (use
   }
   ```
   Drop into Claude Code's `~/.config/claude-code/mcp.json` (or equivalent path) to drive the server interactively while developing.
+
