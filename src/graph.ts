@@ -3,18 +3,26 @@ import * as path from "node:path";
 import { lock } from "proper-lockfile";
 
 import { GraphFileSchema, edgeKey } from "./schema.js";
-import type { Edge, EdgeKind, GraphFile, Node } from "./types.js";
+import type {
+  Edge,
+  EdgeKind,
+  GraphFile,
+  Node,
+  StoredNode,
+} from "./types.js";
+import {
+  applyRepairs,
+  validate,
+  type ValidationResult,
+} from "./validator.js";
 
 // =============================================================
 // GraphStore — persistence + read/write APIs over .codemap/graph.json
 //
 // Source of truth for behavior:
 //   V1_SPEC §6 (data model), §7.3 (merge semantics), §9 (rules), §10 (storage)
-//   TECH_SPEC §3.2 (class contract), §3.4 (concurrency model)
+//   TECH_SPEC §3.2 (class contract), §3.3 (validator), §3.4 (concurrency model)
 // =============================================================
-
-/** Stored shape — `Node` minus the `id` (the id is the key in `nodes{}`). */
-type StoredNode = Omit<Node, "id">;
 
 const GRAPH_DIR = ".codemap";
 const GRAPH_FILE = "graph.json";
@@ -44,10 +52,16 @@ export interface UpsertResult {
 export class GraphStore {
   private readonly path: string;
   private data: GraphFile;
+  private lastValidation: ValidationResult | null;
 
-  private constructor(graphPath: string, data: GraphFile) {
+  private constructor(
+    graphPath: string,
+    data: GraphFile,
+    lastValidation: ValidationResult | null = null,
+  ) {
     this.path = graphPath;
     this.data = data;
+    this.lastValidation = lastValidation;
   }
 
   /**
@@ -86,11 +100,29 @@ export class GraphStore {
           edges: {},
         };
       } else {
+        // Schema-parse failure or unexpected I/O error. Propagate so callers
+        // (CLI / MCP server entry) can surface a structured error.
         throw err;
       }
     }
 
-    return new GraphStore(graphPath, data);
+    // Run post-schema validator and apply auto-repairs in-memory.
+    // Repairs persist on the next save(). Per V1_SPEC §9.8.
+    const lastValidation = validate(data);
+    if (lastValidation.repairs.length > 0) {
+      data = applyRepairs(data, lastValidation);
+    }
+
+    return new GraphStore(graphPath, data, lastValidation);
+  }
+
+  /**
+   * The validation result from the most recent load(), or null if validate()
+   * has not been run. Useful for telemetry (count of repairs / warnings) and
+   * for the future `codemap validate` CLI (task-018).
+   */
+  validationResult(): Readonly<ValidationResult> | null {
+    return this.lastValidation;
   }
 
   // ===========================================================
