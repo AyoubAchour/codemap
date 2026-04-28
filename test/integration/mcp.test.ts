@@ -59,10 +59,11 @@ function parseToolText(result: { content: { type: string; text?: string }[] }) {
 // =============================================================
 
 describe("MCP server — tools/list", () => {
-  test("registers all 4 simple tools", async () => {
+  test("registers all 5 V1_SPEC §7 tools", async () => {
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      "emit_node",
       "get_node",
       "link",
       "query_graph",
@@ -419,5 +420,416 @@ describe("MCP server — structuredContent on all tools", () => {
     })) as { structuredContent?: { ok?: boolean; autoCreated?: boolean } };
     expect(r.structuredContent?.ok).toBe(true);
     expect(r.structuredContent?.autoCreated).toBe(true);
+  });
+});
+
+// =============================================================
+// emit_node — task-014 (collision-aware writes + per-turn cap)
+// =============================================================
+
+describe("MCP server — emit_node", () => {
+  function emitArgs(overrides: Record<string, unknown>) {
+    return {
+      kind: "invariant",
+      summary: "test summary",
+      sources: [
+        {
+          file_path: "src/x.ts",
+          line_range: [1, 10] as [number, number],
+          content_hash:
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        },
+      ],
+      tags: [],
+      aliases: [],
+      confidence: 0.9,
+      last_verified_at: "2026-04-28T00:00:00Z",
+      ...overrides,
+    };
+  }
+
+  test("creates a fresh node and registers the active topic in tags", async () => {
+    await client.callTool({
+      name: "set_active_topic",
+      arguments: { name: "auth" },
+    });
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: emitArgs({
+        id: "auth/middleware",
+        name: "Auth middleware",
+      }),
+    })) as { structuredContent?: { ok: boolean; createdId: string; merged: boolean } };
+    expect(r.structuredContent?.ok).toBe(true);
+    expect(r.structuredContent?.merged).toBe(false);
+    expect(r.structuredContent?.createdId).toBe("auth/middleware");
+
+    const get = (await client.callTool({
+      name: "get_node",
+      arguments: { id: "auth/middleware" },
+    })) as { structuredContent?: { node: { tags: string[] } | null } };
+    expect(get.structuredContent?.node?.tags).toContain("auth");
+  });
+
+  test("collision response (D1): returns ok:false collision:true with candidates, no write", async () => {
+    // Seed a node similar to what we'll emit.
+    const { GraphStore } = await import("../../src/graph.js");
+    const seeded = await GraphStore.load(tmpRoot);
+    seeded.upsertNode({
+      id: "messaging/sms-sender",
+      kind: "integration",
+      name: "SMS sender via Twilio",
+      summary: "Sends SMS via Twilio.",
+      sources: [
+        {
+          file_path: "src/messaging/twilio.ts",
+          line_range: [1, 40],
+          content_hash: "sha256:placeholder",
+        },
+      ],
+      tags: ["messaging"],
+      aliases: [],
+      status: "active",
+      confidence: 0.95,
+      last_verified_at: "2026-04-28T00:00:00Z",
+    });
+    await seeded.save();
+
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: emitArgs({
+        id: "messaging/sms-client",
+        kind: "integration",
+        name: "SMS client wrapper",
+        summary: "Wraps Twilio with retry.",
+        sources: [
+          {
+            file_path: "src/messaging/twilio.ts",
+            line_range: [42, 80],
+            content_hash: "sha256:placeholder",
+          },
+        ],
+        tags: ["messaging"],
+      }),
+    })) as {
+      isError?: boolean;
+      structuredContent?: {
+        ok: boolean;
+        collision: boolean;
+        candidates: { id: string; similarity: number }[];
+        next_action: string;
+      };
+    };
+    // D1: collision is NOT an isError — it's a flow-control response.
+    expect(r.isError).toBeFalsy();
+    expect(r.structuredContent?.ok).toBe(false);
+    expect(r.structuredContent?.collision).toBe(true);
+    expect(r.structuredContent?.candidates.map((c) => c.id)).toContain(
+      "messaging/sms-sender",
+    );
+    expect(r.structuredContent?.next_action).toContain("merge_with");
+
+    // Crucially: no write
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("messaging/sms-client")).toBeNull();
+  });
+
+  test("merge_with: merges into target id, skips collision check", async () => {
+    const { GraphStore } = await import("../../src/graph.js");
+    const seeded = await GraphStore.load(tmpRoot);
+    seeded.upsertNode({
+      id: "auth/middleware",
+      kind: "invariant",
+      name: "Auth middleware",
+      summary: "Original.",
+      sources: [
+        {
+          file_path: "x.ts",
+          line_range: [1, 10],
+          content_hash: "sha256:placeholder",
+        },
+      ],
+      tags: ["auth"],
+      aliases: [],
+      status: "active",
+      confidence: 0.9,
+      last_verified_at: "2026-01-01T00:00:00Z",
+    });
+    await seeded.save();
+
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: emitArgs({
+        id: "auth/incoming",
+        kind: "invariant",
+        name: "Auth middleware",
+        summary: "Updated.",
+        confidence: 0.95,
+        merge_with: "auth/middleware",
+      }),
+    })) as { structuredContent?: { ok: boolean; merged: boolean; createdId: string } };
+    expect(r.structuredContent?.ok).toBe(true);
+    expect(r.structuredContent?.merged).toBe(true);
+    expect(r.structuredContent?.createdId).toBe("auth/middleware");
+
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("auth/middleware")?.summary).toBe("Updated.");
+    expect(verify.getNode("auth/incoming")).toBeNull();
+  });
+
+  test("merge_with on missing target → NODE_NOT_FOUND error, no write", async () => {
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: emitArgs({
+        id: "auth/incoming",
+        name: "Anything",
+        merge_with: "auth/never",
+      }),
+    })) as {
+      isError?: boolean;
+      structuredContent?: { ok: boolean; error?: { code: string } };
+    };
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent?.error?.code).toBe("NODE_NOT_FOUND");
+
+    const { GraphStore } = await import("../../src/graph.js");
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("auth/incoming")).toBeNull();
+  });
+
+  test("force_new (D2): creates despite collision; reason is prepended to summary", async () => {
+    const { GraphStore } = await import("../../src/graph.js");
+    const seeded = await GraphStore.load(tmpRoot);
+    seeded.upsertNode({
+      id: "messaging/sms-sender",
+      kind: "integration",
+      name: "SMS sender via Twilio",
+      summary: "x",
+      sources: [
+        {
+          file_path: "src/messaging/twilio.ts",
+          line_range: [1, 40],
+          content_hash: "sha256:placeholder",
+        },
+      ],
+      tags: ["messaging"],
+      aliases: [],
+      status: "active",
+      confidence: 0.95,
+      last_verified_at: "2026-04-28T00:00:00Z",
+    });
+    await seeded.save();
+
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: emitArgs({
+        id: "messaging/sms-client",
+        kind: "integration",
+        name: "SMS client wrapper",
+        summary: "Wraps Twilio with retry.",
+        sources: [
+          {
+            file_path: "src/messaging/twilio.ts",
+            line_range: [42, 80],
+            content_hash: "sha256:placeholder",
+          },
+        ],
+        tags: ["messaging"],
+        force_new: { reason: "structurally distinct from sms-sender" },
+      }),
+    })) as { structuredContent?: { ok: boolean; createdId: string } };
+    expect(r.structuredContent?.ok).toBe(true);
+    expect(r.structuredContent?.createdId).toBe("messaging/sms-client");
+
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("messaging/sms-client")?.summary).toMatch(
+      /^\[force_new: structurally distinct from sms-sender\]/,
+    );
+  });
+
+  test("merge_with + force_new together → INVALID_FLAGS error", async () => {
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: emitArgs({
+        id: "auth/x",
+        name: "Auth x",
+        merge_with: "auth/anything",
+        force_new: { reason: "test" },
+      }),
+    })) as {
+      isError?: boolean;
+      structuredContent?: { ok: boolean; error?: { code: string } };
+    };
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent?.error?.code).toBe("INVALID_FLAGS");
+  });
+
+  test("rejects confidence > 1 via input schema", async () => {
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: emitArgs({
+        id: "auth/x",
+        name: "Auth x",
+        confidence: 1.5,
+      }),
+    })) as { isError?: boolean };
+    expect(r.isError).toBe(true);
+  });
+});
+
+// =============================================================
+// Per-turn cap
+// =============================================================
+
+describe("MCP server — per-turn emission cap", () => {
+  function uniqueArgs(i: number) {
+    return {
+      id: `cap/n${i}`,
+      kind: "invariant",
+      name: `Distinct node ${i}`,
+      summary: `unique enough — bigram pattern ${i}`,
+      sources: [
+        {
+          file_path: `src/cap-${i}.ts`,
+          line_range: [1, 10] as [number, number],
+          content_hash: "sha256:placeholder",
+        },
+      ],
+      tags: [`cap-${i}`],
+      aliases: [],
+      confidence: 0.9,
+      last_verified_at: "2026-04-28T00:00:00Z",
+    };
+  }
+
+  test("5 emissions accepted; 6th returns capped, no write", async () => {
+    await client.callTool({
+      name: "set_active_topic",
+      arguments: { name: "cap-test" },
+    });
+
+    for (let i = 0; i < 5; i++) {
+      const r = (await client.callTool({
+        name: "emit_node",
+        arguments: uniqueArgs(i),
+      })) as { structuredContent?: { ok: boolean } };
+      expect(r.structuredContent?.ok).toBe(true);
+    }
+
+    // 6th call hits the cap
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: uniqueArgs(5),
+    })) as {
+      isError?: boolean;
+      structuredContent?: { ok: boolean; capped: boolean };
+    };
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent?.capped).toBe(true);
+
+    const { GraphStore } = await import("../../src/graph.js");
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("cap/n5")).toBeNull();
+    expect(Object.keys(verify._data().nodes)).toHaveLength(5);
+  });
+
+  test("set_active_topic resets the counter — emissions after the reset proceed", async () => {
+    await client.callTool({
+      name: "set_active_topic",
+      arguments: { name: "cap-test" },
+    });
+    for (let i = 0; i < 5; i++) {
+      await client.callTool({ name: "emit_node", arguments: uniqueArgs(i) });
+    }
+
+    // Reset
+    await client.callTool({
+      name: "set_active_topic",
+      arguments: { name: "cap-test-2" },
+    });
+
+    // 6th overall, but 1st in the new turn — should succeed
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: uniqueArgs(5),
+    })) as { structuredContent?: { ok: boolean } };
+    expect(r.structuredContent?.ok).toBe(true);
+  });
+
+  test("collision response does NOT count toward the cap", async () => {
+    await client.callTool({
+      name: "set_active_topic",
+      arguments: { name: "cap-collision" },
+    });
+    // Seed a node that will trigger collision on the next call
+    const { GraphStore } = await import("../../src/graph.js");
+    const seeded = await GraphStore.load(tmpRoot);
+    seeded.upsertNode({
+      id: "messaging/sms-sender",
+      kind: "integration",
+      name: "SMS sender via Twilio",
+      summary: "x",
+      sources: [
+        {
+          file_path: "src/messaging/twilio.ts",
+          line_range: [1, 40],
+          content_hash: "sha256:placeholder",
+        },
+      ],
+      tags: ["messaging"],
+      aliases: [],
+      status: "active",
+      confidence: 0.95,
+      last_verified_at: "2026-04-28T00:00:00Z",
+    });
+    await seeded.save();
+
+    // Issue 5 collision-triggering calls (no force_new); none should write,
+    // so the counter stays at 0.
+    for (let i = 0; i < 5; i++) {
+      await client.callTool({
+        name: "emit_node",
+        arguments: {
+          id: `messaging/sms-client-${i}`,
+          kind: "integration",
+          name: "SMS client wrapper",
+          summary: "x",
+          sources: [
+            {
+              file_path: "src/messaging/twilio.ts",
+              line_range: [42, 80],
+              content_hash: "sha256:placeholder",
+            },
+          ],
+          tags: ["messaging"],
+          aliases: [],
+          confidence: 0.9,
+          last_verified_at: "2026-04-28T00:00:00Z",
+        },
+      });
+    }
+
+    // A 6th, non-colliding call should still succeed (counter never advanced).
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: {
+        id: "auth/distinct",
+        kind: "invariant",
+        name: "completely distinct from messaging",
+        summary: "unrelated",
+        sources: [
+          {
+            file_path: "src/auth/distinct.ts",
+            line_range: [1, 10],
+            content_hash: "sha256:placeholder",
+          },
+        ],
+        tags: ["auth"],
+        aliases: [],
+        confidence: 0.9,
+        last_verified_at: "2026-04-28T00:00:00Z",
+      },
+    })) as { structuredContent?: { ok: boolean } };
+    expect(r.structuredContent?.ok).toBe(true);
   });
 });
