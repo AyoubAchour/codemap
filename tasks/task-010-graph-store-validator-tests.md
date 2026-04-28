@@ -1,6 +1,6 @@
 # Task 010: Unit tests for schema, GraphStore, and validator
 
-**Status:** in-progress
+**Status:** done
 **Phase:** M2 — Sprint 2.1
 **Estimate:** 3–4 hours
 **Depends on:** task-006, task-007, task-008, task-009

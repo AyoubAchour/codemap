@@ -135,11 +135,13 @@ Goal: dogfood Codemap on real work for 2 weeks. Measure whether the loop holds a
 
 The 2-week trial is split into **three phases**, each testing a distinct generalization claim. Total ~10–13 sessions across 2 weeks.
 
-| Phase | Days | Target | What it tests | Sessions |
-|---|---|---|---|---|
-| **3a** | 1–4 | voice2work `auth` (same as M1) | Cross-time: does the existing graph stay useful as the agent does new auth work? Does it get noisy? Does staleness become real? | 3–4 |
-| **3b** | 5–10 | voice2work *different subsystem* (Voice phone or Payment) | Cross-subsystem: does discipline hold on less-rehearsed territory? Does the agent appropriately *not* reuse auth nodes for unrelated work? | 4–5 |
-| **3c** | 11–14 | A second codebase the user knows reasonably well (different repo, ideally TS-stack) | Cross-codebase: do emission patterns and quality match? Does single-graph-per-repo cause friction? | 3–4 |
+
+| Phase  | Days  | Target                                                                              | What it tests                                                                                                                              | Sessions |
+| ------ | ----- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| **3a** | 1–4   | voice2work `auth` (same as M1)                                                      | Cross-time: does the existing graph stay useful as the agent does new auth work? Does it get noisy? Does staleness become real?            | 3–4      |
+| **3b** | 5–10  | voice2work *different subsystem* (Voice phone or Payment)                           | Cross-subsystem: does discipline hold on less-rehearsed territory? Does the agent appropriately *not* reuse auth nodes for unrelated work? | 4–5      |
+| **3c** | 11–14 | A second codebase the user knows reasonably well (different repo, ideally TS-stack) | Cross-codebase: do emission patterns and quality match? Does single-graph-per-repo cause friction?                                         | 3–4      |
+
 
 For all phases:
 
@@ -148,6 +150,7 @@ For all phases:
 - Phase-end retros (after 3a, 3b, 3c) plus the final cumulative retro.
 
 **Don't pick an unfamiliar OSS codebase for 3c.** That tests onboarding — a separate problem, deferred to v2 (Phase 4 candidate). 3c needs the user to be able to judge node quality, which requires familiarity.
+
 - Weekly retros after week 1 and week 2.
 
 ### Deliverables
