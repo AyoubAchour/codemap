@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "created_at": "2026-04-28T00:00:00Z",
+  "topics": {
+    "messaging": {
+      "created_at": "2026-04-28T00:00:00Z",
+      "auto_created": true
+    }
+  },
+  "nodes": {
+    "messaging/sms-sender": {
+      "kind": "integration",
+      "name": "SMS sender via Twilio",
+      "summary": "Sends SMS via the Twilio REST client. Used by transactional notifications.",
+      "sources": [
+        {
+          "file_path": "src/messaging/twilio.ts",
+          "line_range": [1, 40],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["messaging"],
+      "aliases": ["twilio-sms"],
+      "status": "active",
+      "confidence": 0.95,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    },
+    "messaging/sms-client": {
+      "kind": "integration",
+      "name": "SMS client wrapper",
+      "summary": "Wraps the Twilio REST client. Adds retry on 429 with exponential backoff.",
+      "sources": [
+        {
+          "file_path": "src/messaging/twilio.ts",
+          "line_range": [42, 80],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["messaging"],
+      "aliases": ["smsClientWrapper"],
+      "status": "active",
+      "confidence": 0.9,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    },
+    "messaging/email-sender": {
+      "kind": "integration",
+      "name": "Transactional email sender",
+      "summary": "Sends transactional email via Resend. Distinct surface from SMS — keep separate.",
+      "sources": [
+        {
+          "file_path": "src/messaging/resend.ts",
+          "line_range": [1, 50],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["messaging"],
+      "aliases": ["resend"],
+      "status": "active",
+      "confidence": 0.95,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    },
+    "messaging/email-client": {
+      "kind": "integration",
+      "name": "Email client wrapper",
+      "summary": "Wraps the Resend client. Adds retry on 429 with exponential backoff. Sibling pattern to messaging/sms-client.",
+      "sources": [
+        {
+          "file_path": "src/messaging/resend.ts",
+          "line_range": [52, 90],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["messaging"],
+      "aliases": ["emailClientWrapper"],
+      "status": "active",
+      "confidence": 0.9,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    }
+  },
+  "edges": {}
+}

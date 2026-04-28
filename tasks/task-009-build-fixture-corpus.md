@@ -1,6 +1,6 @@
 # Task 009: Build fixture corpus
 
-**Status:** todo
+**Status:** in-progress (PR open)
 **Phase:** M2 — Sprint 2.1
 **Estimate:** 2 hours
 **Depends on:** task-006 (need schemas to know what's valid)

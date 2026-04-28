@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "created_at": "2026-04-28T00:00:00Z",
+  "topics": {
+    "scheduling": {
+      "created_at": "2026-04-28T00:00:00Z",
+      "auto_created": true
+    }
+  },
+  "nodes": {
+    "scheduling/job-runner": {
+      "kind": "concept",
+      "name": "Cron job runner",
+      "summary": "Orchestrates periodic jobs.",
+      "sources": [
+        {
+          "file_path": "src/scheduling/runner.ts",
+          "line_range": [1, 50],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["scheduling"],
+      "aliases": [],
+      "status": "active",
+      "confidence": 0.9,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    }
+  },
+  "edges": {
+    "scheduling/job-runner|scheduling/db-archiver|calls": {
+      "note": "calls archiver — but archiver was deleted"
+    },
+    "scheduling/missing-orchestrator|scheduling/job-runner|depends_on": {
+      "note": "from-endpoint also missing"
+    },
+    "scheduling/foo|scheduling/bar|depends_on": {
+      "note": "both endpoints missing"
+    }
+  }
+}
