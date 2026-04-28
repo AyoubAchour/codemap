@@ -38,6 +38,10 @@ export function registerQueryGraph(
       const result = store.query(question, limit);
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
+        // SDK requires structuredContent : Record<string, unknown>. Our typed
+        // result satisfies that structurally; the cast is a TS index-signature
+        // workaround, not a runtime change.
+        structuredContent: result as unknown as Record<string, unknown>,
       };
     },
   );

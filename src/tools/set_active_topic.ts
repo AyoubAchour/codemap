@@ -35,6 +35,7 @@ export function registerSetActiveTopic(
       const result = { ok: true, autoCreated: wasMissing };
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
+        structuredContent: result as unknown as Record<string, unknown>,
       };
     },
   );

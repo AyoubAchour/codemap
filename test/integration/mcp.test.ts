@@ -262,3 +262,162 @@ describe("MCP server — set_active_topic", () => {
     expect(getActiveTopic()).toBe("perf-investigation");
   });
 });
+
+// =============================================================
+// link — endpoint validation (greptile P1 regression)
+// =============================================================
+
+describe("MCP server — link endpoint validation", () => {
+  // Repeat the seed helper inline; importing across describe blocks is awkward.
+  async function seedTwoNodes() {
+    const { GraphStore } = await import("../../src/graph.js");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode({
+      id: "auth/a",
+      kind: "invariant",
+      name: "A",
+      summary: "x",
+      sources: [
+        {
+          file_path: "a.ts",
+          line_range: [1, 10],
+          content_hash: "sha256:placeholder",
+        },
+      ],
+      tags: [],
+      aliases: ["alias-a"],
+      status: "active",
+      confidence: 0.9,
+      last_verified_at: "2026-04-28T00:00:00Z",
+    });
+    store.upsertNode({
+      id: "auth/b",
+      kind: "invariant",
+      name: "B",
+      summary: "x",
+      sources: [
+        {
+          file_path: "b.ts",
+          line_range: [1, 10],
+          content_hash: "sha256:placeholder",
+        },
+      ],
+      tags: [],
+      aliases: [],
+      status: "active",
+      confidence: 0.9,
+      last_verified_at: "2026-04-28T00:00:00Z",
+    });
+    await store.save();
+  }
+
+  test("rejects link with non-existent 'from' node — NODE_NOT_FOUND, no write", async () => {
+    await seedTwoNodes();
+    const r = (await client.callTool({
+      name: "link",
+      arguments: {
+        from: "auth/missing",
+        to: "auth/b",
+        kind: "depends_on",
+      },
+    })) as {
+      isError?: boolean;
+      content: { type: string; text?: string }[];
+      structuredContent?: { ok: boolean; error?: { code: string } };
+    };
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent?.ok).toBe(false);
+    expect(r.structuredContent?.error?.code).toBe("NODE_NOT_FOUND");
+
+    // Nothing written
+    const { GraphStore } = await import("../../src/graph.js");
+    const verify = await GraphStore.load(tmpRoot);
+    expect(Object.keys(verify._data().edges)).toHaveLength(0);
+  });
+
+  test("rejects link with non-existent 'to' node — NODE_NOT_FOUND, no write", async () => {
+    await seedTwoNodes();
+    const r = (await client.callTool({
+      name: "link",
+      arguments: {
+        from: "auth/a",
+        to: "auth/never",
+        kind: "depends_on",
+      },
+    })) as {
+      isError?: boolean;
+      content: { type: string; text?: string }[];
+      structuredContent?: { ok: boolean; error?: { code: string; message: string } };
+    };
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent?.error?.code).toBe("NODE_NOT_FOUND");
+    expect(r.structuredContent?.error?.message).toContain("auth/never");
+
+    const { GraphStore } = await import("../../src/graph.js");
+    const verify = await GraphStore.load(tmpRoot);
+    expect(Object.keys(verify._data().edges)).toHaveLength(0);
+  });
+
+  test("resolves alias inputs to canonical ids when writing the edge", async () => {
+    await seedTwoNodes();
+    const r = (await client.callTool({
+      name: "link",
+      arguments: {
+        from: "alias-a", // alias of auth/a
+        to: "auth/b",
+        kind: "depends_on",
+        note: "via alias",
+      },
+    })) as {
+      isError?: boolean;
+      structuredContent?: { ok: boolean; from: string; to: string };
+    };
+    expect(r.isError).toBeFalsy();
+    expect(r.structuredContent?.from).toBe("auth/a");
+    expect(r.structuredContent?.to).toBe("auth/b");
+
+    // Edge stored under the canonical id, not the alias
+    const { GraphStore } = await import("../../src/graph.js");
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify._data().edges["auth/a|auth/b|depends_on"]).toBeDefined();
+    expect(
+      verify._data().edges["alias-a|auth/b|depends_on"],
+    ).toBeUndefined();
+  });
+});
+
+// =============================================================
+// structuredContent presence
+// =============================================================
+
+describe("MCP server — structuredContent on all tools", () => {
+  test("query_graph returns structuredContent with nodes + edges", async () => {
+    const r = (await client.callTool({
+      name: "query_graph",
+      arguments: { question: "anything" },
+    })) as {
+      structuredContent?: { nodes?: unknown[]; edges?: unknown[] };
+    };
+    expect(r.structuredContent).toBeDefined();
+    expect(Array.isArray(r.structuredContent?.nodes)).toBe(true);
+    expect(Array.isArray(r.structuredContent?.edges)).toBe(true);
+  });
+
+  test("get_node returns structuredContent with node:null on miss", async () => {
+    const r = (await client.callTool({
+      name: "get_node",
+      arguments: { id: "does/not/exist" },
+    })) as { structuredContent?: { node?: unknown } };
+    expect(r.structuredContent).toBeDefined();
+    expect(r.structuredContent?.node).toBeNull();
+  });
+
+  test("set_active_topic returns structuredContent with ok + autoCreated", async () => {
+    const r = (await client.callTool({
+      name: "set_active_topic",
+      arguments: { name: "fresh" },
+    })) as { structuredContent?: { ok?: boolean; autoCreated?: boolean } };
+    expect(r.structuredContent?.ok).toBe(true);
+    expect(r.structuredContent?.autoCreated).toBe(true);
+  });
+});

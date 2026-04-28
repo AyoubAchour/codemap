@@ -26,8 +26,11 @@ export function registerGetNode(
     async ({ id }) => {
       const store = await GraphStore.load(options.repoRoot);
       const node = store.getNode(id);
+      // structuredContent carries the typed payload — clients branch on
+      // `structuredContent.node` rather than parsing text JSON.
       return {
         content: [{ type: "text", text: JSON.stringify(node) }],
+        structuredContent: { node } as unknown as Record<string, unknown>,
       };
     },
   );
