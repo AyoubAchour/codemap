@@ -46,6 +46,7 @@ Alternative was a dedicated `force_new_reason?: string` field on the node schema
 ## Context
 
 References:
+
 - `V1_SPEC.md` §7.3 — `emit_node` contract: full input shape, merge semantics, collision response.
 - `TECH_SPEC.md` §5 — per-turn cap rules.
 - `src/collision.ts` — `findCollisions(incoming, existing, options?)` is what we call.
@@ -117,8 +118,8 @@ inputSchema: {
 - **Per-turn counter scope:** module-scoped `let emissionsThisTurn = 0;`. Reset on `set_active_topic`. Increment on successful `emit_node`. Counter check happens BEFORE the write.
 - **Why no timeout:** purely tied to `set_active_topic` per TECH_SPEC §5. No "5 minutes since last emit" heuristic.
 - **structuredContent on every return:** consistent with the other 4 tools. Cast to `Record<string, unknown>` at the boundary.
-- **`merge_with` to a missing target:** task-007's GraphStore handles this by creating at the target id. We'd duplicate that error path here as NODE_NOT_FOUND for clarity; optional. Default behavior: trust GraphStore. Decide during implementation.
-- **`force_new` summary prefix lifecycle:** the prefix lives in summary forever. If a future emit_node merges into a force_new'd node with a higher confidence, the new summary replaces (per V1_SPEC §7.3 merge), and the force_new audit trail is lost. Acceptable for v1.
+- `**merge_with` to a missing target:** task-007's GraphStore handles this by creating at the target id. We'd duplicate that error path here as NODE_NOT_FOUND for clarity; optional. Default behavior: trust GraphStore. Decide during implementation.
+- `**force_new` summary prefix lifecycle:** the prefix lives in summary forever. If a future emit_node merges into a force_new'd node with a higher confidence, the new summary replaces (per V1_SPEC §7.3 merge), and the force_new audit trail is lost. Acceptable for v1.
 
 ## Test plan
 
@@ -134,15 +135,16 @@ inputSchema: {
 
 ## Exit criteria
 
-- [ ] All 5 MCP tools register and respond correctly.
-- [ ] Per-turn cap enforced; reset on `set_active_topic`.
-- [ ] Collision response shape per D1.
-- [ ] `force_new` reason stored per D2.
-- [ ] All new integration tests pass; ≥80% coverage on `src/tools/emit_node.ts`.
-- [ ] `bun build --compile` produces a working binary.
-- [ ] CI green.
+- All 5 MCP tools register and respond correctly.
+- Per-turn cap enforced; reset on `set_active_topic`.
+- Collision response shape per D1.
+- `force_new` reason stored per D2.
+- All new integration tests pass; ≥80% coverage on `src/tools/emit_node.ts`.
+- `bun build --compile` produces a working binary.
+- CI green.
 
 ## Notes
 
 - After this lands, **all 5 V1_SPEC §7 tools are implemented**. Sprint 2.2 is done in spirit; Sprint 2.3 (CLI, telemetry, npm publish) starts next.
 - The instruction document in `m1/instruction-doc.md` already references `emit_node` and the collision-resolution flow. Once this lands, the instruction document corresponds 1:1 to runtime behavior.
+
