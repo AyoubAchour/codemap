@@ -237,18 +237,32 @@ The agent must re-call with `merge_with` or `force_new(reason)` — the server w
 
 ## 5. MCP tools
 
-All tools defined via the MCP SDK with zod-derived JSON Schema:
+All tools defined via the MCP SDK's `registerTool(name, config, handler)` API with zod-derived JSON Schema. (The older `server.tool(...)` overloads in `@modelcontextprotocol/sdk` ≥1.x are deprecated; we use `registerTool` everywhere.)
 
 ```ts
-server.tool(
+server.registerTool(
   "query_graph",
-  "Find nodes relevant to a task description. Call before planning any task that involves understanding this codebase.",
-  { question: z.string(), limit: z.number().optional().default(10) },
+  {
+    title: "Query graph",
+    description:
+      "Find nodes relevant to a task description. Call before planning any task that involves understanding this codebase.",
+    inputSchema: z.object({
+      question: z.string().min(1),
+      limit: z.number().int().min(1).max(50).optional().default(10),
+    }),
+    outputSchema: z.object({
+      nodes: z.array(NodeSchema),
+      edges: z.array(EdgeSchema),
+    }),
+  },
   async ({ question, limit }) => {
+    const store = await GraphStore.load(repoRoot);
     const result = store.query(question, limit);
-    metrics.recordQuery(currentTopic, result.nodes.length);
-    return { content: [{ type: "text", text: JSON.stringify(result) }] };
-  }
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }],
+      structuredContent: result,
+    };
+  },
 );
 ```
 

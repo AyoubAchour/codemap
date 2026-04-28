@@ -15,6 +15,7 @@ After this task: `bun build --compile bin/codemap-mcp.ts --outfile dist/codemap-
 ## Context
 
 References:
+
 - `V1_SPEC.md` §7.1 / §7.2 / §7.4 / §7.5 — the four tool contracts.
 - `TECH_SPEC.md` §5 — current draft of MCP tool wiring. **Note:** §5's example uses the old `server.tool(...)` API; the current SDK (≥1.x) uses `server.registerTool(name, config, handler)`. Update §5 in this task.
 - `TECH_SPEC.md` §6 — stdio transport entry pattern.
@@ -138,11 +139,11 @@ Loads the store, calls `ensureTopic(name)`, sets the in-memory active topic (use
 
 ## Exit criteria
 
-- [ ] All 4 tools registered and callable.
-- [ ] Unit + integration tests pass.
-- [ ] `bun build --compile` produces a working binary.
-- [ ] TECH_SPEC §5 patched.
-- [ ] CI green.
+- All 4 tools registered and callable.
+- Unit + integration tests pass.
+- `bun build --compile` produces a working binary.
+- TECH_SPEC §5 patched.
+- CI green.
 
 ## Notes
 
@@ -160,3 +161,4 @@ Loads the store, calls `ensureTopic(name)`, sets the in-memory active topic (use
   }
   ```
   Drop into Claude Code's `~/.config/claude-code/mcp.json` (or equivalent path) to drive the server interactively while developing.
+
