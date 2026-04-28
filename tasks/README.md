@@ -93,7 +93,7 @@ Maintained manually. Update status as tasks land.
 | 011 | Pick the M3 cross-codebase target (Phase 3c) | todo | M3 prep    | [task-011-pick-m3-3c-target.md](task-011-pick-m3-3c-target.md)                     |
 | 012 | Implement collision detection         | done        | M2 / Sprint 2.2 | [task-012-implement-collision-detection.md](task-012-implement-collision-detection.md) |
 | 013 | MCP server skeleton + simple tools    | done        | M2 / Sprint 2.2 | [task-013-mcp-server-skeleton.md](task-013-mcp-server-skeleton.md)                 |
-| 014 | emit_node tool + per-turn cap         | todo        | M2 / Sprint 2.2 | [task-014-emit-node.md](task-014-emit-node.md)                                       |
+| 014 | emit_node tool + per-turn cap         | done        | M2 / Sprint 2.2 | [task-014-emit-node.md](task-014-emit-node.md)                                       |
 
 
 ## Conventions

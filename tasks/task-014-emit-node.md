@@ -1,6 +1,6 @@
 # Task 014: `emit_node` tool + per-turn cap enforcement
 
-**Status:** todo
+**Status:** done
 **Phase:** M2 — Sprint 2.2
 **Estimate:** 3–4 hours
 **Depends on:** task-012 (collision detection), task-013 (MCP server skeleton)
