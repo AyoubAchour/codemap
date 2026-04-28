@@ -197,23 +197,28 @@ If a write can't acquire the lock within ~5 retries (≤500 ms total), the MCP t
 
 ```
 For each existing node N (skip if N.id === incoming.id):
-  score = max(
-    name_similarity(incoming.name, N.name)              [weight 0.4],
-    name_similarity(incoming.name, alias)               for alias in N.aliases,
-    source_overlap(incoming.sources, N.sources)         [weight 0.3],
-    tag_overlap(incoming.tags, N.tags)                  [weight 0.3],
-  )
+  name_component   = max(
+                       name_similarity(incoming.name, N.name),
+                       name_similarity(incoming.name, alias) for alias in N.aliases,
+                     )
+  source_component = source_overlap(incoming.sources, N.sources)
+  tag_component    = tag_overlap(incoming.tags, N.tags)
+
+  score = 0.5 * name_component + 0.25 * source_component + 0.25 * tag_component
+
   if score >= COLLISION_THRESHOLD: append { id: N.id, score }
-Return top 3 candidates by score
+Return top 3 candidates by score (descending)
 ```
+
+**Why a weighted sum (not max).** A perfect single signal must not fire alone — two unrelated nodes in the same domain (shared tag = 1.0, nothing else) would otherwise trigger constant collision warnings, and the agent's `force_new` ceremony would erode trust in the warning. With this formula, a strong name match alone reaches 0.5 (under the 0.65 default), and `force_new` is only required when *multiple* signals point at "this looks like a duplicate." Decided in task-012 after the original spec text proved ambiguous.
 
 Where:
 
-- `name_similarity` = Dice coefficient on character bigrams (handles short strings well; falls back to normalized Levenshtein).
-- `source_overlap` = Jaccard similarity over the set of `file_path` values, plus a small bonus when line ranges overlap.
+- `name_similarity` = Sørensen–Dice coefficient on character bigrams (handles short strings well; case-insensitive). `fastest-levenshtein` is available as a fallback if Dice misclassifies on real data — revisit during M3.
+- `source_overlap` = Jaccard similarity over the set of `file_path` values, plus a +0.1 bonus (clamped to 1.0) if any line ranges overlap on a shared file.
 - `tag_overlap` = Jaccard over tag sets.
 
-`COLLISION_THRESHOLD` defaults to **0.65**, configurable via env var `CODEMAP_COLLISION_THRESHOLD`. The threshold is a starting guess; M1 / M2 will tune it against real cases.
+`COLLISION_THRESHOLD` defaults to **0.65**, configurable via env var `CODEMAP_COLLISION_THRESHOLD`. The threshold is a starting guess; M2 / M3 will tune it against real cases.
 
 When candidates are non-empty, the server returns:
 
