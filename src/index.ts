@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
+import { registerEmitNode } from "./tools/emit_node.js";
 import { registerGetNode } from "./tools/get_node.js";
 import { registerLink } from "./tools/link.js";
 import { registerQueryGraph } from "./tools/query_graph.js";
@@ -11,13 +12,11 @@ export interface RegisterToolsOptions {
 }
 
 /**
- * Register the four "simple" Codemap MCP tools onto the given server.
- * `emit_node` lands separately in task-014 (depends on collision detection
- * + per-turn cap).
+ * Register all 5 Codemap MCP tools onto the given server, per V1_SPEC §7.
  *
- * Tools registered:
  *  - query_graph
  *  - get_node
+ *  - emit_node       (collision-aware; per-turn cap)
  *  - link
  *  - set_active_topic
  */
@@ -27,6 +26,7 @@ export function registerTools(
 ): void {
   registerQueryGraph(server, options);
   registerGetNode(server, options);
+  registerEmitNode(server, options);
   registerLink(server, options);
   registerSetActiveTopic(server, options);
 }

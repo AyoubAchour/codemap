@@ -1,6 +1,6 @@
 # Task 013: MCP server skeleton + simple tools
 
-**Status:** done
+**Status:** todo
 **Phase:** M2 — Sprint 2.2
 **Estimate:** 3–4 hours
 **Depends on:** task-007 (GraphStore), task-008 (validator)
@@ -121,7 +121,7 @@ Loads the store, calls `ensureTopic(name)`, sets the in-memory active topic (use
 
 ## Implementation notes
 
-- **`McpServer` lifecycle:** one server instance per process. Created in `bin/codemap-mcp.ts`, lives until stdio closes. The `repoRoot` is `process.cwd()` (per V1_SPEC §10).
+- `**McpServer` lifecycle:** one server instance per process. Created in `bin/codemap-mcp.ts`, lives until stdio closes. The `repoRoot` is `process.cwd()` (per V1_SPEC §10).
 - **GraphStore per call vs cached:** simplest is to `load()` per tool call. That's slow on large graphs but consistent. Cache + invalidate-on-write is task-019 (telemetry / perf) territory; don't over-optimize here.
 - **Active-topic state:** module-scoped `let activeTopic: string | null = null;` with getter/setter. Reset on a new `set_active_topic` call. Per-turn cap reset (which currently lives nowhere) lands in task-014.
 - **Error handling:** every tool returns `{ ok: false, error: { code, message } }` instead of throwing — the SDK surfaces these cleanly (TECH_SPEC §9).
