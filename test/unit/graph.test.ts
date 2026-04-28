@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -7,9 +8,15 @@ import { GraphStore } from "../../src/graph.js";
 import type { Node } from "../../src/types.js";
 
 // =============================================================
-// Smoke tests for GraphStore. Comprehensive coverage (incl.
-// crash-injection + concurrent save) is task-010.
+// GraphStore tests. Comprehensive coverage including crash injection,
+// concurrent save, and perf budget (TECH_SPEC §11) added in task-010.
 // =============================================================
+
+const SAVE_RUNNER = path.resolve(
+  __dirname,
+  "_helpers/save-runner.ts",
+);
+const FIXTURES_DIR = path.resolve(__dirname, "..", "..", "fixtures");
 
 let tmpRoot: string;
 let graphPath: string;
@@ -429,5 +436,177 @@ describe("GraphStore.query", () => {
     );
     const result = store.query("auth", 5);
     expect(result.nodes.map((n) => n.id)).toEqual(["auth/x"]);
+  });
+});
+
+// =============================================================
+// Crash injection — atomic save survives SIGKILL between writeFile and rename
+// =============================================================
+
+describe("GraphStore.save — atomic write under crash", () => {
+  function spawnSaver(
+    repoRoot: string,
+    nodeId: string,
+    extraEnv: Record<string, string> = {},
+  ) {
+    return spawn("bun", ["run", SAVE_RUNNER, repoRoot, nodeId], {
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        ...extraEnv,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  }
+
+  function waitForExit(
+    child: ReturnType<typeof spawn>,
+  ): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
+    return new Promise((resolve) => {
+      child.on("exit", (code, signal) => resolve({ code, signal }));
+    });
+  }
+
+  test("SIGKILL between writeFile and rename leaves the prior file intact", async () => {
+    // Set up: save once so the file exists with known content.
+    const initial = await GraphStore.load(tmpRoot);
+    initial.upsertNode(makeNode({ id: "before/save" }));
+    await initial.save();
+
+    // Spawn child that triggers the slow-save debug pause.
+    const child = spawnSaver(tmpRoot, "killed/save", {
+      CODEMAP_DEBUG_SLOW_SAVE: "1",
+    });
+
+    // Allow time for: load + parse + lock acquire + writeFile to .tmp.
+    // The 1000ms debug pause then holds, during which we kill.
+    await new Promise((r) => setTimeout(r, 400));
+    child.kill("SIGKILL");
+    const exit = await waitForExit(child);
+
+    expect(exit.signal).toBe("SIGKILL");
+
+    // The prior file must still parse and contain "before/save".
+    // The killed process's "killed/save" must NOT have landed.
+    const reloaded = await GraphStore.load(tmpRoot);
+    expect(reloaded.getNode("before/save")).not.toBeNull();
+    expect(reloaded.getNode("killed/save")).toBeNull();
+  }, 10_000);
+});
+
+// =============================================================
+// Concurrent save — proper-lockfile serializes; both subprocesses succeed
+// =============================================================
+
+describe("GraphStore.save — concurrent subprocesses", () => {
+  test("two parallel save() processes both succeed; final file is valid", async () => {
+    // Seed the file so both subprocesses have something to lock against.
+    const seed = await GraphStore.load(tmpRoot);
+    await seed.save();
+
+    const procEnv = {
+      ...process.env,
+      NODE_ENV: "test",
+    };
+
+    const a = spawn("bun", ["run", SAVE_RUNNER, tmpRoot, "from/a"], {
+      env: procEnv,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const b = spawn("bun", ["run", SAVE_RUNNER, tmpRoot, "from/b"], {
+      env: procEnv,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    const exits = await Promise.all([
+      new Promise<number | null>((resolve) =>
+        a.on("exit", (code) => resolve(code)),
+      ),
+      new Promise<number | null>((resolve) =>
+        b.on("exit", (code) => resolve(code)),
+      ),
+    ]);
+
+    expect(exits[0]).toBe(0);
+    expect(exits[1]).toBe(0);
+
+    // The final file must parse cleanly and contain at least one of the writers.
+    // Last-writer-wins: it's normal for only one of the two to be present.
+    const reloaded = await GraphStore.load(tmpRoot);
+    const haveA = reloaded.getNode("from/a") !== null;
+    const haveB = reloaded.getNode("from/b") !== null;
+    expect(haveA || haveB).toBe(true);
+  }, 15_000);
+});
+
+// =============================================================
+// Perf — TECH_SPEC §11 budget on a 1000-node graph
+// =============================================================
+
+describe("GraphStore.query — perf on oversize fixture", () => {
+  test("query() on 1000-node graph completes well under 100ms (TECH_SPEC §11)", async () => {
+    const store = await GraphStore.load(tmpRoot, {
+      customPath: path.join(FIXTURES_DIR, "oversize.json"),
+    });
+
+    // Warm-up to JIT.
+    for (let i = 0; i < 3; i++) store.query("auth", 10);
+
+    const start = performance.now();
+    const result = store.query("auth", 10);
+    const elapsed = performance.now() - start;
+
+    expect(result.nodes.length).toBeGreaterThan(0);
+    expect(elapsed).toBeLessThan(100);
+  });
+
+  test("load() on 1000-node graph completes under 50ms", async () => {
+    const start = performance.now();
+    await GraphStore.load(tmpRoot, {
+      customPath: path.join(FIXTURES_DIR, "oversize.json"),
+    });
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(50);
+  });
+});
+
+// =============================================================
+// Fixture-driven smoke tests for full load() pipeline
+// =============================================================
+
+describe("GraphStore.load — fixture round-trip", () => {
+  test("loads and queries small.json", async () => {
+    const store = await GraphStore.load(tmpRoot, {
+      customPath: path.join(FIXTURES_DIR, "small.json"),
+    });
+    const result = store.query("auth", 5);
+    expect(result.nodes.map((n) => n.id)).toContain("auth/middleware");
+    expect(result.nodes.length).toBe(3);
+  });
+
+  test("with-aliases.json: getNode resolves through aliases", async () => {
+    const store = await GraphStore.load(tmpRoot, {
+      customPath: path.join(FIXTURES_DIR, "with-aliases.json"),
+    });
+    expect(store.getNode("webhook")?.id).toBe("payment/stripe-webhook");
+    expect(store.getNode("chargeIntent")?.id).toBe("payment/charge-flow");
+  });
+
+  test("with-deprecated.json: query() filters out deprecated nodes", async () => {
+    const store = await GraphStore.load(tmpRoot, {
+      customPath: path.join(FIXTURES_DIR, "with-deprecated.json"),
+    });
+    const result = store.query("billing", 5);
+    expect(result.nodes.map((n) => n.id)).toEqual(["billing/invoice-v2"]);
+    // Deprecated node still retrievable via direct getNode
+    expect(store.getNode("billing/legacy-invoice")?.status).toBe("deprecated");
+  });
+
+  test("oversize.json: schema parses cleanly (regression for fixture corpus)", async () => {
+    const store = await GraphStore.load(tmpRoot, {
+      customPath: path.join(FIXTURES_DIR, "oversize.json"),
+    });
+    expect(Object.keys(store._data().nodes).length).toBe(1000);
+    expect(Object.keys(store._data().topics).length).toBe(10);
   });
 });

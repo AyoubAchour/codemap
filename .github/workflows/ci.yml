@@ -17,15 +17,20 @@ jobs:
       - run: bun test
 
   test-node:
+    # Verifies the project installs + typechecks under a Node 22+
+    # environment. Uses Bun as the test runner (tests use bun:test);
+    # converting to node:test would require rewriting all test files.
+    # Source code is Node-compatible (only node:fs / node:path / node:crypto
+    # imports), so the typecheck is the real Node-compat signal here.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - uses: oven-sh/setup-bun@v2  # for bun.lockb compat
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: node --test test/ || true  # placeholder; tightened in task-010
+      - run: bun test
