@@ -1,6 +1,6 @@
 # Task 012: Implement collision detection (`src/collision.ts`)
 
-**Status:** todo
+**Status:** in-progress (PR open) — Interpretation B accepted
 **Phase:** M2 — Sprint 2.2 (MCP tools + collision detection)
 **Estimate:** 3–4 hours (incl. tests)
 **Depends on:** task-006 (schemas), task-007 (GraphStore types)
