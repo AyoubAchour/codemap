@@ -33,6 +33,56 @@ describe("SourceRefSchema", () => {
     };
     expect(() => SourceRefSchema.parse(invalid)).toThrow();
   });
+
+  test("rejects line_range with negative numbers", () => {
+    expect(() =>
+      SourceRefSchema.parse({
+        file_path: "x.ts",
+        line_range: [-1, 10] as [number, number],
+        content_hash: "sha256:x",
+      }),
+    ).toThrow();
+  });
+
+  test("rejects line_range with floats", () => {
+    expect(() =>
+      SourceRefSchema.parse({
+        file_path: "x.ts",
+        line_range: [1.5, 10] as [number, number],
+        content_hash: "sha256:x",
+      }),
+    ).toThrow();
+  });
+
+  test("rejects line_range with zero (1-indexed lines)", () => {
+    expect(() =>
+      SourceRefSchema.parse({
+        file_path: "x.ts",
+        line_range: [0, 10] as [number, number],
+        content_hash: "sha256:x",
+      }),
+    ).toThrow();
+  });
+
+  test("rejects line_range with start > end (inverted)", () => {
+    expect(() =>
+      SourceRefSchema.parse({
+        file_path: "x.ts",
+        line_range: [50, 10] as [number, number],
+        content_hash: "sha256:x",
+      }),
+    ).toThrow();
+  });
+
+  test("accepts equal start and end (single-line range)", () => {
+    expect(() =>
+      SourceRefSchema.parse({
+        file_path: "x.ts",
+        line_range: [42, 42] as [number, number],
+        content_hash: "sha256:x",
+      }),
+    ).not.toThrow();
+  });
 });
 
 // =============================================================
@@ -131,6 +181,12 @@ describe("NodeSchema", () => {
     expect(() => NodeSchema.parse({ ...baseValid, id: "" })).toThrow();
   });
 
+  test("rejects id containing '|' (reserved as edge-key separator)", () => {
+    expect(() =>
+      NodeSchema.parse({ ...baseValid, id: "auth|middleware" }),
+    ).toThrow();
+  });
+
   test("rejects empty name", () => {
     expect(() => NodeSchema.parse({ ...baseValid, name: "" })).toThrow();
   });
@@ -197,6 +253,36 @@ describe("EdgeSchema", () => {
         from: "a",
         to: "b",
         kind: "uses",
+      }),
+    ).toThrow();
+  });
+
+  test("rejects edge with empty from", () => {
+    expect(() =>
+      EdgeSchema.parse({
+        from: "",
+        to: "b",
+        kind: "depends_on",
+      }),
+    ).toThrow();
+  });
+
+  test("rejects edge with empty to", () => {
+    expect(() =>
+      EdgeSchema.parse({
+        from: "a",
+        to: "",
+        kind: "depends_on",
+      }),
+    ).toThrow();
+  });
+
+  test("rejects edge with from containing '|'", () => {
+    expect(() =>
+      EdgeSchema.parse({
+        from: "a|b",
+        to: "c",
+        kind: "depends_on",
       }),
     ).toThrow();
   });
@@ -292,6 +378,91 @@ describe("GraphFileSchema", () => {
         // missing created_at
         topics: {},
         nodes: {},
+        edges: {},
+      }),
+    ).toThrow();
+  });
+
+  test("rejects edge key with invalid kind in third segment", () => {
+    // Regression for V1_SPEC §9.8: schema check on every load must catch
+    // pre-tightening invented edge kinds (e.g. `uses`) that may be embedded
+    // in stored edge keys, not just in EdgeSchema.kind values.
+    expect(() =>
+      GraphFileSchema.parse({
+        version: 1,
+        created_at: "2026-04-28T00:00:00Z",
+        topics: {},
+        nodes: {},
+        edges: {
+          "auth/a|auth/b|uses": {},
+        },
+      }),
+    ).toThrow();
+  });
+
+  test("rejects edge key with too few segments", () => {
+    expect(() =>
+      GraphFileSchema.parse({
+        version: 1,
+        created_at: "2026-04-28T00:00:00Z",
+        topics: {},
+        nodes: {},
+        edges: {
+          "auth/a|auth/b": {},
+        },
+      }),
+    ).toThrow();
+  });
+
+  test("rejects edge key with empty from", () => {
+    expect(() =>
+      GraphFileSchema.parse({
+        version: 1,
+        created_at: "2026-04-28T00:00:00Z",
+        topics: {},
+        nodes: {},
+        edges: {
+          "|auth/b|depends_on": {},
+        },
+      }),
+    ).toThrow();
+  });
+
+  test("accepts edge key for every valid kind in the enum", () => {
+    for (const kind of EdgeKindSchema.options) {
+      expect(() =>
+        GraphFileSchema.parse({
+          version: 1,
+          created_at: "2026-04-28T00:00:00Z",
+          topics: {},
+          nodes: {},
+          edges: {
+            [`a|b|${kind}`]: {},
+          },
+        }),
+      ).not.toThrow();
+    }
+  });
+
+  test("rejects nodes map key containing '|'", () => {
+    expect(() =>
+      GraphFileSchema.parse({
+        version: 1,
+        created_at: "2026-04-28T00:00:00Z",
+        topics: {},
+        nodes: {
+          "auth|bad": {
+            kind: "invariant",
+            name: "x",
+            summary: "x",
+            sources: [],
+            tags: [],
+            aliases: [],
+            status: "active",
+            confidence: 0.9,
+            last_verified_at: "2026-04-28T00:00:00Z",
+          },
+        },
         edges: {},
       }),
     ).toThrow();
