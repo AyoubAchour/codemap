@@ -1,6 +1,6 @@
 # Task 003: Author M1 spike materials
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 1 — M1 spike
 **Estimate:** 1–2 hours
 **Depends on:** task-002
