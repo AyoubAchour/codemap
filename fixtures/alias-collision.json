@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "created_at": "2026-04-28T00:00:00Z",
+  "topics": {
+    "search": {
+      "created_at": "2026-04-28T00:00:00Z",
+      "auto_created": true
+    }
+  },
+  "nodes": {
+    "search/query-builder": {
+      "kind": "concept",
+      "name": "Search query builder",
+      "summary": "Composes Postgres tsquery from a free-text input.",
+      "sources": [
+        {
+          "file_path": "src/search/query.ts",
+          "line_range": [1, 60],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["search"],
+      "aliases": ["buildQuery", "compose"],
+      "status": "active",
+      "confidence": 0.9,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    },
+    "search/url-composer": {
+      "kind": "concept",
+      "name": "Search URL composer",
+      "summary": "Builds the canonical search-results URL from the active filters.",
+      "sources": [
+        {
+          "file_path": "src/search/url.ts",
+          "line_range": [1, 30],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["search"],
+      "aliases": ["compose"],
+      "status": "active",
+      "confidence": 0.9,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    }
+  },
+  "edges": {}
+}

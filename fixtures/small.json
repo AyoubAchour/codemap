@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "created_at": "2026-04-28T00:00:00Z",
+  "topics": {
+    "auth": {
+      "created_at": "2026-04-28T00:00:00Z",
+      "auto_created": true
+    }
+  },
+  "nodes": {
+    "auth/middleware": {
+      "kind": "invariant",
+      "name": "Auth middleware on every protected route",
+      "summary": "Every route under /api/private goes through this middleware before the handler. Unauthenticated requests return 401.",
+      "sources": [
+        {
+          "file_path": "src/middleware.ts",
+          "line_range": [1, 60],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["auth"],
+      "aliases": [],
+      "status": "active",
+      "confidence": 0.95,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    },
+    "auth/jwt-helper": {
+      "kind": "concept",
+      "name": "JWT verification helper",
+      "summary": "Verifies a JWT signature and returns the decoded claims. Used by the auth middleware.",
+      "sources": [
+        {
+          "file_path": "src/auth/jwt.ts",
+          "line_range": [1, 40],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["auth"],
+      "aliases": [],
+      "status": "active",
+      "confidence": 0.9,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    },
+    "auth/rate-limit": {
+      "kind": "gotcha",
+      "name": "Supabase enforces a 60s email-resend rate limit",
+      "summary": "Calling resetPasswordForEmail more than once per minute returns over_email_send_rate_limit. Mirror it in the UI cooldown.",
+      "sources": [
+        {
+          "file_path": "src/auth/cooldown.ts",
+          "line_range": [10, 30],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["auth"],
+      "aliases": [],
+      "status": "active",
+      "confidence": 0.95,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    }
+  },
+  "edges": {
+    "auth/middleware|auth/jwt-helper|imports": {
+      "note": "validates JWT via the helper"
+    },
+    "auth/middleware|auth/rate-limit|depends_on": {}
+  }
+}

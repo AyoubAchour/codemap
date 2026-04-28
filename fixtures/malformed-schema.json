@@ -1,0 +1,31 @@
+{
+  "version": 99,
+  "created_at": "not-a-real-iso-timestamp",
+  "topics": {
+    "broken": {
+      "created_at": "2026-04-28T00:00:00Z"
+    }
+  },
+  "nodes": {
+    "x|bad-id": {
+      "kind": "not-a-real-kind",
+      "name": "",
+      "summary": "node id contains '|'; kind is invalid; name is empty; missing required fields",
+      "sources": [
+        {
+          "file_path": "x.ts",
+          "line_range": [-5, -1],
+          "content_hash": "missing-sha256-prefix"
+        }
+      ],
+      "tags": ["broken"],
+      "confidence": 1.7,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    }
+  },
+  "edges": {
+    "a|b|uses": {
+      "note": "edge kind 'uses' is not in EdgeKindSchema"
+    }
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "created_at": "2026-04-28T00:00:00Z",
+  "topics": {
+    "knowledge": {
+      "created_at": "2026-04-28T00:00:00Z",
+      "auto_created": true
+    }
+  },
+  "nodes": {
+    "knowledge/auth-choice": {
+      "kind": "decision",
+      "name": "We use Supabase Auth, not Clerk",
+      "summary": "Picked Supabase Auth because the same client also handles RLS-aware DB access. Trade-off: less polish on the social-login UI compared to Clerk.",
+      "sources": [
+        {
+          "file_path": "src/lib/supabase/server.ts",
+          "line_range": [1, 40],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["knowledge"],
+      "aliases": [],
+      "status": "active",
+      "confidence": 0.95,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    },
+    "knowledge/role-not-null": {
+      "kind": "invariant",
+      "name": "user.role is never null after registration",
+      "summary": "Set in the post-signup trigger (handle_new_user). Any code path that creates a user without going through that trigger must set the role explicitly.",
+      "sources": [
+        {
+          "file_path": "supabase/migrations/0001_handle_new_user.sql",
+          "line_range": [1, 30],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["knowledge"],
+      "aliases": [],
+      "status": "active",
+      "confidence": 0.95,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    },
+    "knowledge/stripe-amount-zero": {
+      "kind": "gotcha",
+      "name": "Stripe webhooks fail silently if amount = 0",
+      "summary": "Charge intents with amount = 0 are accepted by Stripe but never produce a charge.succeeded event. Validate amount > 0 before creating the intent.",
+      "sources": [
+        {
+          "file_path": "src/payment/intent.ts",
+          "line_range": [10, 50],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["knowledge"],
+      "aliases": [],
+      "status": "active",
+      "confidence": 0.95,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    },
+    "knowledge/db-client": {
+      "kind": "integration",
+      "name": "Supabase client (server)",
+      "summary": "Server-side Supabase client. Uses cookies() for auth context.",
+      "sources": [
+        {
+          "file_path": "src/lib/supabase/server.ts",
+          "line_range": [1, 40],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["knowledge"],
+      "aliases": [],
+      "status": "active",
+      "confidence": 0.9,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    }
+  },
+  "edges": {
+    "knowledge/auth-choice|knowledge/db-client|depends_on": {
+      "note": "Supabase Auth and the db client share the same SDK"
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "created_at": "2026-04-28T00:00:00Z",
+  "topics": {
+    "payment": {
+      "created_at": "2026-04-28T00:00:00Z",
+      "auto_created": true
+    }
+  },
+  "nodes": {
+    "payment/stripe-webhook": {
+      "kind": "integration",
+      "name": "Stripe webhook handler",
+      "summary": "Receives Stripe events and routes them to internal handlers. Verifies the signature with STRIPE_WEBHOOK_SECRET.",
+      "sources": [
+        {
+          "file_path": "src/api/payment/webhook/route.ts",
+          "line_range": [1, 90],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["payment"],
+      "aliases": ["webhook", "stripe-events", "payment/webhook"],
+      "status": "active",
+      "confidence": 0.95,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    },
+    "payment/charge-flow": {
+      "kind": "flow",
+      "name": "End-to-end charge flow",
+      "summary": "User → checkout intent → Stripe charge → webhook → DB write. Idempotent on stripe_event_id.",
+      "sources": [
+        {
+          "file_path": "src/payment/charge.ts",
+          "line_range": [1, 120],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["payment"],
+      "aliases": ["chargeIntent", "createCharge"],
+      "status": "active",
+      "confidence": 0.9,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    }
+  },
+  "edges": {
+    "payment/charge-flow|payment/stripe-webhook|depends_on": {
+      "note": "charge completion arrives via webhook"
+    }
+  }
+}

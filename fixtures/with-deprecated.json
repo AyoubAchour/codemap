@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "created_at": "2026-04-28T00:00:00Z",
+  "topics": {
+    "billing": {
+      "created_at": "2026-04-28T00:00:00Z",
+      "auto_created": true
+    }
+  },
+  "nodes": {
+    "billing/legacy-invoice": {
+      "kind": "concept",
+      "name": "Legacy invoice generator (v1)",
+      "summary": "Built ad-hoc PDFs from a Mustache template. Replaced by billing/invoice-v2.",
+      "sources": [
+        {
+          "file_path": "src/billing/legacy/invoice.ts",
+          "line_range": [1, 200],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["billing"],
+      "aliases": [],
+      "status": "deprecated",
+      "confidence": 0.9,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    },
+    "billing/invoice-v2": {
+      "kind": "decision",
+      "name": "Invoice v2 uses react-email + Stripe-hosted PDFs",
+      "summary": "Switched to react-email components rendered server-side; Stripe hosts the PDF. Trade-off: less control over layout, but no PDF library churn.",
+      "sources": [
+        {
+          "file_path": "src/billing/invoice.tsx",
+          "line_range": [1, 80],
+          "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "tags": ["billing"],
+      "aliases": [],
+      "status": "active",
+      "confidence": 0.95,
+      "last_verified_at": "2026-04-28T00:00:00Z"
+    }
+  },
+  "edges": {
+    "billing/invoice-v2|billing/legacy-invoice|replaces": {
+      "note": "v2 replaces the legacy generator"
+    }
+  }
+}
