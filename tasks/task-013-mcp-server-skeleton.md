@@ -1,6 +1,6 @@
 # Task 013: MCP server skeleton + simple tools
 
-**Status:** todo
+**Status:** done
 **Phase:** M2 — Sprint 2.2
 **Estimate:** 3–4 hours
 **Depends on:** task-007 (GraphStore), task-008 (validator)
