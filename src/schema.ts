@@ -7,7 +7,11 @@ import { z } from "zod";
 
 export const SourceRefSchema = z.object({
   file_path: z.string(),
-  line_range: z.tuple([z.number(), z.number()]),
+  line_range: z
+    .tuple([z.number().int().min(1), z.number().int().min(1)])
+    .refine(([start, end]) => start <= end, {
+      message: "line_range start must be <= end",
+    }),
   content_hash: z.string().regex(/^sha256:/),
 });
 
@@ -25,8 +29,18 @@ export const NodeKindSchema = z.enum([
 
 export const NodeStatusSchema = z.enum(["active", "deprecated"]);
 
+/**
+ * Node id format: non-empty, no `|` (which is reserved as the edge-key
+ * separator in `GraphFile.edges`). Slugs like `auth/middleware` are the
+ * canonical form per V1_SPEC §6.1.
+ */
+const NodeIdSchema = z
+  .string()
+  .min(1)
+  .regex(/^[^|]+$/, "node id cannot contain '|'");
+
 export const NodeSchema = z.object({
-  id: z.string().min(1),
+  id: NodeIdSchema,
   kind: NodeKindSchema,
   name: z.string().min(1),
   summary: z.string(),
@@ -50,11 +64,44 @@ export const EdgeKindSchema = z.enum([
 ]);
 
 export const EdgeSchema = z.object({
-  from: z.string(),
-  to: z.string(),
+  from: NodeIdSchema,
+  to: NodeIdSchema,
   kind: EdgeKindSchema,
   note: z.string().optional(),
 });
+
+/**
+ * Storage shape for the `nodes` map: a Node with `id` omitted (the id is
+ * the map key in `GraphFile.nodes`). Exported so call sites that read raw
+ * values from a loaded GraphFile can type them precisely.
+ */
+export const StoredNodeSchema = NodeSchema.omit({ id: true });
+
+/**
+ * Validates the structure of an edge key: `<from>|<to>|<kind>` with non-empty
+ * from/to (no `|` per NodeIdSchema) and a `kind` in EdgeKindSchema.
+ */
+const VALID_EDGE_KINDS = new Set<string>(EdgeKindSchema.options);
+
+const EdgeKeySchema = z.string().refine(
+  (key) => {
+    const parts = key.split("|");
+    if (parts.length !== 3) return false;
+    const [from, to, kind] = parts;
+    return (
+      typeof from === "string" &&
+      from.length > 0 &&
+      typeof to === "string" &&
+      to.length > 0 &&
+      typeof kind === "string" &&
+      VALID_EDGE_KINDS.has(kind)
+    );
+  },
+  {
+    message:
+      "edge key must be 'from|to|<kind>' with non-empty from/to and kind in EdgeKindSchema",
+  },
+);
 
 export const TopicSchema = z.object({
   created_at: z.iso.datetime(),
@@ -65,9 +112,9 @@ export const GraphFileSchema = z.object({
   version: z.literal(1),
   created_at: z.iso.datetime(),
   topics: z.record(z.string(), TopicSchema),
-  nodes: z.record(z.string(), NodeSchema.omit({ id: true })),
+  nodes: z.record(NodeIdSchema, StoredNodeSchema),
   edges: z.record(
-    z.string(),
+    EdgeKeySchema,
     z.object({
       note: z.string().optional(),
     }),
