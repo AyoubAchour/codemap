@@ -1,6 +1,6 @@
 # Task 008: Implement validator
 
-**Status:** todo
+**Status:** in-progress
 **Phase:** M2 — Sprint 2.1
 **Estimate:** 2–3 hours
 **Depends on:** task-006, task-007
