@@ -1,6 +1,6 @@
 # Task 006: Implement zod schemas
 
-**Status:** in-progress (PR open)
+**Status:** done
 **Phase:** M2 — Sprint 2.1 (Core data layer)
 **Estimate:** 2–3 hours
 **Depends on:** task-001 (project scaffold), task-005 (M1 GO)

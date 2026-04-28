@@ -85,8 +85,8 @@ Maintained manually. Update status as tasks land.
 | 003 | Author M1 spike materials             | done   | M1              | [task-003-author-m1-spike-materials.md](task-003-author-m1-spike-materials.md)     |
 | 004 | Run M1 spike sessions                 | done   | M1              | [task-004-run-m1-sessions.md](task-004-run-m1-sessions.md)                         |
 | 005 | M1 retrospective + GO/NO-GO           | done   | M1              | [task-005-m1-retrospective.md](task-005-m1-retrospective.md)                       |
-| 006 | Implement zod schemas                 | in-progress | M2 / Sprint 2.1 | [task-006-implement-zod-schemas.md](task-006-implement-zod-schemas.md)         |
-| 007 | Implement GraphStore class            | todo   | M2 / Sprint 2.1 | [task-007-implement-graph-store.md](task-007-implement-graph-store.md)             |
+| 006 | Implement zod schemas                 | done        | M2 / Sprint 2.1 | [task-006-implement-zod-schemas.md](task-006-implement-zod-schemas.md)         |
+| 007 | Implement GraphStore class            | in-progress | M2 / Sprint 2.1 | [task-007-implement-graph-store.md](task-007-implement-graph-store.md)         |
 | 008 | Implement validator                   | todo   | M2 / Sprint 2.1 | [task-008-implement-validator.md](task-008-implement-validator.md)                 |
 | 009 | Build fixture corpus                  | todo   | M2 / Sprint 2.1 | [task-009-build-fixture-corpus.md](task-009-build-fixture-corpus.md)               |
 | 010 | Unit tests for schema/store/validator | todo   | M2 / Sprint 2.1 | [task-010-graph-store-validator-tests.md](task-010-graph-store-validator-tests.md) |

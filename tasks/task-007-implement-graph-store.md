@@ -1,6 +1,6 @@
 # Task 007: Implement GraphStore class
 
-**Status:** todo
+**Status:** in-progress
 **Phase:** M2 — Sprint 2.1
 **Estimate:** 3–4 hours
 **Depends on:** task-006
