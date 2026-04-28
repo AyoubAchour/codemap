@@ -121,6 +121,7 @@ describe("GraphStore.save", () => {
     const a = await GraphStore.load(tmpRoot);
     a.ensureTopic("auth", true);
     a.upsertNode(makeNode({ id: "auth/x" }), { activeTopic: "auth" });
+    a.upsertNode(makeNode({ id: "auth/y" }), { activeTopic: "auth" });
     a.ensureEdge("auth/x", "auth/y", "depends_on", "uses Y");
     await a.save();
 
