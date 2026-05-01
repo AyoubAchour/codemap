@@ -42,6 +42,15 @@ jobs:
     #   - exports / types problems via publint and are-the-types-wrong
     #   - the smoke test verifies the bundled CLI works under plain Node.
     runs-on: ubuntu-latest
+    # `--provenance` (used in the publish --dry-run gate below) requests an
+    # OIDC token from GitHub. npm's current dry-run path elides the actual
+    # token fetch, so this isn't strictly required today — but declaring it
+    # keeps the gate hygienic if npm tightens dry-run validation, and matches
+    # what a real publish-from-CI workflow would need. `contents: read` is the
+    # implicit default that we restore explicitly when we narrow permissions.
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
