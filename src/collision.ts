@@ -75,8 +75,13 @@ function jaccard<T>(a: Set<T>, b: Set<T>): number {
   return union === 0 ? 0 : intersection / union;
 }
 
-function rangesOverlap(a: [number, number], b: [number, number]): boolean {
-  return a[0] <= b[1] && b[0] <= a[1];
+// Accepts `number[]` (length-2 by SourceRefSchema invariant) rather than the
+// strict tuple `[number, number]`. Reason: in v0.1.2 (task-019) the schema
+// switched from z.tuple to z.array(...).length(2) to satisfy OpenAI-class
+// MCP clients; Zod's array+length doesn't narrow the inferred TS type to a
+// tuple, but the runtime values are still exactly two numbers.
+function rangesOverlap(a: number[], b: number[]): boolean {
+  return a[0]! <= b[1]! && b[0]! <= a[1]!;
 }
 
 /**

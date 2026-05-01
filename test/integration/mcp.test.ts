@@ -130,6 +130,37 @@ describe("MCP server — tools/list", () => {
       expect(tool.description!.length).toBeGreaterThan(10);
     }
   });
+
+  // task-019 / v0.1.2: pin emit_node's input schema shape to OpenAI-class
+  // compatibility. If either of these regress, Codex Desktop drops the tool
+  // from the agent's view and the M3a writeback chain breaks again.
+  test("emit_node schema is OpenAI-function-call compatible", async () => {
+    const result = await client.listTools();
+    const emit = result.tools.find((t) => t.name === "emit_node");
+    expect(emit).toBeDefined();
+    const schema = emit!.inputSchema as {
+      properties: Record<
+        string,
+        { pattern?: string; items?: unknown }
+      >;
+    };
+
+    // 1. last_verified_at: no `pattern` regex (Zod's z.iso.datetime() emits
+    //    a ~350-char leap-year regex that OpenAI's function-call subset
+    //    rejects). Plain string + runtime validation in the handler.
+    const ts = schema.properties.last_verified_at;
+    expect(ts).toBeDefined();
+    expect(ts.pattern).toBeUndefined();
+
+    // 2. sources[].line_range: uniform-array `items` (not the older
+    //    tuple-array `items: [...]` syntax that some validators choke on).
+    const sources = schema.properties.sources as {
+      items: { properties: Record<string, { items?: unknown }> };
+    };
+    const lineRangeItems = sources.items.properties.line_range?.items;
+    expect(Array.isArray(lineRangeItems)).toBe(false);
+    expect(lineRangeItems).toBeDefined();
+  });
 });
 
 // =============================================================
@@ -498,6 +529,68 @@ describe("MCP server — emit_node", () => {
       ...overrides,
     };
   }
+
+  // task-019 / v0.1.2 — Greptile P1 (PR #16 review): the original Date.parse-
+  // only guard accepted values that the storage z.iso.datetime() rejects on
+  // load, silently corrupting the graph. The handler now combines an
+  // ISO-8601-UTC regex with Date.parse to match z.iso.datetime() strictness
+  // exactly. These tests pin both Greptile's named cases plus the offset and
+  // calendar-impossible edges.
+  describe("last_verified_at runtime validation", () => {
+    test.each([
+      // [label, value]
+      ["date-only string", "2026-05-01"],
+      ["locale-style string", "May 1 2026 12:00:00 GMT"],
+      ["missing trailing Z", "2026-05-01T12:00:00"],
+      ["numeric offset (z.iso.datetime default rejects)", "2026-05-01T12:00:00+05:00"],
+      ["calendar-impossible date", "2026-13-45T12:00:00Z"],
+      ["empty string", ""],
+      ["garbage", "not a date"],
+    ])("rejects %s with INVALID_TIMESTAMP", async (_label, value) => {
+      await client.callTool({
+        name: "set_active_topic",
+        arguments: { name: "ts-test" },
+      });
+      const r = (await client.callTool({
+        name: "emit_node",
+        arguments: emitArgs({
+          id: "ts/x",
+          name: "ts test",
+          last_verified_at: value,
+        }),
+      })) as {
+        isError?: boolean;
+        structuredContent?: { ok: boolean; error?: { code: string } };
+      };
+      expect(r.isError).toBe(true);
+      expect(r.structuredContent?.ok).toBe(false);
+      expect(r.structuredContent?.error?.code).toBe("INVALID_TIMESTAMP");
+    });
+
+    test.each([
+      ["full second-precision Zulu", "2026-05-01T12:00:00Z"],
+      ["fractional seconds", "2026-05-01T12:00:00.123Z"],
+      ["minute-precision Zulu (no seconds)", "2026-05-01T12:00Z"],
+    ])("accepts %s", async (_label, value) => {
+      await client.callTool({
+        name: "set_active_topic",
+        arguments: { name: "ts-test" },
+      });
+      const r = (await client.callTool({
+        name: "emit_node",
+        arguments: emitArgs({
+          id: `ts/${value.replace(/[^a-z0-9]/gi, "-")}`,
+          name: "ts ok",
+          last_verified_at: value,
+        }),
+      })) as {
+        isError?: boolean;
+        structuredContent?: { ok: boolean };
+      };
+      expect(r.isError).toBeFalsy();
+      expect(r.structuredContent?.ok).toBe(true);
+    });
+  });
 
   test("creates a fresh node and registers the active topic in tags", async () => {
     await client.callTool({

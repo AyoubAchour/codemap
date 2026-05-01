@@ -32,7 +32,7 @@ program
   .description(
     "Manual inspector / corrector for the Codemap knowledge graph (.codemap/graph.json).",
   )
-  .version("0.1.1")
+  .version("0.1.2")
   .option(
     "--repo <path>",
     "Path to the repo root (defaults to the current working directory).",

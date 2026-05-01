@@ -7,9 +7,16 @@ import { z } from "zod";
 
 export const SourceRefSchema = z.object({
   file_path: z.string(),
+  // Uniform array (length 2) instead of z.tuple. Reason: Zod's tuple emits
+  // JSON Schema with `items: [schemaA, schemaB]` (Draft-07 tuple syntax),
+  // which OpenAI's function-call schema subset rejects — `items` must be a
+  // single schema for them. Switched in v0.1.2 (task-019) so emit_node's
+  // input schema is callable from Codex / OpenAI-class clients. Validation
+  // is unchanged: still exactly 2 positive ints with start <= end.
   line_range: z
-    .tuple([z.number().int().min(1), z.number().int().min(1)])
-    .refine(([start, end]) => start <= end, {
+    .array(z.number().int().min(1))
+    .length(2)
+    .refine(([start, end]) => start! <= end!, {
       message: "line_range start must be <= end",
     }),
   content_hash: z.string().regex(/^sha256:/),
