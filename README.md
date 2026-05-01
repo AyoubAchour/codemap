@@ -2,7 +2,7 @@
 
 Persistent knowledge graph of a codebase, built incrementally by AI agents during normal work, exposed via [MCP](https://modelcontextprotocol.io). Stored as a single JSON file in your repo (`.codemap/graph.json`) — diffable, reviewable, no database required.
 
-**Status:** v0.1.0 — M2 milestone (5 MCP tools + CLI + telemetry + npm distribution). M3 trial pending.
+**Status:** v0.1.1 — M2 milestone shipped + first M3a finding patched (server.instructions injects lifecycle policy so agents actually write back, not just read).
 
 See [`V1_SPEC.md`](V1_SPEC.md) for what we're building, [`TECH_SPEC.md`](TECH_SPEC.md) for how, and [`ROADMAP.md`](ROADMAP.md) for when.
 
@@ -66,6 +66,12 @@ codemap --help                        # Full reference
 ```
 
 By default `codemap` operates on the current working directory; pass `--repo <path>` to target a different repo root.
+
+## Agent guidance
+
+The MCP server attaches a short lifecycle policy to the agent's system prompt at `initialize` time (per the MCP `instructions` field). Most MCP-aware agents pick this up automatically — no user-side preamble needed. The policy tells the agent the cross-tool flow: `set_active_topic` at the start, `query_graph` before planning, `emit_node` + `link` after exploring. See [`src/instructions.ts`](src/instructions.ts) for the exact wording.
+
+If your client doesn't surface server instructions to the agent (we'll learn which ones don't as the trial expands), fall back to the long-form preamble at [`m1/instruction-doc.md`](m1/instruction-doc.md) — paste it into your system prompt or persistent project instructions.
 
 ## Telemetry
 

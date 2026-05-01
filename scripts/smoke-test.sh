@@ -87,9 +87,12 @@ echo "==> codemap --help"
 codemap --help | head -5
 
 echo "==> codemap --version"
+# Read expected version from package.json so a `npm version` bump never silently
+# regresses this assertion. node -p keeps the dependency footprint at zero.
+EXPECTED_VERSION=$(node -p "require('./package.json').version")
 VERSION_OUT=$(codemap --version)
-if [ "$VERSION_OUT" != "0.1.0" ]; then
-  echo "smoke-test: expected version 0.1.0, got '$VERSION_OUT'" >&2
+if [ "$VERSION_OUT" != "$EXPECTED_VERSION" ]; then
+  echo "smoke-test: expected version $EXPECTED_VERSION, got '$VERSION_OUT'" >&2
   exit 1
 fi
 echo "    $VERSION_OUT"

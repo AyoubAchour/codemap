@@ -8,6 +8,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import { registerTools } from "../../src/index.js";
+import { SERVER_INSTRUCTIONS } from "../../src/instructions.js";
 import { _resetActiveTopic } from "../../src/tools/_active_topic.js";
 
 // =============================================================
@@ -24,7 +25,13 @@ beforeEach(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codemap-mcp-"));
   _resetActiveTopic();
 
-  server = new McpServer({ name: "codemap-test", version: "0.0.0" });
+  // Mirror the production entry (bin/codemap-mcp.ts) — same options shape.
+  // The instructions string is part of the server contract since v0.1.1
+  // (see task-018) and reaches the client at initialize time.
+  server = new McpServer(
+    { name: "codemap-test", version: "0.0.0" },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
   registerTools(server, { repoRoot: tmpRoot });
 
   client = new Client(
@@ -53,6 +60,50 @@ function parseToolText(result: { content: { type: string; text?: string }[] }) {
   }
   return JSON.parse(first.text);
 }
+
+// =============================================================
+// initialize — server.instructions reaches the client
+// (added v0.1.1 / task-018 — the M3a fix that makes agents
+// actually write back to the graph instead of treating it as
+// a read-only cache).
+// =============================================================
+
+describe("MCP server — initialize / instructions", () => {
+  test("client receives the lifecycle instructions string after handshake", () => {
+    // beforeEach already completed connect() on both sides, so the
+    // initialize handshake has run. getInstructions() returns whatever
+    // the server passed via its second constructor arg.
+    const instructions = client.getInstructions();
+    expect(instructions).toBeDefined();
+    expect(instructions).toBe(SERVER_INSTRUCTIONS);
+  });
+
+  test("instructions name every tool by its lifecycle role", () => {
+    // The wording is the contract for downstream agents — if any of
+    // these names disappears from the instructions, the lifecycle
+    // policy goes ambiguous and we regress the M3a fix.
+    const instructions = client.getInstructions() ?? "";
+    for (const toolName of [
+      "set_active_topic",
+      "query_graph",
+      "get_node",
+      "emit_node",
+      "link",
+    ]) {
+      expect(instructions).toContain(toolName);
+    }
+  });
+
+  test("instructions explicitly forbid the 'cache' interpretation", () => {
+    // The single sentence that addresses what Codex did in M3a prompt 1:
+    // query miss → fall back to direct exploration → don't write back.
+    const instructions = client.getInstructions() ?? "";
+    expect(instructions).toContain("WRITE AFTER");
+    expect(instructions.toLowerCase()).toContain(
+      "leaves something behind",
+    );
+  });
+});
 
 // =============================================================
 // tools/list

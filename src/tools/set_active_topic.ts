@@ -15,7 +15,7 @@ export function registerSetActiveTopic(
     {
       title: "Set active topic",
       description:
-        "Set the active topic for this session. All subsequent emit_node calls auto-tag with this topic. If the topic doesn't exist in topics{} yet, it's added. Per V1_SPEC §7.5, this also resets the per-turn emission cap counter (enforced in task-014's emit_node).",
+        "Mark the start of a new task. Always call this first when you begin understanding or modifying the codebase. The slug ('auth-bugfix', 'payment-refactor') tags every emit_node you make this turn for future search, and resets the per-turn emit cap (5). Without calling this, your emissions are untagged and your per-turn budget is stale.",
       inputSchema: {
         name: z
           .string()
