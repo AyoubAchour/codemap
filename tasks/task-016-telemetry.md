@@ -1,6 +1,6 @@
 # Task 016: Telemetry (`metrics.json`) + `rollup` implementation
 
-**Status:** todo
+**Status:** in-progress (PR open)
 **Phase:** M2 — Sprint 2.3
 **Estimate:** 2–3 hours
 **Depends on:** task-013 (MCP tools), task-014 (emit_node), task-015 (CLI rollup stub)

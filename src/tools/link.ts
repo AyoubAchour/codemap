@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { GraphStore } from "../graph.js";
+import { recordMetric } from "../metrics.js";
 import { EdgeKindSchema } from "../schema.js";
 import type { ToolOptions } from "./query_graph.js";
 
@@ -78,6 +79,7 @@ export function registerLink(server: McpServer, options: ToolOptions): void {
       // flag the edge as dangling on next load.
       store.ensureEdge(fromNode.id, toNode.id, kind, note);
       await store.save();
+      await recordMetric(options.repoRoot, (m) => m.recordLink());
 
       const result = {
         ok: true,

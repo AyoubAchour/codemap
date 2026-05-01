@@ -97,9 +97,10 @@ program
 
 program
   .command("rollup")
-  .description("Compute the metrics weekly rollup (stub in task-015; real in task-016).")
+  .description("Compute the metrics weekly rollup for the current ISO week.")
   .action(async () => {
-    emit(await rollup());
+    const opts = program.opts() as { repo: string };
+    emit(await rollup({ repoRoot: opts.repo }));
   });
 
 await program.parseAsync(process.argv);

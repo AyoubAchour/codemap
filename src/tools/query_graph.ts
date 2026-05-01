@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { GraphStore } from "../graph.js";
+import { recordMetric } from "../metrics.js";
 
 export interface ToolOptions {
   repoRoot: string;
@@ -36,6 +37,9 @@ export function registerQueryGraph(
     async ({ question, limit }) => {
       const store = await GraphStore.load(options.repoRoot);
       const result = store.query(question, limit);
+      await recordMetric(options.repoRoot, (m) =>
+        m.recordQuery(result.nodes.length),
+      );
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
         // SDK requires structuredContent : Record<string, unknown>. Our typed

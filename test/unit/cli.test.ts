@@ -380,14 +380,32 @@ describe("CLI: validate", () => {
 });
 
 // =============================================================
-// rollup (stub)
+// rollup (real implementation lands in task-016 — comprehensive tests
+// for behavior live in test/unit/metrics.test.ts; here we just verify
+// the CLI wiring exits 0 and respects telemetry opt-out).
 // =============================================================
 
 describe("CLI: rollup", () => {
-  test("prints the stub message; exits 0", async () => {
-    const r = await rollup();
+  test("on a fresh / empty graph: exits 0 with a rollup payload", async () => {
+    const r = await rollup({ repoRoot: tmpRoot });
     expect(r.exitCode).toBe(0);
-    expect(r.stdout).toMatch(/task-016/);
+    const out = JSON.parse(r.stdout!);
+    expect(out.ok).toBe(true);
+    expect(out.rollup.week_of).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(out.rollup.total_nodes).toBe(0);
+  });
+
+  test("when telemetry is disabled: exits 0 with a no-op message", async () => {
+    const orig = process.env.CODEMAP_TELEMETRY;
+    process.env.CODEMAP_TELEMETRY = "false";
+    try {
+      const r = await rollup({ repoRoot: tmpRoot });
+      expect(r.exitCode).toBe(0);
+      expect(JSON.parse(r.stdout!).message).toContain("disabled");
+    } finally {
+      if (orig === undefined) delete process.env.CODEMAP_TELEMETRY;
+      else process.env.CODEMAP_TELEMETRY = orig;
+    }
   });
 });
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { GraphStore } from "../graph.js";
+import { recordMetric } from "../metrics.js";
 import { setActiveTopic } from "./_active_topic.js";
 import type { ToolOptions } from "./query_graph.js";
 
@@ -32,6 +33,9 @@ export function registerSetActiveTopic(
         await store.save();
       }
       setActiveTopic(name);
+      // Begin a new turn entry in metrics. set_active_topic is the only tool
+      // that does this; all other tools record into the current entry.
+      await recordMetric(options.repoRoot, (m) => m.startTurn(name));
       const result = { ok: true, autoCreated: wasMissing };
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
