@@ -131,6 +131,30 @@ describe("MCP server — tools/list", () => {
     }
   });
 
+  // task-022 / v0.2.0: emit_node's tags + last_verified_at descriptions are
+  // tightened to address M3a findings F4 (tag inflation: agent uses kind
+  // names as tags) + F5 (agent invented round-number future timestamps).
+  // Pin both descriptions so future edits don't silently regress.
+  test("emit_node descriptions guide agents away from M3a quirks", async () => {
+    const result = await client.listTools();
+    const emit = result.tools.find((t) => t.name === "emit_node");
+    expect(emit).toBeDefined();
+    const props = (emit!.inputSchema as {
+      properties: Record<string, { description?: string }>;
+    }).properties;
+
+    // F4 — tags description must steer away from kind names + meta-categories
+    const tagsDesc = props.tags?.description ?? "";
+    expect(tagsDesc).toContain("Domain slugs");
+    expect(tagsDesc).toContain("NOT kind names");
+    expect(tagsDesc).toContain("NOT meta-categories");
+
+    // F5 — last_verified_at description must steer away from round/future values
+    const tsDesc = props.last_verified_at?.description ?? "";
+    expect(tsDesc).toContain("Current");
+    expect(tsDesc).toContain("not a round-number");
+  });
+
   // task-019 / v0.1.2: pin emit_node's input schema shape to OpenAI-class
   // compatibility. If either of these regress, Codex Desktop drops the tool
   // from the agent's view and the M3a writeback chain breaks again.

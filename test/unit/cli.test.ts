@@ -6,9 +6,11 @@ import * as path from "node:path";
 import { GraphStore } from "../../src/graph.js";
 import { correct } from "../../src/cli/correct.js";
 import { deprecate } from "../../src/cli/deprecate.js";
+import { init } from "../../src/cli/init.js";
 import { rollup } from "../../src/cli/rollup.js";
 import { show } from "../../src/cli/show.js";
 import { validate } from "../../src/cli/validate.js";
+import { SERVER_INSTRUCTIONS } from "../../src/instructions.js";
 import type { Node } from "../../src/types.js";
 
 let tmpRoot: string;
@@ -435,5 +437,118 @@ describe("GraphStore.overrideNode", () => {
   test("returns false for missing id", async () => {
     const store = await GraphStore.load(tmpRoot);
     expect(store.overrideNode("nope", { summary: "x" })).toBe(false);
+  });
+});
+
+// =============================================================
+// CLI: init  (task-021 / v0.2.0)
+// Generates AGENTS.md (and optionally CLAUDE.md) from the same
+// SERVER_INSTRUCTIONS the MCP server attaches via `instructions`.
+// =============================================================
+
+describe("CLI: init", () => {
+  test("writes AGENTS.md by default and exits 0", async () => {
+    const r = await init({}, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("wrote AGENTS.md");
+
+    const written = await fs.readFile(
+      path.join(tmpRoot, "AGENTS.md"),
+      "utf8",
+    );
+    // Body must contain the protocol-level lifecycle string verbatim
+    // (single-source-of-truth contract — if this regresses, the in-protocol
+    // and in-file copies have drifted, which defeats the whole point of
+    // agentsMdContent reusing SERVER_INSTRUCTIONS).
+    expect(written).toContain(SERVER_INSTRUCTIONS);
+    expect(written).toContain("agent guidance (codemap)");
+    expect(written).toContain("Why this file exists");
+    expect(written).toContain("codemap init --force");
+  });
+
+  test("uses repo basename in heading", async () => {
+    const projDir = path.join(tmpRoot, "voice2work-fixture");
+    await fs.mkdir(projDir);
+    const r = await init({}, { repoRoot: projDir });
+    expect(r.exitCode).toBe(0);
+    const written = await fs.readFile(
+      path.join(projDir, "AGENTS.md"),
+      "utf8",
+    );
+    expect(written).toContain("# voice2work-fixture — agent guidance");
+  });
+
+  test("skips with warning + exit 1 when AGENTS.md already exists", async () => {
+    await fs.writeFile(
+      path.join(tmpRoot, "AGENTS.md"),
+      "previous content",
+      "utf8",
+    );
+    const r = await init({}, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("skipped AGENTS.md");
+    expect(r.stderr).toContain("--force");
+    // Original content preserved
+    const after = await fs.readFile(
+      path.join(tmpRoot, "AGENTS.md"),
+      "utf8",
+    );
+    expect(after).toBe("previous content");
+  });
+
+  test("--force overwrites an existing AGENTS.md and exits 0", async () => {
+    await fs.writeFile(
+      path.join(tmpRoot, "AGENTS.md"),
+      "previous content",
+      "utf8",
+    );
+    const r = await init({ force: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("wrote AGENTS.md");
+    const after = await fs.readFile(
+      path.join(tmpRoot, "AGENTS.md"),
+      "utf8",
+    );
+    expect(after).toContain(SERVER_INSTRUCTIONS);
+  });
+
+  test("--claude writes both AGENTS.md and CLAUDE.md", async () => {
+    const r = await init({ claude: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("wrote AGENTS.md");
+    expect(r.stdout).toContain("wrote CLAUDE.md");
+    const agents = await fs.readFile(
+      path.join(tmpRoot, "AGENTS.md"),
+      "utf8",
+    );
+    const claude = await fs.readFile(
+      path.join(tmpRoot, "CLAUDE.md"),
+      "utf8",
+    );
+    expect(agents).toContain(SERVER_INSTRUCTIONS);
+    expect(claude).toContain(SERVER_INSTRUCTIONS);
+    // Bodies should be identical when project basename is the same
+    expect(agents).toBe(claude);
+  });
+
+  test("--all writes every known preamble file", async () => {
+    const r = await init({ all: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("wrote AGENTS.md");
+    expect(r.stdout).toContain("wrote CLAUDE.md");
+  });
+
+  test("partial-skip path: AGENTS.md exists + --claude → exit 0 (CLAUDE.md still written)", async () => {
+    // Validates the exit-code contract: skip alone → 1, but if at least
+    // one file was written, we exit 0 (the operation made progress).
+    await fs.writeFile(
+      path.join(tmpRoot, "AGENTS.md"),
+      "preexisting",
+      "utf8",
+    );
+    const r = await init({ claude: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).toContain("skipped AGENTS.md");
+    expect(r.stdout).toContain("wrote CLAUDE.md");
   });
 });
