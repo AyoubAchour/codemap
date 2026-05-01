@@ -59,7 +59,20 @@ export function registerEmitNode(
           .describe(
             "0.9+ directly inspected; 0.5-0.8 inferred; <0.5 do not emit.",
           ),
-        last_verified_at: z.iso.datetime(),
+        // Plain string at the schema level (no `format: "date-time"`, no
+        // pattern). Reason: Zod's z.iso.datetime() emits a ~350-char
+        // leap-year regex pattern that OpenAI's function-call schema subset
+        // rejects, dropping the whole emit_node tool from the agent's view.
+        // Switched in v0.1.2 (task-019). Validation moved into the handler
+        // below — INVALID_TIMESTAMP error if Date.parse can't read it.
+        // Storage NodeSchema (src/schema.ts) stays z.iso.datetime() so the
+        // graph file remains strictly validated at load time.
+        last_verified_at: z
+          .string()
+          .min(1)
+          .describe(
+            "ISO 8601 datetime, e.g. 2026-05-01T12:00:00Z. Validated at runtime.",
+          ),
         merge_with: z
           .string()
           .optional()
@@ -98,6 +111,28 @@ export function registerEmitNode(
             code: "INVALID_FLAGS",
             message:
               "merge_with and force_new are mutually exclusive — pass only one.",
+          },
+        };
+        return {
+          isError: true,
+          content: [{ type: "text", text: JSON.stringify(result) }],
+          structuredContent: record(result),
+        };
+      }
+
+      // ---------- 2b. Runtime timestamp validation ----------
+      // The schema accepts any string (see comment on last_verified_at above —
+      // a strict z.iso.datetime() emits a regex pattern that OpenAI-class
+      // clients reject, dropping the whole tool). We re-impose the strict
+      // check here so storage NodeSchema's z.iso.datetime() never fails at
+      // load time on a value we accepted at write time.
+      const ts = Date.parse(args.last_verified_at);
+      if (Number.isNaN(ts)) {
+        const result = {
+          ok: false,
+          error: {
+            code: "INVALID_TIMESTAMP",
+            message: `last_verified_at is not a parseable ISO 8601 datetime: ${args.last_verified_at}`,
           },
         };
         return {

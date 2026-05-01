@@ -130,6 +130,37 @@ describe("MCP server — tools/list", () => {
       expect(tool.description!.length).toBeGreaterThan(10);
     }
   });
+
+  // task-019 / v0.1.2: pin emit_node's input schema shape to OpenAI-class
+  // compatibility. If either of these regress, Codex Desktop drops the tool
+  // from the agent's view and the M3a writeback chain breaks again.
+  test("emit_node schema is OpenAI-function-call compatible", async () => {
+    const result = await client.listTools();
+    const emit = result.tools.find((t) => t.name === "emit_node");
+    expect(emit).toBeDefined();
+    const schema = emit!.inputSchema as {
+      properties: Record<
+        string,
+        { pattern?: string; items?: unknown }
+      >;
+    };
+
+    // 1. last_verified_at: no `pattern` regex (Zod's z.iso.datetime() emits
+    //    a ~350-char leap-year regex that OpenAI's function-call subset
+    //    rejects). Plain string + runtime validation in the handler.
+    const ts = schema.properties.last_verified_at;
+    expect(ts).toBeDefined();
+    expect(ts.pattern).toBeUndefined();
+
+    // 2. sources[].line_range: uniform-array `items` (not the older
+    //    tuple-array `items: [...]` syntax that some validators choke on).
+    const sources = schema.properties.sources as {
+      items: { properties: Record<string, { items?: unknown }> };
+    };
+    const lineRangeItems = sources.items.properties.line_range?.items;
+    expect(Array.isArray(lineRangeItems)).toBe(false);
+    expect(lineRangeItems).toBeDefined();
+  });
 });
 
 // =============================================================

@@ -2,7 +2,7 @@
 
 Persistent knowledge graph of a codebase, built incrementally by AI agents during normal work, exposed via [MCP](https://modelcontextprotocol.io). Stored as a single JSON file in your repo (`.codemap/graph.json`) — diffable, reviewable, no database required.
 
-**Status:** v0.1.1 — M2 milestone shipped + first M3a finding patched (server.instructions injects lifecycle policy so agents actually write back, not just read).
+**Status:** v0.1.2 — M2 milestone shipped, M3a in flight. v0.1.1 added MCP `server.instructions` for lifecycle policy; v0.1.2 shrank `emit_node`'s input schema so OpenAI-class clients (Codex, etc.) actually surface the tool to the agent.
 
 See [`V1_SPEC.md`](V1_SPEC.md) for what we're building, [`TECH_SPEC.md`](TECH_SPEC.md) for how, and [`ROADMAP.md`](ROADMAP.md) for when.
 

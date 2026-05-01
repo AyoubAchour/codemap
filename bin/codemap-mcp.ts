@@ -27,7 +27,7 @@ import { SERVER_INSTRUCTIONS } from "../src/instructions.js";
 const server = new McpServer(
   {
     name: "codemap",
-    version: "0.1.1",
+    version: "0.1.2",
   },
   {
     instructions: SERVER_INSTRUCTIONS,
