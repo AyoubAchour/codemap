@@ -105,6 +105,12 @@ Maintained manually. Update status as tasks land.
 | 023 | M3b prompt set + trial v5 isolation (M3b-1/2/3 done; M3b-4 deferred per user judgment) | done (partial) | M3 / Sprint 3b | [task-023-m3b-prompt-set.md](task-023-m3b-prompt-set.md) |
 | 024 | M3b retrospective (3 prompts on voice2work; M3 substantively done; drives v0.3) | done | M3 / Sprint 3b | [task-024-m3b-retrospective.md](task-024-m3b-retrospective.md) |
 
+---
+
+## M3 closed — Phase 4 begins
+
+**Read [`../HANDOFF-CODEX.md`](../HANDOFF-CODEX.md) for the full handoff.** Phase 4 picks ONE v2 candidate from [ROADMAP §Phase 4](../ROADMAP.md). Default recommendation (per M3 pain signals): **VS Code panel** (visible graph for humans). Awaiting user pick before drafting `task-025`.
+
 
 ## Conventions
 
