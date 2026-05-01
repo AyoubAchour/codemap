@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `codemap` CLI entry. Subcommands: show, correct, deprecate, validate, rollup.
+ * `codemap` CLI entry. Subcommands: init, show, correct, deprecate, validate, rollup.
  *
  * Each subcommand's logic lives in src/cli/<name>.ts as a pure function
  * returning { exitCode, stdout?, stderr? }; this entry file is the thin
@@ -10,6 +10,7 @@ import { Command } from "commander";
 
 import { correct, type CorrectFlags } from "../src/cli/correct.js";
 import { deprecate, type DeprecateFlags } from "../src/cli/deprecate.js";
+import { init, type InitFlags } from "../src/cli/init.js";
 import { rollup } from "../src/cli/rollup.js";
 import { show } from "../src/cli/show.js";
 import { validate } from "../src/cli/validate.js";
@@ -32,12 +33,30 @@ program
   .description(
     "Manual inspector / corrector for the Codemap knowledge graph (.codemap/graph.json).",
   )
-  .version("0.1.2")
+  .version("0.2.0")
   .option(
     "--repo <path>",
     "Path to the repo root (defaults to the current working directory).",
     process.cwd(),
   );
+
+program
+  .command("init")
+  .description(
+    "Generate AGENTS.md (and optionally CLAUDE.md) with the codemap lifecycle policy. Run once per project.",
+  )
+  .option("-f, --force", "Overwrite existing files.")
+  .option("--claude", "Also write CLAUDE.md.")
+  .option("--all", "Write all known agent-preamble files (AGENTS.md + CLAUDE.md).")
+  .action(async (cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: InitFlags = {
+      force: cmdOpts.force as boolean | undefined,
+      claude: cmdOpts.claude as boolean | undefined,
+      all: cmdOpts.all as boolean | undefined,
+    };
+    emit(await init(flags, { repoRoot: opts.repo }));
+  });
 
 program
   .command("show <id>")

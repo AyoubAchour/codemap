@@ -98,7 +98,11 @@ Maintained manually. Update status as tasks land.
 | 016 | Telemetry (metrics.json) + rollup     | todo (3 decisions required) | M2 / Sprint 2.3 | [task-016-telemetry.md](task-016-telemetry.md)                              |
 | 017 | Distribution (README + npm publish + smoke test) | done | M2 / Sprint 2.3 | [task-017-distribution.md](task-017-distribution.md)                                       |
 | 018 | MCP server.instructions + tool-description hardening (v0.1.1) | done | M3 / Sprint 3a | [task-018-server-instructions.md](task-018-server-instructions.md)                         |
-| 019 | Schema-shrink hotfix — emit_node visibility in OpenAI-class clients (v0.1.2) | in-progress | M3 / Sprint 3a | [task-019-schema-shrink.md](task-019-schema-shrink.md)              |
+| 019 | Schema-shrink hotfix — emit_node visibility in OpenAI-class clients (v0.1.2) | done | M3 / Sprint 3a | [task-019-schema-shrink.md](task-019-schema-shrink.md)                     |
+| 020 | M3a retrospective (6 prompts run on voice2work) | done | M3 / Sprint 3a | [task-020-m3a-retrospective.md](task-020-m3a-retrospective.md) |
+| 021 | `codemap init` CLI command (v0.2.0) | in-progress | M3 / Sprint 3b → v0.2.0 | [task-021-codemap-init.md](task-021-codemap-init.md) |
+| 022 | emit_node tag-hygiene + timestamp-guidance (v0.2.0, bundled with task-021) | in-progress | M3 / Sprint 3b → v0.2.0 | [task-022-tag-timestamp-hygiene.md](task-022-tag-timestamp-hygiene.md) |
+| 023 | M3b prompt set + trial v5 isolation (post-v0.2.0 publish) | todo | M3 / Sprint 3b | [task-023-m3b-prompt-set.md](task-023-m3b-prompt-set.md) |
 
 
 ## Conventions

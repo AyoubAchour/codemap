@@ -49,7 +49,12 @@ export function registerEmitNode(
         sources: z.array(SourceRefSchema).describe(
           "Files (with line ranges) where this node is anchored in the codebase.",
         ),
-        tags: z.array(z.string()).optional(),
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Domain slugs (e.g. 'auth', 'payments', 'mobile'), 1-5 per node. NOT kind names — kind is a separate field. NOT meta-categories like 'gotcha' or 'todo'. Tags become topics for cross-cutting search; reuse existing topic slugs whenever possible to keep the topic map tight.",
+          ),
         aliases: z.array(z.string()).optional(),
         status: NodeStatusSchema.optional(),
         confidence: z
@@ -74,7 +79,7 @@ export function registerEmitNode(
         last_verified_at: z
           .string()
           .describe(
-            "ISO 8601 datetime, e.g. 2026-05-01T12:00:00Z. Validated at runtime.",
+            "Current ISO 8601 UTC timestamp at the moment of emission (e.g. 2026-05-01T12:00:00Z). Use the actual current moment, not a round-number or future value. Validated at runtime.",
           ),
         merge_with: z
           .string()
