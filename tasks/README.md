@@ -97,6 +97,7 @@ Maintained manually. Update status as tasks land.
 | 015 | CLI commands (show/correct/deprecate/validate/rollup) | todo (decision required) | M2 / Sprint 2.3 | [task-015-cli.md](task-015-cli.md) |
 | 016 | Telemetry (metrics.json) + rollup     | todo (3 decisions required) | M2 / Sprint 2.3 | [task-016-telemetry.md](task-016-telemetry.md)                              |
 | 017 | Distribution (README + npm publish + smoke test) | done | M2 / Sprint 2.3 | [task-017-distribution.md](task-017-distribution.md)                                       |
+| 018 | MCP server.instructions + tool-description hardening (v0.1.1) | in-progress | M3 / Sprint 3a | [task-018-server-instructions.md](task-018-server-instructions.md)                  |
 
 
 ## Conventions

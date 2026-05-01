@@ -19,7 +19,7 @@ export function registerLink(server: McpServer, options: ToolOptions): void {
     {
       title: "Link two nodes",
       description:
-        "Create or update an edge between two existing nodes. Idempotent: same (from, to, kind) updates the note rather than creating a duplicate. Use the existing edge-kind enum (imports, calls, depends_on, implements, replaces, contradicts, derived_from, mirrors) — invented kinds are rejected. Both endpoints must already exist in the graph; pass an alias and it will resolve to the canonical id.",
+        "Record a relationship between two nodes you've emitted. Call this after emit_node when you've identified that A imports/calls/depends_on/implements/replaces/contradicts/derived_from/mirrors B. Idempotent on (from, to, kind). Both endpoints must exist; aliases resolve to canonical ids. Use depends_on as the catch-all when no other kind fits — invented kinds are rejected.",
       inputSchema: {
         from: NodeIdInput.describe(
           "Source node id (or any alias on it). Must already exist.",

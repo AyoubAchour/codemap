@@ -18,11 +18,21 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { registerTools } from "../src/index.js";
+import { SERVER_INSTRUCTIONS } from "../src/instructions.js";
 
-const server = new McpServer({
-  name: "codemap",
-  version: "0.1.0",
-});
+// `instructions` reaches the agent at `initialize` time and is the standard
+// place to put cross-tool lifecycle policy that individual tool descriptions
+// can't carry. See src/instructions.ts for the wording + the M3a finding
+// that motivated adding it in v0.1.1.
+const server = new McpServer(
+  {
+    name: "codemap",
+    version: "0.1.1",
+  },
+  {
+    instructions: SERVER_INSTRUCTIONS,
+  },
+);
 
 registerTools(server, { repoRoot: process.cwd() });
 

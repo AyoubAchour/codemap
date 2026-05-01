@@ -36,7 +36,7 @@ export function registerEmitNode(
     {
       title: "Emit node",
       description:
-        "Add or merge a node into the graph. Server-side collision detection: if the incoming node looks similar to an existing one, returns a collision response with candidates instead of writing — re-call with `merge_with: <id>` (merge into that existing node) or `force_new: { reason: '<short>' }` (create anyway). Per-turn cap of 5 successful emissions; reset by calling set_active_topic. Auto-tags with the active topic if set.",
+        "Capture a finding from your exploration as a node in the graph. **Call this after answering any question that required reading code** — capture 1-5 high-value findings (prioritize decision/invariant/gotcha). Server-side collision detection: similar existing nodes return as candidates instead of writing — re-call with merge_with: <id> (same concept) or force_new: { reason: '<short>' } (genuinely different). Per-turn cap of 5; reset by calling set_active_topic. Auto-tags with the active topic. Skipping this is the #1 way the graph stays empty.",
       inputSchema: {
         id: NodeIdInput.describe(
           "Stable slug, e.g. 'auth/middleware'. Must not contain '|'.",
