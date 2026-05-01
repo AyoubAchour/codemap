@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { findCollisions } from "../collision.js";
 import { GraphStore } from "../graph.js";
+import { recordMetric } from "../metrics.js";
 import {
   NodeKindSchema,
   NodeStatusSchema,
@@ -76,6 +77,7 @@ export function registerEmitNode(
     async (args) => {
       // ---------- 1. Per-turn cap ----------
       if (getEmissionsThisTurn() >= PER_TURN_CAP) {
+        await recordMetric(options.repoRoot, (m) => m.recordCap());
         const result = {
           ok: false,
           capped: true,
@@ -145,6 +147,7 @@ export function registerEmitNode(
         });
         await store.save();
         incrementEmissionsThisTurn();
+        await recordMetric(options.repoRoot, (m) => m.recordEmit());
         const result = {
           ok: true,
           merged: upsertResult.merged,
@@ -160,6 +163,7 @@ export function registerEmitNode(
       const candidates = findCollisions(incoming, store._data().nodes);
 
       if (candidates.length > 0 && args.force_new === undefined) {
+        await recordMetric(options.repoRoot, (m) => m.recordCollision());
         // Plain success-with-flag (D1) — NOT isError. The agent must re-call
         // with merge_with or force_new to proceed.
         const result = {
@@ -191,6 +195,7 @@ export function registerEmitNode(
       const upsertResult = store.upsertNode(incoming, { activeTopic });
       await store.save();
       incrementEmissionsThisTurn();
+      await recordMetric(options.repoRoot, (m) => m.recordEmit());
       const result = {
         ok: true,
         merged: upsertResult.merged,

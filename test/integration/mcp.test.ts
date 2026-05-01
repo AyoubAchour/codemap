@@ -833,3 +833,102 @@ describe("MCP server — per-turn emission cap", () => {
     expect(r.structuredContent?.ok).toBe(true);
   });
 });
+
+// =============================================================
+// Telemetry wiring (task-016) — end-to-end
+// =============================================================
+
+describe("MCP server — metrics wiring", () => {
+  test("set_active_topic + query + emit + link → metrics.json reflects all", async () => {
+    delete process.env.CODEMAP_TELEMETRY;
+    delete process.env.DO_NOT_TRACK;
+
+    await client.callTool({
+      name: "set_active_topic",
+      arguments: { name: "telemetry-test" },
+    });
+    await client.callTool({
+      name: "query_graph",
+      arguments: { question: "anything" },
+    });
+    await client.callTool({
+      name: "emit_node",
+      arguments: {
+        id: "tele/x",
+        kind: "invariant",
+        name: "Distinct telemetry node",
+        summary: "x",
+        sources: [
+          {
+            file_path: "src/x.ts",
+            line_range: [1, 10],
+            content_hash: "sha256:placeholder",
+          },
+        ],
+        tags: [],
+        aliases: [],
+        confidence: 0.9,
+        last_verified_at: "2026-04-28T00:00:00Z",
+      },
+    });
+    await client.callTool({
+      name: "emit_node",
+      arguments: {
+        id: "tele/y",
+        kind: "invariant",
+        name: "Another telemetry node",
+        summary: "y",
+        sources: [
+          {
+            file_path: "src/y.ts",
+            line_range: [1, 10],
+            content_hash: "sha256:placeholder",
+          },
+        ],
+        tags: [],
+        aliases: [],
+        confidence: 0.9,
+        last_verified_at: "2026-04-28T00:00:00Z",
+      },
+    });
+    await client.callTool({
+      name: "link",
+      arguments: {
+        from: "tele/x",
+        to: "tele/y",
+        kind: "depends_on",
+      },
+    });
+
+    const { MetricsStore } = await import("../../src/metrics.js");
+    const m = (await MetricsStore.load(tmpRoot))!;
+    expect(m).not.toBeNull();
+    const head = m._data().per_turn[0]!;
+    expect(head.topic).toBe("telemetry-test");
+    expect(head.queries).toBe(1);
+    expect(head.nodes_emitted).toBe(2);
+    expect(head.links_made).toBe(1);
+    expect(head.cap_hit).toBe(false);
+  });
+
+  test("CODEMAP_TELEMETRY=false: tools succeed but no metrics.json written", async () => {
+    process.env.CODEMAP_TELEMETRY = "false";
+    try {
+      await client.callTool({
+        name: "set_active_topic",
+        arguments: { name: "no-telemetry" },
+      });
+      await client.callTool({
+        name: "query_graph",
+        arguments: { question: "x" },
+      });
+      const { promises: _fs } = await import("node:fs");
+      const { join: _join } = await import("node:path");
+      await expect(
+        _fs.stat(_join(tmpRoot, ".codemap", "metrics.json")),
+      ).rejects.toThrow();
+    } finally {
+      delete process.env.CODEMAP_TELEMETRY;
+    }
+  });
+});
