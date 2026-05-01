@@ -2,7 +2,7 @@
 
 Persistent knowledge graph of a codebase, built incrementally by AI agents during normal work, exposed via [MCP](https://modelcontextprotocol.io). Stored as a single JSON file in your repo (`.codemap/graph.json`) — diffable, reviewable, no database required.
 
-**Status:** v0.2.0 — M3a trial complete (see [task-020](tasks/task-020-m3a-retrospective.md)). New: `codemap init` to seed AGENTS.md from the lifecycle policy (works around MCP clients that drop `server.instructions`). v0.1.1 added MCP `server.instructions`; v0.1.2 shrank `emit_node`'s input schema so OpenAI-class clients (Codex, etc.) actually surface the tool.
+**Status:** v0.2.0 — **M3 substantively done** ([M3a retro](tasks/task-020-m3a-retrospective.md), [M3b retro](tasks/task-024-m3b-retrospective.md)): 9 turns × Codex Desktop × voice2work produced 27 nodes / 29 edges across 6 problem domains; 5 of 8 edge kinds + 4 of 9 node kinds exercised; 0 collisions. Codemap thesis validated. Next milestone: M3c (cross-codebase generalization, [task-011](tasks/task-011-pick-m3-3c-target.md)).
 
 See [`V1_SPEC.md`](V1_SPEC.md) for what we're building, [`TECH_SPEC.md`](TECH_SPEC.md) for how, and [`ROADMAP.md`](ROADMAP.md) for when.
 
