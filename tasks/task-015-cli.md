@@ -1,6 +1,6 @@
 # Task 015: CLI commands (`codemap show / correct / deprecate / validate / rollup`)
 
-**Status:** todo
+**Status:** in-progress (PR open)
 **Phase:** M2 — Sprint 2.3 (CLI + polish)
 **Estimate:** 3–4 hours
 **Depends on:** task-007 (GraphStore), task-008 (validator)

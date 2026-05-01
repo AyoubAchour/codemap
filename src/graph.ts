@@ -300,6 +300,28 @@ export class GraphStore {
     };
   }
 
+  /**
+   * Manual override of node fields. Bypasses the upsertNode merge logic
+   * (which gates `summary` replacement on `confidence ≥ existing`) — for
+   * CLI corrections per task-015, where the user has explicitly stated
+   * "set this field to this value." Returns false if no node has this id.
+   *
+   * `last_verified_at` defaults to now (the manual edit IS verification).
+   */
+  overrideNode(
+    id: string,
+    patch: Partial<StoredNode>,
+  ): boolean {
+    const existing = this.data.nodes[id];
+    if (!existing) return false;
+    this.data.nodes[id] = {
+      ...existing,
+      ...patch,
+      last_verified_at: patch.last_verified_at ?? new Date().toISOString(),
+    };
+    return true;
+  }
+
   // ===========================================================
   // Persistence — atomic + lock-protected (TECH_SPEC §3.4)
   // ===========================================================
