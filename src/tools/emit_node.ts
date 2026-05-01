@@ -67,9 +67,12 @@ export function registerEmitNode(
         // below — INVALID_TIMESTAMP error if Date.parse can't read it.
         // Storage NodeSchema (src/schema.ts) stays z.iso.datetime() so the
         // graph file remains strictly validated at load time.
+        // No .min() / no schema-level format — all validation lives in the
+        // handler's ISO_8601_UTC regex check below. Mixing schema-level and
+        // handler-level checks splits the rejection paths (Zod error vs
+        // INVALID_TIMESTAMP) and complicates downstream handling.
         last_verified_at: z
           .string()
-          .min(1)
           .describe(
             "ISO 8601 datetime, e.g. 2026-05-01T12:00:00Z. Validated at runtime.",
           ),
@@ -126,13 +129,28 @@ export function registerEmitNode(
       // clients reject, dropping the whole tool). We re-impose the strict
       // check here so storage NodeSchema's z.iso.datetime() never fails at
       // load time on a value we accepted at write time.
-      const ts = Date.parse(args.last_verified_at);
-      if (Number.isNaN(ts)) {
+      //
+      // Two-layer check, equivalent to z.iso.datetime() (Zulu-only, default):
+      //   1. ISO_8601_UTC regex pins the SHAPE — rejects date-only
+      //      ("2026-05-01"), locale-style ("May 1 2026 12:00:00 GMT"),
+      //      and offset-suffixed ("+05:00") strings that Date.parse alone
+      //      would have accepted, then failed on next GraphStore.load.
+      //      Greptile P1 / PR #16 review caught the original Date.parse-only
+      //      version as a graph-corruption gap.
+      //   2. Number.isNaN(Date.parse(...)) catches calendar-impossible
+      //      dates that pass the regex's loose \d{2} ranges (e.g.
+      //      "2026-13-45T12:00:00Z").
+      const ISO_8601_UTC =
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$/;
+      if (
+        !ISO_8601_UTC.test(args.last_verified_at) ||
+        Number.isNaN(Date.parse(args.last_verified_at))
+      ) {
         const result = {
           ok: false,
           error: {
             code: "INVALID_TIMESTAMP",
-            message: `last_verified_at is not a parseable ISO 8601 datetime: ${args.last_verified_at}`,
+            message: `last_verified_at must be ISO 8601 UTC (e.g. 2026-05-01T12:00:00Z), got: ${args.last_verified_at}`,
           },
         };
         return {

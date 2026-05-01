@@ -530,6 +530,68 @@ describe("MCP server — emit_node", () => {
     };
   }
 
+  // task-019 / v0.1.2 — Greptile P1 (PR #16 review): the original Date.parse-
+  // only guard accepted values that the storage z.iso.datetime() rejects on
+  // load, silently corrupting the graph. The handler now combines an
+  // ISO-8601-UTC regex with Date.parse to match z.iso.datetime() strictness
+  // exactly. These tests pin both Greptile's named cases plus the offset and
+  // calendar-impossible edges.
+  describe("last_verified_at runtime validation", () => {
+    test.each([
+      // [label, value]
+      ["date-only string", "2026-05-01"],
+      ["locale-style string", "May 1 2026 12:00:00 GMT"],
+      ["missing trailing Z", "2026-05-01T12:00:00"],
+      ["numeric offset (z.iso.datetime default rejects)", "2026-05-01T12:00:00+05:00"],
+      ["calendar-impossible date", "2026-13-45T12:00:00Z"],
+      ["empty string", ""],
+      ["garbage", "not a date"],
+    ])("rejects %s with INVALID_TIMESTAMP", async (_label, value) => {
+      await client.callTool({
+        name: "set_active_topic",
+        arguments: { name: "ts-test" },
+      });
+      const r = (await client.callTool({
+        name: "emit_node",
+        arguments: emitArgs({
+          id: "ts/x",
+          name: "ts test",
+          last_verified_at: value,
+        }),
+      })) as {
+        isError?: boolean;
+        structuredContent?: { ok: boolean; error?: { code: string } };
+      };
+      expect(r.isError).toBe(true);
+      expect(r.structuredContent?.ok).toBe(false);
+      expect(r.structuredContent?.error?.code).toBe("INVALID_TIMESTAMP");
+    });
+
+    test.each([
+      ["full second-precision Zulu", "2026-05-01T12:00:00Z"],
+      ["fractional seconds", "2026-05-01T12:00:00.123Z"],
+      ["minute-precision Zulu (no seconds)", "2026-05-01T12:00Z"],
+    ])("accepts %s", async (_label, value) => {
+      await client.callTool({
+        name: "set_active_topic",
+        arguments: { name: "ts-test" },
+      });
+      const r = (await client.callTool({
+        name: "emit_node",
+        arguments: emitArgs({
+          id: `ts/${value.replace(/[^a-z0-9]/gi, "-")}`,
+          name: "ts ok",
+          last_verified_at: value,
+        }),
+      })) as {
+        isError?: boolean;
+        structuredContent?: { ok: boolean };
+      };
+      expect(r.isError).toBeFalsy();
+      expect(r.structuredContent?.ok).toBe(true);
+    });
+  });
+
   test("creates a fresh node and registers the active topic in tags", async () => {
     await client.callTool({
       name: "set_active_topic",
