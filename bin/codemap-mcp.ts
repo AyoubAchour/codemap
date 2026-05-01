@@ -2,18 +2,17 @@
 /**
  * Stdio entry for the Codemap MCP server.
  *
- * Configure in your MCP client (e.g. Claude Code's mcp.json):
+ * After `npm install -g codemap-mcp` (or via `npx -y codemap-mcp`), configure
+ * your MCP client. For Claude Code's mcp.json:
  * {
  *   "mcpServers": {
- *     "codemap": {
- *       "command": "bun",
- *       "args": ["run", "/abs/path/to/codemap/bin/codemap-mcp.ts"]
- *     }
+ *     "codemap": { "command": "codemap-mcp" }
  *   }
  * }
  *
- * Or after `bun build --compile bin/codemap-mcp.ts --outfile dist/codemap-mcp`,
- * point `command` directly at the produced binary.
+ * For local development against this repo, point at the bundled JS:
+ *   bun run build
+ *   "command": "node", "args": ["/abs/path/to/codemap/dist/cli/codemap-mcp.js"]
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
