@@ -1,0 +1,421 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { promises as fs } from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+import { GraphStore } from "../../src/graph.js";
+import { correct } from "../../src/cli/correct.js";
+import { deprecate } from "../../src/cli/deprecate.js";
+import { rollup } from "../../src/cli/rollup.js";
+import { show } from "../../src/cli/show.js";
+import { validate } from "../../src/cli/validate.js";
+import type { Node } from "../../src/types.js";
+
+let tmpRoot: string;
+
+beforeEach(async () => {
+  tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codemap-cli-"));
+});
+
+afterEach(async () => {
+  await fs.rm(tmpRoot, { recursive: true, force: true });
+});
+
+function makeNode(overrides: Partial<Node> & { id: string }): Node {
+  return {
+    kind: "invariant",
+    name: overrides.id,
+    summary: "test summary",
+    sources: [
+      {
+        file_path: "src/x.ts",
+        line_range: [1, 10],
+        content_hash: "sha256:placeholder",
+      },
+    ],
+    tags: [],
+    aliases: [],
+    status: "active",
+    confidence: 0.9,
+    last_verified_at: "2026-04-28T00:00:00Z",
+    ...overrides,
+  };
+}
+
+async function seed(nodes: Node[], edges: Array<[string, string, string, string?]> = []): Promise<void> {
+  const store = await GraphStore.load(tmpRoot);
+  for (const node of nodes) {
+    store.upsertNode(node);
+  }
+  for (const [from, to, kind, note] of edges) {
+    store.ensureEdge(from, to, kind as never, note);
+  }
+  await store.save();
+}
+
+// =============================================================
+// show
+// =============================================================
+
+describe("CLI: show", () => {
+  test("happy path: returns node + incident edges", async () => {
+    await seed(
+      [
+        makeNode({ id: "a/x", tags: ["a"] }),
+        makeNode({ id: "a/y", tags: ["a"] }),
+      ],
+      [["a/x", "a/y", "depends_on", "uses y"]],
+    );
+    const r = await show("a/x", { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).toBeUndefined();
+    const out = JSON.parse(r.stdout!);
+    expect(out.ok).toBe(true);
+    expect(out.node.id).toBe("a/x");
+    expect(out.edges).toEqual([
+      { from: "a/x", to: "a/y", kind: "depends_on", note: "uses y" },
+    ]);
+  });
+
+  test("alias resolution: passing an alias returns the canonical node", async () => {
+    await seed([
+      makeNode({ id: "a/canonical", aliases: ["the-alias"] }),
+    ]);
+    const r = await show("the-alias", { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(0);
+    const out = JSON.parse(r.stdout!);
+    expect(out.node.id).toBe("a/canonical");
+  });
+
+  test("not found: exits 1 with stderr error", async () => {
+    await seed([]);
+    const r = await show("nope", { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toBeUndefined();
+    const err = JSON.parse(r.stderr!);
+    expect(err.error.code).toBe("NODE_NOT_FOUND");
+  });
+
+  test("schema-invalid graph: exits 2 with SCHEMA_INVALID", async () => {
+    await fs.mkdir(path.join(tmpRoot, ".codemap"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, ".codemap", "graph.json"),
+      JSON.stringify({ version: 99 }),
+    );
+    const r = await show("anything", { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(2);
+    expect(JSON.parse(r.stderr!).error.code).toBe("SCHEMA_INVALID");
+  });
+});
+
+// =============================================================
+// correct
+// =============================================================
+
+describe("CLI: correct", () => {
+  test("scalar: --summary replaces summary regardless of confidence (overrideNode bypass)", async () => {
+    // Seed a high-confidence node — upsertNode would refuse a summary
+    // change with lower confidence, but the CLI explicitly overrides.
+    await seed([
+      makeNode({ id: "a/x", summary: "original", confidence: 0.95 }),
+    ]);
+    const r = await correct(
+      "a/x",
+      { summary: "rewritten by the user" },
+      { repoRoot: tmpRoot },
+    );
+    expect(r.exitCode).toBe(0);
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("a/x")?.summary).toBe("rewritten by the user");
+  });
+
+  test("scalar: --confidence rejects out-of-range value (1)", async () => {
+    await seed([makeNode({ id: "a/x" })]);
+    const r = await correct(
+      "a/x",
+      { confidence: 1.5 },
+      { repoRoot: tmpRoot },
+    );
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stderr!).error.code).toBe("INVALID_FLAG");
+  });
+
+  test("scalar: --confidence rejects out-of-range value (-)", async () => {
+    await seed([makeNode({ id: "a/x" })]);
+    const r = await correct(
+      "a/x",
+      { confidence: -0.1 },
+      { repoRoot: tmpRoot },
+    );
+    expect(r.exitCode).toBe(1);
+  });
+
+  test("scalar: --status rejects an unknown value", async () => {
+    await seed([makeNode({ id: "a/x" })]);
+    const r = await correct(
+      "a/x",
+      { status: "removed" },
+      { repoRoot: tmpRoot },
+    );
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stderr!).error.code).toBe("INVALID_FLAG");
+  });
+
+  test("lists: --add-tag and --remove-tag merge correctly", async () => {
+    await seed([makeNode({ id: "a/x", tags: ["one", "two"] })]);
+    const r = await correct(
+      "a/x",
+      { addTag: ["three"], removeTag: ["one"] },
+      { repoRoot: tmpRoot },
+    );
+    expect(r.exitCode).toBe(0);
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("a/x")?.tags.sort()).toEqual(["three", "two"]);
+  });
+
+  test("lists: --add-tag dedupes", async () => {
+    await seed([makeNode({ id: "a/x", tags: ["one"] })]);
+    const r = await correct(
+      "a/x",
+      { addTag: ["one", "two"] },
+      { repoRoot: tmpRoot },
+    );
+    expect(r.exitCode).toBe(0);
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("a/x")?.tags.sort()).toEqual(["one", "two"]);
+  });
+
+  test("lists: --add-alias / --remove-alias work the same way", async () => {
+    await seed([makeNode({ id: "a/x", aliases: ["ax"] })]);
+    const r = await correct(
+      "a/x",
+      { addAlias: ["a-x", "x"], removeAlias: ["ax"] },
+      { repoRoot: tmpRoot },
+    );
+    expect(r.exitCode).toBe(0);
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("a/x")?.aliases.sort()).toEqual(["a-x", "x"]);
+  });
+
+  test("no flags supplied: no-op, exits 0 with informative stdout", async () => {
+    await seed([makeNode({ id: "a/x", summary: "untouched" })]);
+    const r = await correct("a/x", {}, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout!).message).toContain("nothing changed");
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("a/x")?.summary).toBe("untouched");
+  });
+
+  test("not found: exits 1", async () => {
+    await seed([]);
+    const r = await correct(
+      "missing",
+      { summary: "x" },
+      { repoRoot: tmpRoot },
+    );
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stderr!).error.code).toBe("NODE_NOT_FOUND");
+  });
+
+  test("alias resolution: correct via alias mutates the canonical node", async () => {
+    await seed([
+      makeNode({
+        id: "a/canonical",
+        aliases: ["alias-1"],
+        summary: "old",
+      }),
+    ]);
+    const r = await correct(
+      "alias-1",
+      { summary: "new" },
+      { repoRoot: tmpRoot },
+    );
+    expect(r.exitCode).toBe(0);
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("a/canonical")?.summary).toBe("new");
+  });
+
+  test("schema-invalid graph: exits 2 with SCHEMA_INVALID", async () => {
+    await fs.mkdir(path.join(tmpRoot, ".codemap"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, ".codemap", "graph.json"),
+      JSON.stringify({ version: 99 }),
+    );
+    const r = await correct(
+      "any",
+      { summary: "x" },
+      { repoRoot: tmpRoot },
+    );
+    expect(r.exitCode).toBe(2);
+    expect(JSON.parse(r.stderr!).error.code).toBe("SCHEMA_INVALID");
+  });
+
+  test("last_verified_at gets bumped on any successful change", async () => {
+    await seed([
+      makeNode({
+        id: "a/x",
+        last_verified_at: "2020-01-01T00:00:00Z",
+      }),
+    ]);
+    const before = Date.now();
+    await correct("a/x", { name: "renamed" }, { repoRoot: tmpRoot });
+    const verify = await GraphStore.load(tmpRoot);
+    const after = new Date(
+      verify.getNode("a/x")!.last_verified_at,
+    ).getTime();
+    expect(after).toBeGreaterThanOrEqual(before);
+  });
+});
+
+// =============================================================
+// deprecate
+// =============================================================
+
+describe("CLI: deprecate", () => {
+  test("sets status to deprecated", async () => {
+    await seed([makeNode({ id: "a/x", status: "active" })]);
+    const r = await deprecate("a/x", {}, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(0);
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("a/x")?.status).toBe("deprecated");
+  });
+
+  test("--reason prepends '[deprecated: <r>] ' to summary", async () => {
+    await seed([
+      makeNode({ id: "a/x", summary: "Original behavior." }),
+    ]);
+    const r = await deprecate(
+      "a/x",
+      { reason: "replaced by a/y" },
+      { repoRoot: tmpRoot },
+    );
+    expect(r.exitCode).toBe(0);
+    const verify = await GraphStore.load(tmpRoot);
+    expect(verify.getNode("a/x")?.summary).toBe(
+      "[deprecated: replaced by a/y] Original behavior.",
+    );
+  });
+
+  test("not found: exits 1", async () => {
+    await seed([]);
+    const r = await deprecate("nope", {}, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stderr!).error.code).toBe("NODE_NOT_FOUND");
+  });
+
+  test("schema-invalid graph: exits 2 with SCHEMA_INVALID", async () => {
+    await fs.mkdir(path.join(tmpRoot, ".codemap"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, ".codemap", "graph.json"),
+      JSON.stringify({ version: 99 }),
+    );
+    const r = await deprecate("any", {}, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(2);
+    expect(JSON.parse(r.stderr!).error.code).toBe("SCHEMA_INVALID");
+  });
+});
+
+// =============================================================
+// validate
+// =============================================================
+
+describe("CLI: validate", () => {
+  test("clean graph → exits 0", async () => {
+    await seed([makeNode({ id: "a/x", tags: [] })]);
+    const r = await validate({ repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout!).ok).toBe(true);
+  });
+
+  test("dirty graph (auto-repaired missing topic) → exits 1 with structured report", async () => {
+    // Write a graph file directly with a tag whose topic is missing —
+    // GraphStore.load() applies the missing-topic repair in-memory; CLI
+    // validate reports it.
+    await fs.mkdir(path.join(tmpRoot, ".codemap"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, ".codemap", "graph.json"),
+      JSON.stringify({
+        version: 1,
+        created_at: "2026-04-28T00:00:00Z",
+        topics: {},
+        nodes: {
+          "a/x": {
+            kind: "invariant",
+            name: "x",
+            summary: "x",
+            sources: [
+              {
+                file_path: "x.ts",
+                line_range: [1, 10],
+                content_hash: "sha256:placeholder",
+              },
+            ],
+            tags: ["needs-this-topic"],
+            aliases: [],
+            status: "active",
+            confidence: 0.9,
+            last_verified_at: "2026-04-28T00:00:00Z",
+          },
+        },
+        edges: {},
+      }),
+    );
+    const r = await validate({ repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(1);
+    const out = JSON.parse(r.stdout!);
+    expect(out.ok).toBe(false);
+    expect(out.repairs.length).toBeGreaterThan(0);
+  });
+
+  test("schema-invalid graph → exits 2", async () => {
+    await fs.mkdir(path.join(tmpRoot, ".codemap"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, ".codemap", "graph.json"),
+      JSON.stringify({ version: 99 }), // missing required top-level fields
+    );
+    const r = await validate({ repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(2);
+    expect(JSON.parse(r.stderr!).error.code).toBe("SCHEMA_INVALID");
+  });
+});
+
+// =============================================================
+// rollup (stub)
+// =============================================================
+
+describe("CLI: rollup", () => {
+  test("prints the stub message; exits 0", async () => {
+    const r = await rollup();
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toMatch(/task-016/);
+  });
+});
+
+// =============================================================
+// GraphStore.overrideNode (the new public method)
+// =============================================================
+
+describe("GraphStore.overrideNode", () => {
+  test("replaces fields and bumps last_verified_at to now", async () => {
+    await seed([
+      makeNode({
+        id: "a/x",
+        summary: "old",
+        confidence: 0.9,
+        last_verified_at: "2020-01-01T00:00:00Z",
+      }),
+    ]);
+    const store = await GraphStore.load(tmpRoot);
+    const ok = store.overrideNode("a/x", { summary: "new" });
+    expect(ok).toBe(true);
+    expect(store.getNode("a/x")?.summary).toBe("new");
+    expect(
+      new Date(store.getNode("a/x")!.last_verified_at).getTime(),
+    ).toBeGreaterThan(new Date("2020-01-01T00:00:00Z").getTime());
+  });
+
+  test("returns false for missing id", async () => {
+    const store = await GraphStore.load(tmpRoot);
+    expect(store.overrideNode("nope", { summary: "x" })).toBe(false);
+  });
+});
