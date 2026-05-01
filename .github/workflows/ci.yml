@@ -53,6 +53,18 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: sudo apt-get update && sudo apt-get install -y jq
       - run: bun run build
+      # `npm publish --dry-run` runs the same normalize-package-data pass as a
+      # real publish (npm pack does NOT). Pipe to a grep that fails the job if
+      # any "warn publish" line slips through — that's how the bin[./...] issue
+      # would have been caught before the user hit it on a live publish.
+      - name: npm publish --dry-run (warn publish == failure)
+        run: |
+          set -o pipefail
+          npm publish --dry-run --provenance --access public 2>&1 | tee /tmp/publish.log
+          if grep -E '^npm warn publish' /tmp/publish.log; then
+            echo "::error::npm publish emitted warn lines — fix package.json before shipping."
+            exit 1
+          fi
       - run: npm pack --dry-run
       - run: npx --yes publint
       - run: npx --yes @arethetypeswrong/cli --pack --ignore-rules cjs-resolves-to-esm

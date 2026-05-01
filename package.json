@@ -22,8 +22,8 @@
   },
   "author": "Ayoub Achour",
   "bin": {
-    "codemap": "./dist/cli/codemap.js",
-    "codemap-mcp": "./dist/cli/codemap-mcp.js"
+    "codemap": "dist/cli/codemap.js",
+    "codemap-mcp": "dist/cli/codemap-mcp.js"
   },
   "exports": {
     "./package.json": "./package.json"
