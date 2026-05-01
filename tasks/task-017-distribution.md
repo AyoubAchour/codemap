@@ -1,6 +1,6 @@
 # Task 017: Distribution — README + npm publish + smoke test
 
-**Status:** todo
+**Status:** in-progress
 **Phase:** M2 — Sprint 2.3 (closes Sprint 2.3 and the M2 milestone)
 **Estimate:** 2–3 hours
 **Depends on:** task-014 (5 tools done), task-015 (CLI), task-016 (telemetry)

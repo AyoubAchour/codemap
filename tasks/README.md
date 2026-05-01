@@ -96,7 +96,7 @@ Maintained manually. Update status as tasks land.
 | 014 | emit_node tool + per-turn cap         | done        | M2 / Sprint 2.2 | [task-014-emit-node.md](task-014-emit-node.md)                                       |
 | 015 | CLI commands (show/correct/deprecate/validate/rollup) | todo (decision required) | M2 / Sprint 2.3 | [task-015-cli.md](task-015-cli.md) |
 | 016 | Telemetry (metrics.json) + rollup     | todo (3 decisions required) | M2 / Sprint 2.3 | [task-016-telemetry.md](task-016-telemetry.md)                              |
-| 017 | Distribution (README + npm publish + smoke test) | todo (3 decisions required) | M2 / Sprint 2.3 | [task-017-distribution.md](task-017-distribution.md)                  |
+| 017 | Distribution (README + npm publish + smoke test) | in-progress | M2 / Sprint 2.3 | [task-017-distribution.md](task-017-distribution.md)                                 |
 
 
 ## Conventions

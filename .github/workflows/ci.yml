@@ -34,3 +34,26 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun test
+
+  publish-dryrun:
+    # Validates the package as it would be published to npm. Catches:
+    #   - bin paths pointing at non-existent files
+    #   - tarball accidentally including test/, fixtures/, specs, etc.
+    #   - exports / types problems via publint and are-the-types-wrong
+    #   - the smoke test verifies the bundled CLI works under plain Node.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y jq
+      - run: bun run build
+      - run: npm pack --dry-run
+      - run: npx --yes publint
+      - run: npx --yes @arethetypeswrong/cli --pack --ignore-rules cjs-resolves-to-esm
+      - run: ./scripts/smoke-test.sh

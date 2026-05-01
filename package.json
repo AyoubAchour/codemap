@@ -1,21 +1,48 @@
 {
   "name": "codemap-mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "license": "MIT",
-  "description": "Persistent knowledge graph of a codebase, exposed via MCP.",
-  "bin": {
-    "codemap": "./bin/codemap.ts",
-    "codemap-mcp": "./bin/codemap-mcp.ts"
+  "description": "Persistent knowledge graph of a codebase, built incrementally by AI agents during normal work, exposed via MCP.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "knowledge-graph",
+    "codebase",
+    "agent"
+  ],
+  "homepage": "https://github.com/AyoubAchour/codemap",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AyoubAchour/codemap.git"
   },
+  "bugs": {
+    "url": "https://github.com/AyoubAchour/codemap/issues"
+  },
+  "author": "Ayoub Achour",
+  "bin": {
+    "codemap": "./dist/cli/codemap.js",
+    "codemap-mcp": "./dist/cli/codemap-mcp.js"
+  },
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/cli/codemap.js",
+    "dist/cli/codemap-mcp.js",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "build": "bun build --compile bin/codemap-mcp.ts --outfile dist/codemap-mcp",
-    "lint": "biome check src test"
+    "build": "bun build --target=node bin/codemap-mcp.ts --outfile dist/cli/codemap-mcp.js && bun build --target=node bin/codemap.ts --outfile dist/cli/codemap.js",
+    "build:binary": "bun build --compile bin/codemap-mcp.ts --outfile dist/codemap-mcp",
+    "lint": "biome check src test",
+    "prepublishOnly": "bun run build"
   },
   "engines": {
-    "bun": ">=1.1.0",
     "node": ">=22"
   },
   "dependencies": {
