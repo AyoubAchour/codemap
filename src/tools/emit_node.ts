@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -28,6 +29,10 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 type SourceValidationResult = { ok: true } | { ok: false; message: string };
+
+function hashBuffer(value: Buffer): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
 
 async function validateRepoSources(
   repoRoot: string,
@@ -80,6 +85,15 @@ async function validateRepoSources(
       return {
         ok: false,
         message: `source.file_path must reference a file, got: ${filePath}`,
+      };
+    }
+
+    const content = await fs.readFile(absolutePath);
+    const currentHash = hashBuffer(content);
+    if (source.content_hash !== currentHash) {
+      return {
+        ok: false,
+        message: `source.content_hash must match current file content for ${filePath}; expected ${currentHash}, got ${source.content_hash}`,
       };
     }
   }

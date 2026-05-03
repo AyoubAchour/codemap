@@ -78,6 +78,7 @@ export interface IndexedSourceFile {
   file_path: string;
   language: string;
   size_bytes: number;
+  mtime_ms?: number;
   line_count: number;
   content_hash: string;
   indexed_at: string;
@@ -150,6 +151,12 @@ interface CandidateFile {
   absolute_path: string;
   language: string;
   size_bytes: number;
+  mtime_ms: number;
+}
+
+interface CandidateFileSearchResult {
+  candidates: CandidateFile[];
+  skippedCount: number;
 }
 
 interface RankedChunk {
@@ -189,7 +196,10 @@ export async function scanSourceIndex(
   options: ScanSourceIndexOptions = {},
 ): Promise<SourceIndex> {
   const now = new Date().toISOString();
-  const candidates = await findCandidateFiles(repoRoot, options);
+  const { candidates, skippedCount } = await findCandidateFiles(
+    repoRoot,
+    options,
+  );
   const files: Record<string, IndexedSourceFile> = {};
   let chunksIndexed = 0;
   let symbolsIndexed = 0;
@@ -210,7 +220,7 @@ export async function scanSourceIndex(
     updated_at: now,
     stats: {
       files_indexed: Object.keys(files).length,
-      files_skipped: 0,
+      files_skipped: skippedCount,
       chunks_indexed: chunksIndexed,
       symbols_indexed: symbolsIndexed,
       bytes_indexed: bytesIndexed,
@@ -268,7 +278,7 @@ export async function getSourceIndexStatus(
     };
   }
 
-  const currentFiles = await findCandidateFiles(repoRoot);
+  const { candidates: currentFiles } = await findCandidateFiles(repoRoot);
   const currentByPath = new Map(
     currentFiles.map((file) => [file.file_path, file] as const),
   );
@@ -280,6 +290,16 @@ export async function getSourceIndexStatus(
     const current = currentByPath.get(filePath);
     if (!current) {
       missingFiles += 1;
+      continue;
+    }
+    if (indexedFile.size_bytes !== current.size_bytes) {
+      staleFiles += 1;
+      continue;
+    }
+    if (
+      typeof indexedFile.mtime_ms === "number" &&
+      indexedFile.mtime_ms === current.mtime_ms
+    ) {
       continue;
     }
     const content = await fs.readFile(current.absolute_path);
@@ -424,9 +444,10 @@ async function saveSourceIndex(
 async function findCandidateFiles(
   repoRoot: string,
   options: ScanSourceIndexOptions = {},
-): Promise<CandidateFile[]> {
+): Promise<CandidateFileSearchResult> {
   const maxFileBytes = options.maxFileBytes ?? 256 * 1024;
-  const result: CandidateFile[] = [];
+  const candidates: CandidateFile[] = [];
+  let skippedCount = 0;
 
   async function visit(relativeDir: string): Promise<void> {
     const absoluteDir = path.join(repoRoot, relativeDir);
@@ -438,31 +459,44 @@ async function findCandidateFiles(
         : entry.name;
 
       if (entry.isDirectory()) {
-        if (SKIP_DIRS.has(entry.name)) continue;
+        if (SKIP_DIRS.has(entry.name)) {
+          skippedCount += 1;
+          continue;
+        }
         await visit(relativePath);
         continue;
       }
 
       if (!entry.isFile()) continue;
-      if (isGeneratedPath(relativePath)) continue;
+      if (isGeneratedPath(relativePath)) {
+        skippedCount += 1;
+        continue;
+      }
       const extension = path.extname(entry.name);
       const language = SUPPORTED_EXTENSIONS.get(extension);
-      if (!language) continue;
+      if (!language) {
+        skippedCount += 1;
+        continue;
+      }
 
       const absolutePath = path.join(repoRoot, relativePath);
       const stat = await fs.stat(absolutePath);
-      if (stat.size > maxFileBytes) continue;
-      result.push({
+      if (stat.size > maxFileBytes) {
+        skippedCount += 1;
+        continue;
+      }
+      candidates.push({
         file_path: normalizePath(relativePath),
         absolute_path: absolutePath,
         language,
         size_bytes: stat.size,
+        mtime_ms: Math.round(stat.mtimeMs),
       });
     }
   }
 
   await visit("");
-  return result;
+  return { candidates, skippedCount };
 }
 
 function indexFile(
@@ -481,6 +515,7 @@ function indexFile(
     file_path: candidate.file_path,
     language: candidate.language,
     size_bytes: candidate.size_bytes,
+    mtime_ms: candidate.mtime_ms,
     line_count: lines.length,
     content_hash: contentHash,
     indexed_at: indexedAt,
@@ -612,22 +647,48 @@ function createChunks(
     ];
   }
 
-  return symbols.map((symbol, index) => {
+  const chunks: SourceChunk[] = [];
+  const firstSymbol = symbols[0];
+  if (firstSymbol && firstSymbol.line > 1) {
+    const preambleEndLine = firstSymbol.line - 1;
+    const preamble = lines.slice(0, preambleEndLine).join("\n");
+    if (preamble.trim().length > 0) {
+      chunks.push(
+        buildChunk(
+          candidate,
+          lines,
+          1,
+          preambleEndLine,
+          "mixed",
+          [],
+          imports,
+          exports,
+          contentHash,
+        ),
+      );
+    }
+  }
+
+  for (const [index, symbol] of symbols.entries()) {
     const next = symbols[index + 1];
     const startLine = symbol.line;
     const endLine = next ? Math.max(symbol.line, next.line - 1) : lines.length;
-    return buildChunk(
-      candidate,
-      lines,
-      startLine,
-      endLine,
-      symbol.kind,
-      [symbol],
-      imports,
-      exports,
-      contentHash,
+    chunks.push(
+      buildChunk(
+        candidate,
+        lines,
+        startLine,
+        endLine,
+        symbol.kind,
+        [symbol],
+        imports,
+        exports,
+        contentHash,
+      ),
     );
-  });
+  }
+
+  return chunks;
 }
 
 function buildChunk(

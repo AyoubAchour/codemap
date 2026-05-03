@@ -60,6 +60,7 @@ describe("source index", () => {
     const index = await scanSourceIndex(tmpRoot);
 
     expect(index.stats.files_indexed).toBe(2);
+    expect(index.stats.files_skipped).toBeGreaterThan(0);
     expect(index.files["src/auth.ts"]?.symbols.map((s) => s.name)).toEqual([
       "SessionUser",
       "requireActiveUser",
@@ -71,7 +72,7 @@ describe("source index", () => {
     expect(index.files["dist/generated.js"]).toBeUndefined();
 
     const reloaded = await loadSourceIndex(tmpRoot);
-    expect(reloaded?.stats.chunks_indexed).toBe(3);
+    expect(reloaded?.stats.chunks_indexed).toBe(4);
   });
 
   test("search ranks symbol and path matches above unrelated chunks", async () => {
@@ -86,6 +87,19 @@ describe("source index", () => {
     expect(response.results[0]?.symbols.map((s) => s.name)).toContain(
       "requireActiveUser",
     );
+  });
+
+  test("scan reports files skipped by source-index filters", async () => {
+    await write("src/readme.md", "not a supported source extension");
+    await write("src/client.generated.ts", "export function generated() {}");
+    await write("src/huge.ts", "x".repeat(257 * 1024));
+
+    const index = await scanSourceIndex(tmpRoot);
+
+    expect(index.files["src/readme.md"]).toBeUndefined();
+    expect(index.files["src/client.generated.ts"]).toBeUndefined();
+    expect(index.files["src/huge.ts"]).toBeUndefined();
+    expect(index.stats.files_skipped).toBeGreaterThanOrEqual(3);
   });
 
   test("search returns related graph nodes for matching source files", async () => {
@@ -116,6 +130,31 @@ describe("source index", () => {
     });
 
     expect(response.results[0]?.related_nodes[0]?.id).toBe("auth/session-user");
+  });
+
+  test("scan keeps preamble content before the first detected symbol searchable", async () => {
+    await write(
+      "src/preamble.ts",
+      [
+        "/**",
+        " * Handshake sentinel lives before the first exported function.",
+        " */",
+        "const SCHEMA_VERSION = 1;",
+        "",
+        "export function afterPreamble() {",
+        "  return SCHEMA_VERSION;",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(tmpRoot, "handshake sentinel", {
+      limit: 1,
+    });
+
+    expect(response.results[0]?.file_path).toBe("src/preamble.ts");
+    expect(response.results[0]?.chunk_type).toBe("mixed");
+    expect(response.results[0]?.content).toContain("SCHEMA_VERSION");
   });
 
   test("status reports fresh, stale, missing, and new files", async () => {

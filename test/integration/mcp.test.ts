@@ -87,6 +87,12 @@ async function repoFileHash(filePath: string): Promise<string> {
   return `sha256:${createHash("sha256").update(content).digest("hex")}`;
 }
 
+function seededFileHash(filePath: string): string {
+  return `sha256:${createHash("sha256")
+    .update(`// test source: ${filePath}\n`)
+    .digest("hex")}`;
+}
+
 // =============================================================
 // initialize — server.instructions reaches the client
 // (added v0.1.1 / task-018 — the M3a fix that makes agents
@@ -773,8 +779,7 @@ describe("MCP server — emit_node", () => {
         {
           file_path: "src/x.ts",
           line_range: [1, 10] as [number, number],
-          content_hash:
-            "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          content_hash: seededFileHash("src/x.ts"),
         },
       ],
       tags: [],
@@ -945,6 +950,43 @@ describe("MCP server — emit_node", () => {
       const verify = await GraphStore.load(tmpRoot);
       expect(verify.getNode("source/bad")).toBeNull();
     });
+
+    test("rejects source hashes that do not match current file content", async () => {
+      await client.callTool({
+        name: "set_active_topic",
+        arguments: { name: "source-test" },
+      });
+      const r = (await client.callTool({
+        name: "emit_node",
+        arguments: emitArgs({
+          id: "source/hash-mismatch",
+          name: "Hash mismatch",
+          sources: [
+            {
+              file_path: "src/x.ts",
+              line_range: [1, 1],
+              content_hash:
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            },
+          ],
+        }),
+      })) as {
+        isError?: boolean;
+        structuredContent?: {
+          ok: boolean;
+          error?: { code: string; message: string };
+        };
+      };
+
+      expect(r.isError).toBe(true);
+      expect(r.structuredContent?.ok).toBe(false);
+      expect(r.structuredContent?.error?.code).toBe("INVALID_SOURCE");
+      expect(r.structuredContent?.error?.message).toContain("content_hash");
+
+      const { GraphStore } = await import("../../src/graph.js");
+      const verify = await GraphStore.load(tmpRoot);
+      expect(verify.getNode("source/hash-mismatch")).toBeNull();
+    });
   });
 
   test("creates a fresh node and registers the active topic in tags", async () => {
@@ -1007,7 +1049,7 @@ describe("MCP server — emit_node", () => {
           {
             file_path: "src/messaging/twilio.ts",
             line_range: [42, 80],
-            content_hash: "sha256:placeholder",
+            content_hash: seededFileHash("src/messaging/twilio.ts"),
           },
         ],
         tags: ["messaging"],
@@ -1148,7 +1190,7 @@ describe("MCP server — emit_node", () => {
           {
             file_path: "src/messaging/twilio.ts",
             line_range: [42, 80],
-            content_hash: "sha256:placeholder",
+            content_hash: seededFileHash("src/messaging/twilio.ts"),
           },
         ],
         tags: ["messaging"],
@@ -1209,7 +1251,7 @@ describe("MCP server — per-turn emission cap", () => {
         {
           file_path: `src/cap-${i}.ts`,
           line_range: [1, 10] as [number, number],
-          content_hash: "sha256:placeholder",
+          content_hash: seededFileHash(`src/cap-${i}.ts`),
         },
       ],
       tags: [`cap-${i}`],
@@ -1315,7 +1357,7 @@ describe("MCP server — per-turn emission cap", () => {
             {
               file_path: "src/messaging/twilio.ts",
               line_range: [42, 80],
-              content_hash: "sha256:placeholder",
+              content_hash: seededFileHash("src/messaging/twilio.ts"),
             },
           ],
           tags: ["messaging"],
@@ -1338,7 +1380,7 @@ describe("MCP server — per-turn emission cap", () => {
           {
             file_path: "src/auth/distinct.ts",
             line_range: [1, 10],
-            content_hash: "sha256:placeholder",
+            content_hash: seededFileHash("src/auth/distinct.ts"),
           },
         ],
         tags: ["auth"],
@@ -1379,7 +1421,7 @@ describe("MCP server — metrics wiring", () => {
           {
             file_path: "src/x.ts",
             line_range: [1, 10],
-            content_hash: "sha256:placeholder",
+            content_hash: seededFileHash("src/x.ts"),
           },
         ],
         tags: [],
@@ -1399,7 +1441,7 @@ describe("MCP server — metrics wiring", () => {
           {
             file_path: "src/y.ts",
             line_range: [1, 10],
-            content_hash: "sha256:placeholder",
+            content_hash: seededFileHash("src/y.ts"),
           },
         ],
         tags: [],
