@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * `codemap` CLI entry. Subcommands: init, show, correct, deprecate, validate, rollup.
+ * `codemap` CLI entry. Subcommands: init, show, correct, deprecate,
+ * validate, rollup, scan, search-source, index-status, clear-index.
  *
  * Each subcommand's logic lives in src/cli/<name>.ts as a pure function
  * returning { exitCode, stdout?, stderr? }; this entry file is the thin
@@ -8,10 +9,18 @@
  */
 import { Command } from "commander";
 
+import packageJson from "../package.json" with { type: "json" };
+import { clearIndex } from "../src/cli/clear_index.js";
 import { correct, type CorrectFlags } from "../src/cli/correct.js";
 import { deprecate, type DeprecateFlags } from "../src/cli/deprecate.js";
+import { indexStatus } from "../src/cli/index_status.js";
 import { init, type InitFlags } from "../src/cli/init.js";
 import { rollup } from "../src/cli/rollup.js";
+import { scan, type ScanFlags } from "../src/cli/scan.js";
+import {
+  searchSource,
+  type SearchSourceFlags,
+} from "../src/cli/search_source.js";
 import { show } from "../src/cli/show.js";
 import { validate } from "../src/cli/validate.js";
 import type { CommandResult, GlobalOptions } from "../src/cli/_types.js";
@@ -33,7 +42,7 @@ program
   .description(
     "Manual inspector / corrector for the Codemap knowledge graph (.codemap/graph.json).",
   )
-  .version("0.2.0")
+  .version(packageJson.version)
   .option(
     "--repo <path>",
     "Path to the repo root (defaults to the current working directory).",
@@ -120,6 +129,60 @@ program
   .action(async () => {
     const opts = program.opts() as { repo: string };
     emit(await rollup({ repoRoot: opts.repo }));
+  });
+
+program
+  .command("scan")
+  .description(
+    "Build the rebuildable local source index used by search-source and MCP search_source.",
+  )
+  .option(
+    "--max-file-bytes <n>",
+    "Skip source files larger than this many bytes.",
+    Number.parseInt,
+  )
+  .action(async (cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: ScanFlags = {
+      maxFileBytes: cmdOpts.maxFileBytes as number | undefined,
+    };
+    emit(await scan(flags, { repoRoot: opts.repo }));
+  });
+
+program
+  .command("search-source <query>")
+  .description(
+    "Search the local source index for relevant code chunks. Run `codemap scan` first.",
+  )
+  .option("-l, --limit <n>", "Maximum results to return.", Number.parseInt)
+  .option(
+    "--max-content-chars <n>",
+    "Maximum characters of chunk content per result.",
+    Number.parseInt,
+  )
+  .action(async (query: string, cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: SearchSourceFlags = {
+      limit: cmdOpts.limit as number | undefined,
+      maxContentChars: cmdOpts.maxContentChars as number | undefined,
+    };
+    emit(await searchSource(query, flags, { repoRoot: opts.repo }));
+  });
+
+program
+  .command("index-status")
+  .description("Report source-index freshness and indexed file/chunk counts.")
+  .action(async () => {
+    const opts = program.opts() as { repo: string };
+    emit(await indexStatus({ repoRoot: opts.repo }));
+  });
+
+program
+  .command("clear-index")
+  .description("Delete the rebuildable local source index cache.")
+  .action(async () => {
+    const opts = program.opts() as { repo: string };
+    emit(await clearIndex({ repoRoot: opts.repo }));
   });
 
 await program.parseAsync(process.argv);

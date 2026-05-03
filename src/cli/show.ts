@@ -1,5 +1,6 @@
 import { GraphStore } from "../graph.js";
-import type { Edge, EdgeKind } from "../types.js";
+import { parseEdgeKey } from "../schema.js";
+import type { Edge } from "../types.js";
 import type { CommandResult, GlobalOptions } from "./_types.js";
 
 /**
@@ -38,13 +39,9 @@ export async function show(
 
   const edges: Edge[] = [];
   for (const [key, value] of Object.entries(store._data().edges)) {
-    const lastBar = key.lastIndexOf("|");
-    if (lastBar <= 0) continue;
-    const secondLastBar = key.lastIndexOf("|", lastBar - 1);
-    if (secondLastBar <= 0) continue;
-    const from = key.slice(0, secondLastBar);
-    const to = key.slice(secondLastBar + 1, lastBar);
-    const kind = key.slice(lastBar + 1) as EdgeKind;
+    const parsed = parseEdgeKey(key);
+    if (!parsed) continue;
+    const { from, to, kind } = parsed;
     if (from === node.id || to === node.id) {
       const edge: Edge = { from, to, kind };
       if (value.note !== undefined) edge.note = value.note;

@@ -17,6 +17,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
+import packageJson from "../package.json" with { type: "json" };
 import { registerTools } from "../src/index.js";
 import { SERVER_INSTRUCTIONS } from "../src/instructions.js";
 
@@ -27,7 +28,7 @@ import { SERVER_INSTRUCTIONS } from "../src/instructions.js";
 const server = new McpServer(
   {
     name: "codemap",
-    version: "0.2.0",
+    version: packageJson.version,
   },
   {
     instructions: SERVER_INSTRUCTIONS,

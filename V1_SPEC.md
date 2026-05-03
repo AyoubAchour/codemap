@@ -8,7 +8,7 @@ A persistent, queryable knowledge graph of a codebase, built incrementally by AI
 
 ## 2. Core thesis
 
-The product is a **memory layer for codebases**, not a visualization tool. The visualization is a future side-effect; the graph itself is the value.
+The product is a **memory layer for codebases**, not a visualization tool or general conversation memory. Human-facing views can sit on top later; the graph itself is the value.
 
 The graph's *highest-value content* is **not** file summaries — Cursor and Claude Code already do that. It is the knowledge that doesn't live in any single file:
 
@@ -35,21 +35,22 @@ V1 explicitly addresses pains 1 and 2. Pain 3 is v2.
 
 ### In scope (V1)
 
-- An **MCP server** exposing 5 tools to any MCP-capable agent.
+- An **MCP server** exposing the curated graph-memory tools to any MCP-capable agent.
+- A rebuildable **local source index** for cold-start source discovery, kept separate from the curated graph.
 - A **graph schema** stored as a single JSON file at `<repo_root>/.codemap/graph.json`.
 - An **agent instruction document** organized around **explicit enforcement checkpoints** (not ad-hoc directives).
 - **Server-side enforcement** of collision detection, schema validation, and per-turn emission caps.
-- A **basic CLI** (`codemap show / correct / deprecate / validate`) so humans can fix the agent's mistakes without a UI.
+- A **basic CLI** (`codemap show / correct / deprecate / validate`) so humans can fix the agent's mistakes without a UI, plus source-index commands (`scan / search-source / index-status / clear-index`) for local code discovery.
 - Tested end-to-end against **Claude Code** as the reference agent.
 
 ### Out of scope (V1)
 
-- Web UI / VS Code extension / canvas viewer (v2).
+- Web UI / editor extension / canvas viewer. Visual surfaces wait until behavior is consistent.
 - Live file-watcher / real-time graph updates (v2). Graph mutates only when the agent emits.
 - Branch-safe operation. V1 is single-branch, single-writer; see §15 Limitations.
 - Behavioral graph extraction — auto-detected state machines, enum invariants, data-flow tracing (v2+).
 - Multi-agent compatibility validation; v1 ships agent-agnostic via MCP, but only Claude Code is verified.
-- Vector / embedding-based search; v1 uses tag + text match.
+- Vector / embedding-based search; the graph uses tag + text match, and source discovery starts with local lexical/symbol ranking.
 
 ## 5. Architecture
 
@@ -62,6 +63,8 @@ V1 explicitly addresses pains 1 and 2. Pain 3 is v2.
 ┌──────────────────────────────────────┐
 │  Codemap MCP Server                  │
 │  Tools:                              │
+│    - index_codebase / search_source  │
+│    - get_index_status / clear_index  │
 │    - query_graph                     │
 │    - get_node                        │
 │    - emit_node  (collision-aware)    │
@@ -230,7 +233,13 @@ Draft (refine during M1 spike):
 
 ```
 You have access to a Codemap MCP server. It maintains a persistent
-knowledge graph of this codebase. Use it as a memory layer — not optional.
+knowledge graph of this codebase. Use it as a repo memory layer — not optional
+for codebase work, but not general chat or web-research memory.
+
+Use Codemap only when the task touches this repository's code, docs,
+architecture, roadmap, tests, or build/release behavior. For unrelated Q&A,
+general web research, installs, recommendations, or external documentation
+questions, do not call Codemap tools and do not write graph nodes.
 
 ═══════════════════════════════════════════════════════════════
 CHECKPOINT 1 — BEFORE YOU PLAN
@@ -250,8 +259,9 @@ existing components. It is a failure mode, not a shortcut.
 ═══════════════════════════════════════════════════════════════
 CHECKPOINT 2 — AFTER YOU EXPLORE, BEFORE YOU FINALIZE
 ═══════════════════════════════════════════════════════════════
-Emit nodes for what you learned. The server will cap you at 5
-emissions per turn — choose the highest-value ones.
+Emit nodes only for durable repo-local knowledge anchored to real project
+files. The server will cap you at 5 emissions per turn — choose the
+highest-value ones.
 
 PRIORITIZE these kinds (this is the actual win):
 - decision: "we use Supabase auth, not Clerk; chose for X reason"
@@ -269,6 +279,8 @@ AVOID emitting:
   describe to a teammate
 - trivial helpers, getters, one-liners
 - speculative content with confidence < 0.5
+- facts learned only from conversation, web pages, package docs, install
+  steps, or external research
 
 When in doubt, do NOT emit. Quality over coverage.
 
@@ -388,7 +400,7 @@ To decide as we build, not now:
 
 ## 15. Limitations (known, accepted for V1)
 
-- **MCP tools are model-controlled.** The instruction document strongly nudges the agent but cannot *force* tool calls. M1 directly probes whether nudging is enough; if not, the instruction document needs redesign before any server code.
+- **MCP tools are model-controlled.** The instruction document strongly nudges the agent but cannot *force* correct tool choice. Server-side source anchoring rejects obviously invalid graph writes, but the instruction document still carries the codebase-only use policy.
 - **Cross-model behavior is unverified.** V1 targets Claude Code; behavior on GPT-class or Gemini-class agents may differ.
 - **Not branch-safe.** Two devs on parallel branches will hit `graph.json` merge conflicts. Keyed maps shrink the conflict surface but don't eliminate it. Workflow recommendation: run `codemap validate` after merge.
 - **No human editing UI.** Manual edits via CLI or direct JSON are supported (validator catches schema errors), but no visual editor in v1.
@@ -404,4 +416,4 @@ These are NOT what this project is, even long-term:
 - A documentation generator (DeepWiki territory).
 - A 3D code visualization (CodeCharta territory).
 
-Codemap is a **persistent, structured memory layer** that other tools — agents and viewers — sit on top of. Its specific edge is capturing **non-obvious knowledge** (decisions, invariants, gotchas) that no static analyzer or doc generator produces.
+Codemap is a **persistent, structured memory layer** that other tools and agents sit on top of. Its specific edge is capturing **non-obvious knowledge** (decisions, invariants, gotchas) that no static analyzer or doc generator produces.

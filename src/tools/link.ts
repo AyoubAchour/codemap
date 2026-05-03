@@ -1,17 +1,10 @@
-import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 
 import { GraphStore } from "../graph.js";
 import { recordMetric } from "../metrics.js";
-import { EdgeKindSchema } from "../schema.js";
+import { EdgeKindSchema, NodeIdSchema } from "../schema.js";
 import type { ToolOptions } from "./query_graph.js";
-
-// Node-id constraint mirrors NodeIdSchema in src/schema.ts: non-empty, no '|'
-// (which is reserved as the edge-key separator).
-const NodeIdInput = z
-  .string()
-  .min(1)
-  .regex(/^[^|]+$/, "node id cannot contain '|'");
 
 export function registerLink(server: McpServer, options: ToolOptions): void {
   server.registerTool(
@@ -21,10 +14,10 @@ export function registerLink(server: McpServer, options: ToolOptions): void {
       description:
         "Record a relationship between two nodes you've emitted. Call this after emit_node when you've identified that A imports/calls/depends_on/implements/replaces/contradicts/derived_from/mirrors B. Idempotent on (from, to, kind). Both endpoints must exist; aliases resolve to canonical ids. Use depends_on as the catch-all when no other kind fits — invented kinds are rejected.",
       inputSchema: {
-        from: NodeIdInput.describe(
+        from: NodeIdSchema.describe(
           "Source node id (or any alias on it). Must already exist.",
         ),
-        to: NodeIdInput.describe(
+        to: NodeIdSchema.describe(
           "Target node id (or any alias on it). Must already exist.",
         ),
         kind: EdgeKindSchema.describe(

@@ -4,10 +4,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { GraphStore } from "../../src/graph.js";
+import { clearIndex } from "../../src/cli/clear_index.js";
 import { correct } from "../../src/cli/correct.js";
 import { deprecate } from "../../src/cli/deprecate.js";
+import { indexStatus } from "../../src/cli/index_status.js";
 import { init } from "../../src/cli/init.js";
 import { rollup } from "../../src/cli/rollup.js";
+import { scan } from "../../src/cli/scan.js";
+import { searchSource } from "../../src/cli/search_source.js";
 import { show } from "../../src/cli/show.js";
 import { validate } from "../../src/cli/validate.js";
 import { SERVER_INSTRUCTIONS } from "../../src/instructions.js";
@@ -550,5 +554,55 @@ describe("CLI: init", () => {
     expect(r.exitCode).toBe(0);
     expect(r.stderr).toContain("skipped AGENTS.md");
     expect(r.stdout).toContain("wrote CLAUDE.md");
+  });
+});
+
+// =============================================================
+// source index CLI
+// =============================================================
+
+describe("CLI: source index", () => {
+  beforeEach(async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      [
+        "export interface SessionUser { id: string }",
+        "export function requireActiveUser(token: string): SessionUser {",
+        "  return { id: token };",
+        "}",
+      ].join("\n"),
+    );
+  });
+
+  test("scan, search-source, index-status, and clear-index work together", async () => {
+    const scanResult = await scan({}, { repoRoot: tmpRoot });
+    expect(scanResult.exitCode).toBe(0);
+    expect(JSON.parse(scanResult.stdout!).stats.files_indexed).toBe(1);
+
+    const searchResult = await searchSource(
+      "active user",
+      { limit: 1 },
+      { repoRoot: tmpRoot },
+    );
+    expect(searchResult.exitCode).toBe(0);
+    expect(JSON.parse(searchResult.stdout!).results[0].file_path).toBe(
+      "src/auth.ts",
+    );
+
+    const statusResult = await indexStatus({ repoRoot: tmpRoot });
+    expect(statusResult.exitCode).toBe(0);
+    expect(JSON.parse(statusResult.stdout!).fresh).toBe(true);
+
+    const clearResult = await clearIndex({ repoRoot: tmpRoot });
+    expect(clearResult.exitCode).toBe(0);
+
+    const missingSearch = await searchSource(
+      "active user",
+      {},
+      { repoRoot: tmpRoot },
+    );
+    expect(missingSearch.exitCode).toBe(1);
+    expect(JSON.parse(missingSearch.stderr!).error.code).toBe("INDEX_MISSING");
   });
 });

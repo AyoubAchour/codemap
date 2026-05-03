@@ -4,13 +4,15 @@ import * as path from "node:path";
 import {
   EdgeKindSchema,
   EdgeSchema,
+  edgeKey,
   GraphFileSchema,
+  NodeIdSchema,
   NodeKindSchema,
   NodeSchema,
   NodeStatusSchema,
+  parseEdgeKey,
   SourceRefSchema,
   TopicSchema,
-  edgeKey,
 } from "../../src/schema.js";
 
 const FIXTURES_DIR = path.resolve(__dirname, "..", "..", "fixtures");
@@ -205,6 +207,17 @@ describe("NodeSchema", () => {
   });
 });
 
+describe("NodeIdSchema", () => {
+  test("accepts non-empty node ids without edge separators", () => {
+    expect(() => NodeIdSchema.parse("auth/middleware")).not.toThrow();
+  });
+
+  test("rejects empty ids and ids containing '|'", () => {
+    expect(() => NodeIdSchema.parse("")).toThrow();
+    expect(() => NodeIdSchema.parse("auth|middleware")).toThrow();
+  });
+});
+
 // =============================================================
 // EdgeKind & Edge
 // =============================================================
@@ -228,7 +241,12 @@ describe("EdgeKindSchema", () => {
   test("rejects pre-tightening invented kinds", () => {
     // These are the kinds Claude reached for in M1 sessions 1–2 before
     // the prompt was tightened. Keep this assertion to prevent regressions.
-    for (const kind of ["derived-from", "uses", "sibling-pattern", "relates_to"]) {
+    for (const kind of [
+      "derived-from",
+      "uses",
+      "sibling-pattern",
+      "relates_to",
+    ]) {
       expect(() => EdgeKindSchema.parse(kind)).toThrow();
     }
   });
@@ -522,5 +540,21 @@ describe("edgeKey", () => {
   test("works with the widened kinds", () => {
     expect(edgeKey("a", "b", "derived_from")).toBe("a|b|derived_from");
     expect(edgeKey("a", "b", "mirrors")).toBe("a|b|mirrors");
+  });
+});
+
+describe("parseEdgeKey", () => {
+  test("parses the canonical from|to|kind triple", () => {
+    expect(parseEdgeKey("auth/middleware|auth/jwt|depends_on")).toEqual({
+      from: "auth/middleware",
+      to: "auth/jwt",
+      kind: "depends_on",
+    });
+  });
+
+  test("rejects malformed keys and invented kinds", () => {
+    expect(parseEdgeKey("auth/a|auth/b")).toBeNull();
+    expect(parseEdgeKey("auth/a|auth/b|uses")).toBeNull();
+    expect(parseEdgeKey("auth/a|auth/b|auth/c|depends_on")).toBeNull();
   });
 });

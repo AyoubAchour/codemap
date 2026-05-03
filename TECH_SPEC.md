@@ -8,7 +8,7 @@
 | Layer             | Choice                                                            | Reason                                                                               |
 | ----------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Runtime           | Bun (primary) + Node 22+ (first-class fallback)                   | Sub-100 ms cold start with Bun; Node kept first-class because Bun has WSL2 path quirks and not every user installs it. CI runs both. |
-| Language          | TypeScript                                                        | Reference MCP SDK; type safety; same language for v2 viewer                          |
+| Language          | TypeScript                                                        | Reference MCP SDK; type safety; fast iteration                                       |
 | MCP SDK           | `@modelcontextprotocol/sdk`                                       | Official reference; most spec-current                                                |
 | Schema validation | `zod`                                                             | Runtime validation + auto-derived JSON Schema for MCP tool definitions               |
 | String similarity | `fastest-levenshtein` (+ Dice coefficient)                        | For collision detection; ~5× faster than naive Levenshtein                           |
@@ -384,7 +384,7 @@ If hard limits are exceeded in production, log to telemetry and investigate. We 
 ## 12. Security
 
 - **Untrusted graph content** (V1_SPEC §15): node summaries, notes, aliases are data-only. The MCP server does not `eval` or otherwise execute graph content. The agent reading them is the prompt-injection surface; v1 mitigation is the instruction-doc warning + reviewer expectation that PR diffs of `.codemap/graph.json` are reviewed like code.
-- **Path traversal:** `file_path` values must be relative to `repo_root`. Absolute paths and `..` traversal are rejected at validation time.
+- **Source anchoring:** `emit_node` sources must be real repo-relative files under `repo_root`. Empty source lists, absolute paths, `..` traversal, missing files, and external URL-like anchors are rejected before any graph write.
 - **No network:** v1 is local-only. The MCP server makes no outbound network calls.
 - **No code execution:** no `eval`, no shell-out beyond `git rev-parse --show-toplevel` (read-only) for repo-root discovery.
 
@@ -412,4 +412,3 @@ If hard limits are exceeded in production, log to telemetry and investigate. We 
 2. **`proper-lockfile` reliability across OSes.** Library is widely used but has edge cases on network filesystems (NFS, SMB). Test in M2; document any workarounds.
 3. **When to add HTTP/SSE transport.** Only worth it if v2 grows a hosted / multi-machine use case. Defer until M3 reveals demand.
 4. **Embedding model for v2 retrieval.** Default plan: Ollama + `nomic-embed-text` (free, local, ~100 MB). Alternatives if quality is poor: `bge-small-en-v1.5`, `gte-small`. Decide during v2 planning, not now.
-
