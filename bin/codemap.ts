@@ -7,7 +7,7 @@
  * returning { exitCode, stdout?, stderr? }; this entry file is the thin
  * commander glue + I/O shim.
  */
-import { Command } from "commander";
+import { Command, InvalidArgumentError } from "commander";
 
 import packageJson from "../package.json" with { type: "json" };
 import { clearIndex } from "../src/cli/clear_index.js";
@@ -33,6 +33,17 @@ function emit(result: CommandResult): never {
 
 function repeatable(value: string, prev: string[] | undefined): string[] {
   return prev === undefined ? [value] : [...prev, value];
+}
+
+function parsePositiveInteger(value: string): number {
+  if (!/^\d+$/.test(value)) {
+    throw new InvalidArgumentError("expected a positive integer");
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new InvalidArgumentError("expected a positive integer");
+  }
+  return parsed;
 }
 
 const program = new Command();
@@ -139,7 +150,7 @@ program
   .option(
     "--max-file-bytes <n>",
     "Skip source files larger than this many bytes.",
-    Number.parseInt,
+    parsePositiveInteger,
   )
   .action(async (cmdOpts: Record<string, unknown>) => {
     const opts = program.opts() as { repo: string };
@@ -154,11 +165,11 @@ program
   .description(
     "Search the local source index for relevant code chunks. Run `codemap scan` first.",
   )
-  .option("-l, --limit <n>", "Maximum results to return.", Number.parseInt)
+  .option("-l, --limit <n>", "Maximum results to return.", parsePositiveInteger)
   .option(
     "--max-content-chars <n>",
     "Maximum characters of chunk content per result.",
-    Number.parseInt,
+    parsePositiveInteger,
   )
   .action(async (query: string, cmdOpts: Record<string, unknown>) => {
     const opts = program.opts() as { repo: string };

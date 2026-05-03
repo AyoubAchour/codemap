@@ -89,6 +89,20 @@ describe("source index", () => {
     );
   });
 
+  test("search total_results reports matches beyond the returned limit", async () => {
+    await write("src/needle-a.ts", "export function sharedNeedleAlpha() {}");
+    await write("src/needle-b.ts", "export function sharedNeedleBeta() {}");
+    await write("src/needle-c.ts", "export function sharedNeedleGamma() {}");
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(tmpRoot, "shared needle", {
+      limit: 2,
+    });
+
+    expect(response.results).toHaveLength(2);
+    expect(response.total_results).toBe(3);
+  });
+
   test("scan reports files skipped by source-index filters", async () => {
     await write("src/readme.md", "not a supported source extension");
     await write("src/client.generated.ts", "export function generated() {}");

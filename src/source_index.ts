@@ -380,7 +380,10 @@ export async function searchSourceIndex(
 
   const chunks = Object.values(index.files).flatMap((file) => file.chunks);
   const relatedNodesByFile = await loadRelatedNodesByFile(repoRoot);
-  const ranked = rankChunks(trimmedQuery, chunks, relatedNodesByFile)
+  const allRanked = rankChunks(trimmedQuery, chunks, relatedNodesByFile).filter(
+    ({ score }) => score > 0,
+  );
+  const ranked = allRanked
     .slice(0, limit)
     .map(({ chunk, score, related_nodes }) => ({
       file_path: chunk.file_path,
@@ -404,7 +407,7 @@ export async function searchSourceIndex(
     query,
     index_updated_at: index.updated_at,
     search_time_ms: Date.now() - startedAt,
-    total_results: ranked.length,
+    total_results: allRanked.length,
     results: ranked,
   };
 }

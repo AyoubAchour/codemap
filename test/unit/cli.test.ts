@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -57,6 +58,41 @@ async function seed(nodes: Node[], edges: Array<[string, string, string, string?
     store.ensureEdge(from, to, kind as never, note);
   }
   await store.save();
+}
+
+async function runCodemapBin(args: string[]): Promise<{
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}> {
+  const projectRoot = path.resolve(import.meta.dir, "../..");
+  const child = spawn(
+    process.execPath,
+    [
+      "run",
+      path.join(projectRoot, "bin/codemap.ts"),
+      "--repo",
+      tmpRoot,
+      ...args,
+    ],
+    {
+      cwd: projectRoot,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  const exitCode = await new Promise<number>((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", (code) => resolve(code ?? 1));
+  });
+  return { exitCode, stdout, stderr };
 }
 
 // =============================================================
@@ -604,5 +640,16 @@ describe("CLI: source index", () => {
     );
     expect(missingSearch.exitCode).toBe(1);
     expect(JSON.parse(missingSearch.stderr!).error.code).toBe("INDEX_MISSING");
+  });
+
+  test("bin scan rejects non-numeric max-file-bytes values", async () => {
+    const result = await runCodemapBin([
+      "scan",
+      "--max-file-bytes",
+      "256k",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("expected a positive integer");
   });
 });

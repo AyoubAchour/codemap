@@ -50,8 +50,8 @@ export function registerQueryGraph(
           : await checkSourceStaleness(options.repoRoot, result.nodes);
       await recordMetric(options.repoRoot, (m) => {
         m.recordQuery(result.nodes.length);
-        if (staleness.checked_sources > 0) {
-          m.recordStaleRecheck(staleness.checked_sources);
+        if (staleness.stale_sources.length > 0) {
+          m.recordStaleRecheck(staleness.stale_sources.length);
         }
       });
       const response = { ...result, staleness };
