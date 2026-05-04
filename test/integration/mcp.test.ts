@@ -117,6 +117,7 @@ describe("MCP server — initialize / instructions", () => {
     const instructions = client.getInstructions() ?? "";
     for (const toolName of [
       "set_active_topic",
+      "query_context",
       "query_graph",
       "get_node",
       "emit_node",
@@ -150,6 +151,7 @@ describe("MCP server — tools/list", () => {
       "get_node",
       "index_codebase",
       "link",
+      "query_context",
       "query_graph",
       "search_source",
       "set_active_topic",
@@ -332,6 +334,63 @@ describe("MCP server — source index tools", () => {
       })) as never,
     );
     expect(graphResult.id).toBe("source/test");
+  });
+
+  test("query_context fuses graph, source search, and deduplicated related nodes", async () => {
+    await fs.writeFile(
+      path.join(tmpRoot, "src/auth/distinct.ts"),
+      [
+        "export interface AuthenticatedActor { id: string }",
+        "export function requireActiveUser(token: string): AuthenticatedActor {",
+        "  return { id: token };",
+        "}",
+      ].join("\n"),
+    );
+
+    const { GraphStore } = await import("../../src/graph.js");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode({
+      id: "auth/active-user",
+      kind: "invariant",
+      name: "Active user auth invariant",
+      summary: "requireActiveUser returns an authenticated actor.",
+      sources: [
+        {
+          file_path: "src/auth/distinct.ts",
+          line_range: [1, 1],
+          content_hash: await repoFileHash("src/auth/distinct.ts"),
+        },
+        {
+          file_path: "src/auth/distinct.ts",
+          line_range: [2, 4],
+          content_hash: await repoFileHash("src/auth/distinct.ts"),
+        },
+      ],
+      tags: ["auth"],
+      aliases: [],
+      status: "active",
+      confidence: 0.9,
+      last_verified_at: new Date().toISOString(),
+    });
+    await store.save();
+
+    const result = await client.callTool({
+      name: "query_context",
+      arguments: { question: "active user auth", source_limit: 2 },
+    });
+    const parsed = parseToolText(result as never);
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.graph.nodes[0].id).toBe("auth/active-user");
+    expect(parsed.source.refreshed).toBe(true);
+    expect(parsed.source.status.indexed).toBe(true);
+    expect(parsed.source.search.ok).toBe(true);
+    expect(parsed.source.search.results[0].file_path).toBe(
+      "src/auth/distinct.ts",
+    );
+    expect(parsed.related_nodes.map((n: { id: string }) => n.id)).toEqual([
+      "auth/active-user",
+    ]);
   });
 });
 
@@ -735,6 +794,21 @@ describe("MCP server — link endpoint validation", () => {
 // =============================================================
 
 describe("MCP server — structuredContent on all tools", () => {
+  test("query_context returns structuredContent with graph + source", async () => {
+    const r = (await client.callTool({
+      name: "query_context",
+      arguments: { question: "anything", refresh_index: "never" },
+    })) as {
+      structuredContent?: {
+        graph?: { nodes?: unknown[] };
+        source?: { status?: unknown };
+      };
+    };
+    expect(r.structuredContent).toBeDefined();
+    expect(Array.isArray(r.structuredContent?.graph?.nodes)).toBe(true);
+    expect(r.structuredContent?.source?.status).toBeDefined();
+  });
+
   test("query_graph returns structuredContent with nodes + edges", async () => {
     const r = (await client.callTool({
       name: "query_graph",

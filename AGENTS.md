@@ -18,23 +18,25 @@ repo memory — query before exploring, WRITE AFTER.
 
 USE CODEMAP ONLY when the task touches this repository's code, docs,
 architecture, roadmap, tests, or build/release behavior. Do not call
-query_graph, get_node, emit_node, link, index_codebase, search_source,
-get_index_status, or clear_index for unrelated Q&A, general web research,
-installs, recommendations, or tasks not anchored to this repo.
+query_context, query_graph, get_node, emit_node, link, index_codebase,
+search_source, get_index_status, or clear_index for unrelated Q&A, general
+web research, installs, recommendations, or tasks not anchored to this repo.
 
 Source discovery tools are a rebuildable cache, not memory:
-index_codebase/search_source/get_index_status/clear_index may help find code
-faster, but they must not be treated as durable conclusions and must not
-auto-generate graph nodes.
+query_context/index_codebase/search_source/get_index_status/clear_index may
+help find code faster, but they must not be treated as durable conclusions and
+must not auto-generate graph nodes.
 
 LIFECYCLE for any task that touches this codebase:
 
 1. START: set_active_topic("<short-slug>") — resets per-turn emit budget.
-2. BEFORE PLANNING: query_graph("<task description>"). If it returns
-   nodes, read via get_node before re-deriving from source.
-3. SOURCE DISCOVERY (optional): use search_source for source chunks after
-   query_graph; if the index is missing/stale, use index_codebase or
-   get_index_status. Inspect real files before relying on search results.
+2. BEFORE PLANNING: query_context("<task description>") when available.
+   Otherwise call query_graph("<task description>"). If graph nodes are
+   returned, read via get_node before re-deriving from source.
+3. SOURCE DISCOVERY (optional): query_context includes source-index status and
+   source hits. If using query_graph directly, use search_source for source
+   chunks after query_graph; if the index is missing/stale, use index_codebase
+   or get_index_status. Inspect real files before relying on search results.
 4. AFTER EXPLORING: emit_node only for durable repo-local knowledge
    anchored to real project files. Cap = 5/turn.
    PRIORITIZE: decision (non-obvious choices), invariant (must-hold

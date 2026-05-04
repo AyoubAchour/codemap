@@ -841,12 +841,14 @@ async function loadRelatedNodesByFile(
     for (const [id, node] of Object.entries(store._data().nodes)) {
       for (const source of node.sources) {
         const existing = byFile.get(source.file_path) ?? [];
-        existing.push({
-          id,
-          kind: node.kind,
-          name: node.name,
-          summary: node.summary,
-        });
+        if (!existing.some((related) => related.id === id)) {
+          existing.push({
+            id,
+            kind: node.kind,
+            name: node.name,
+            summary: node.summary,
+          });
+        }
         byFile.set(source.file_path, existing);
       }
     }

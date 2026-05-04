@@ -174,6 +174,14 @@ V1 explicitly addresses pains 1 and 2. Pain 3 is v2.
 
 ## 7. MCP tools
 
+### 7.0 `query_context(question: string) → { graph, source, related_nodes, warnings, next_steps }`
+
+Preferred pre-planning read path for codebase tasks. It composes `query_graph`,
+source staleness checks, source-index status, source search, and related graph
+nodes into one response. It never writes graph memory and never auto-generates
+nodes from the source index; source hits are still a rebuildable discovery cache
+that must be inspected in real files before `emit_node`.
+
 ### 7.1 `query_graph(question: string) → { nodes, edges }`
 
 Called by the agent **before planning** any task involving code understanding. Returns top-N relevant nodes (by tag overlap + text match in `name` / `summary` / `tags` / `aliases`) plus connecting edges. Resolves through aliases.
@@ -223,6 +231,12 @@ Idempotent. Same `(from, to, kind)` updates `note`.
 
 Agent calls at task start. All subsequent `emit_node` calls auto-tag with this topic. If `name` is new, added to `topics{}` with `auto_created: true`. Resets the per-turn emission counter.
 
+### 7.6 Source-index tools
+
+`index_codebase`, `search_source`, `get_index_status`, and `clear_index` manage
+the rebuildable local source index at `.codemap/index/source.json`. They are for
+source discovery only and must not be treated as curated graph conclusions.
+
 ## 8. Agent instruction document
 
 This is the highest-leverage artifact in V1. The MCP server is mechanical; **the instruction doc is what makes the loop work**. Treat as a product surface.
@@ -248,7 +262,8 @@ For any task that involves understanding or modifying this codebase,
 you MUST do this first:
 
 1. Call set_active_topic(<short-slug>) — e.g. "payment", "auth-bugfix".
-2. Call query_graph(<task description>) to find existing context.
+2. Call query_context(<task description>) when available; otherwise call
+   query_graph(<task description>) to find existing context.
 3. For each returned node: if any source's stored content_hash differs
    from current file contents, re-read the source and update via
    emit_node before relying on it.

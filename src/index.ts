@@ -6,6 +6,7 @@ import { registerGetIndexStatus } from "./tools/get_index_status.js";
 import { registerGetNode } from "./tools/get_node.js";
 import { registerIndexCodebase } from "./tools/index_codebase.js";
 import { registerLink } from "./tools/link.js";
+import { registerQueryContext } from "./tools/query_context.js";
 import { registerQueryGraph } from "./tools/query_graph.js";
 import { registerSearchSource } from "./tools/search_source.js";
 import { registerSetActiveTopic } from "./tools/set_active_topic.js";
@@ -20,6 +21,7 @@ export interface RegisterToolsOptions {
  *
  * Source discovery:
  *  - index_codebase
+ *  - query_context
  *  - search_source
  *  - get_index_status
  *  - clear_index
@@ -36,6 +38,7 @@ export function registerTools(
   options: RegisterToolsOptions,
 ): void {
   registerIndexCodebase(server, options);
+  registerQueryContext(server, options);
   registerSearchSource(server, options);
   registerGetIndexStatus(server, options);
   registerClearIndex(server, options);

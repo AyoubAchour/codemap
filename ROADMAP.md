@@ -186,6 +186,10 @@ M3 validated the core thesis, but the next constraint is graph quality, not visu
 | 4    | Branch-safe operation (proper merge)                | 2 weeks  | When 2+ active devs share a graph and conflicts are real  |
 | 5    | Behavioral graph extraction (state machines, enums) | 4+ weeks | Only after the basic memory loop is consistently trusted  |
 
+Task 030 builds on the local source-index slice with `query_context`, a fused
+pre-planning read that returns graph matches, source status/search, staleness,
+deduplicated related nodes, warnings, and next steps in one response.
+
 
 ## Cumulative timeline (single dev, half-time)
 

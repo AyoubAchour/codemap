@@ -146,6 +146,42 @@ describe("source index", () => {
     expect(response.results[0]?.related_nodes[0]?.id).toBe("auth/session-user");
   });
 
+  test("search deduplicates related graph nodes with multiple same-file anchors", async () => {
+    await scanSourceIndex(tmpRoot);
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode({
+      id: "auth/multi-anchor",
+      kind: "decision",
+      name: "Multi-anchor auth node",
+      summary: "One graph node may cite the same source file more than once.",
+      sources: [
+        {
+          file_path: "src/auth.ts",
+          line_range: [1, 3],
+          content_hash: "sha256:placeholder",
+        },
+        {
+          file_path: "src/auth.ts",
+          line_range: [7, 9],
+          content_hash: "sha256:placeholder",
+        },
+      ],
+      tags: ["auth"],
+      aliases: [],
+      status: "active",
+      confidence: 0.9,
+      last_verified_at: "2026-04-28T00:00:00Z",
+    });
+    await store.save();
+
+    const response = await searchSourceIndex(tmpRoot, "multi anchor auth", {
+      limit: 1,
+    });
+
+    const relatedIds = response.results[0]?.related_nodes.map((n) => n.id);
+    expect(relatedIds).toEqual(["auth/multi-anchor"]);
+  });
+
   test("scan keeps preamble content before the first detected symbol searchable", async () => {
     await write(
       "src/preamble.ts",
