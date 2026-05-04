@@ -196,6 +196,10 @@ memory visible without writing repairs; dependency context adds nearby
 imports/importers to source hits so agents inspect related files before
 emitting durable findings.
 
+Task 032 follows the 0.5.0 release by dogfooding those health signals: update
+release-truth docs, make `codemap doctor` readable by default, clean stale local
+graph memory, and verify the published package in another real checkout.
+
 
 ## Cumulative timeline (single dev, half-time)
 

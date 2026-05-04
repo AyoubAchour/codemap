@@ -17,8 +17,8 @@ Three docs are the real source of truth:
 
 | | |
 | --- | --- |
-| Published | `codemap-mcp@0.4.0` on npm (https://www.npmjs.com/package/codemap-mcp); current branch targets `0.5.0` |
-| Releases shipped | 0.1.0 → 0.1.1 → 0.1.2 → 0.2.0 → 0.2.1 → 0.2.2 → 0.3.0 → 0.4.0 |
+| Published | `codemap-mcp@0.5.0` on npm (https://www.npmjs.com/package/codemap-mcp); GitHub release `v0.5.0` is live |
+| Releases shipped | 0.1.0 → 0.1.1 → 0.1.2 → 0.2.0 → 0.2.1 → 0.2.2 → 0.3.0 → 0.4.0 → 0.5.0 |
 | MCP tools | Graph memory: `set_active_topic`, `query_context`, `query_graph`, `get_node`, `graph_health`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index` |
 | CLI subcommands | `init`, `show`, `correct`, `deprecate`, `validate`, `doctor`, `rollup`, `scan`, `context`, `search-source`, `index-status`, `clear-index` |
 | M3 trial result | 9 turns on voice2work → 27 nodes / 29 edges across 6 problem domains, 5 of 8 edge kinds + 4 of 9 node kinds exercised. **Codemap thesis validated.** |
@@ -40,7 +40,7 @@ The user explicitly parked visual work until Codemap's behavior is consistent. T
 | 3 | **Server-side guardrails** | MCP tools are model-controlled, so the server must reject writes that are not anchored to real repo files. |
 | 4 | **Dogfood on real code tasks** | Verify the graph stays useful across follow-up repo work before adding retrieval upgrades or UI. |
 
-Visual surfaces, including editor extensions and graph viewers, are deferred. Re-open them only after codebase-scoped behavior feels trustworthy. A local source-index slice now exists for cold-start code discovery, and `query_context` fuses it with graph memory for pre-planning. `graph_health` exposes stale or duplicated graph memory without writing repairs. Keep the source index separate from graph memory and do not auto-generate graph nodes from it.
+Visual surfaces, including editor extensions and graph viewers, are deferred. Re-open them only after codebase-scoped behavior feels trustworthy. A local source-index slice now exists for cold-start code discovery, and `query_context` fuses it with graph memory for pre-planning. `graph_health` exposes stale or duplicated graph memory without writing repairs. The CLI `codemap doctor` defaults to compact human output; use `--json` for the full structured health report. Keep the source index separate from graph memory and do not auto-generate graph nodes from it.
 
 ## How to work in this repo (the conventions)
 
@@ -150,6 +150,7 @@ codemap/
 7. Push, open PR, address greptile P1.
 8. After CI green + user merges: `git checkout main && git pull && npm publish --access public` from local. (No `--provenance` from local — only works in CI.)
 9. Verify: `npm view codemap-mcp version` shows new version. `npm i -g codemap-mcp@<v> --prefer-online` to upgrade local install.
+10. Tag and publish the matching GitHub release (`v<version>`) with neutral release notes.
 
 ## Your first three actions
 

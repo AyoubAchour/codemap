@@ -428,20 +428,55 @@ describe("CLI: validate", () => {
 // =============================================================
 
 describe("CLI: doctor", () => {
-  test("empty graph exits 0 with a clean health report", async () => {
+  test("empty graph exits 0 with a compact clean health report", async () => {
     const r = await doctor({}, { repoRoot: tmpRoot });
     expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout!).summary.fresh).toBe(true);
+    expect(r.stdout).toContain("Codemap graph health: clean");
+    expect(r.stdout).toContain("Sources: 0 checked, 0 stale");
   });
 
-  test("stale graph exits 1 with grouped issues", async () => {
+  test("stale graph exits 1 with compact grouped issues", async () => {
     await seed([makeNode({ id: "a/stale" })]);
     const r = await doctor({}, { repoRoot: tmpRoot });
+
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toContain("Codemap graph health: issues found");
+    expect(r.stdout).toContain("Sources: 1 checked, 1 stale");
+    expect(r.stdout).toContain("Stale source anchors:");
+    expect(r.stdout).toContain("a/stale -> src/x.ts");
+  });
+
+  test("--json preserves the full structured health report", async () => {
+    await seed([makeNode({ id: "a/stale" })]);
+    const r = await doctor({ json: true }, { repoRoot: tmpRoot });
 
     expect(r.exitCode).toBe(1);
     const out = JSON.parse(r.stdout!);
     expect(out.summary.fresh).toBe(false);
     expect(out.summary.missing_sources).toBe(1);
+    expect(out.staleness.stale_sources).toHaveLength(1);
+  });
+
+  test("bin doctor --json preserves structured output", async () => {
+    await seed([makeNode({ id: "a/stale" })]);
+    const r = await runCodemapBin(["doctor", "--json"]);
+
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout).summary.missing_sources).toBe(1);
+  });
+
+  test("bin doctor --json flushes large unhealthy reports before exiting", async () => {
+    await seed(
+      Array.from({ length: 180 }, (_, i) =>
+        makeNode({ id: `large/stale-${i}` }),
+      ),
+    );
+    const r = await runCodemapBin(["doctor", "--json"]);
+
+    expect(r.exitCode).toBe(1);
+    const out = JSON.parse(r.stdout);
+    expect(out.summary.missing_sources).toBe(180);
+    expect(out.staleness.stale_sources).toHaveLength(180);
   });
 });
 

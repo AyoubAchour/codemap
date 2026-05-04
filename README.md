@@ -2,7 +2,7 @@
 
 Persistent knowledge graph of a codebase, built incrementally by AI agents during normal work, exposed via [MCP](https://modelcontextprotocol.io). Stored as a single JSON file in your repo (`.codemap/graph.json`) — diffable, reviewable, no database required.
 
-**Status:** v0.5.0 target — **M3 closed** ([M3a retro](tasks/task-020-m3a-retrospective.md), [M3b retro](tasks/task-024-m3b-retrospective.md)): 9 turns on voice2work produced 27 nodes / 29 edges across 6 problem domains; 5 of 8 edge kinds + 4 of 9 node kinds exercised; 0 collisions. Codemap thesis validated. **Current focus:** behavior consistency, codebase-only graph quality, and fused local source discovery before any human-facing visual surface. For agent handoff context see [`HANDOFF-CODEX.md`](HANDOFF-CODEX.md).
+**Status:** v0.5.0 shipped — **M3 closed** ([M3a retro](tasks/task-020-m3a-retrospective.md), [M3b retro](tasks/task-024-m3b-retrospective.md)): 9 turns on voice2work produced 27 nodes / 29 edges across 6 problem domains; 5 of 8 edge kinds + 4 of 9 node kinds exercised; 0 collisions. Codemap thesis validated. **Current focus:** post-release graph hygiene, codebase-only graph quality, and fused local source discovery before any human-facing visual surface. For agent handoff context see [`HANDOFF-CODEX.md`](HANDOFF-CODEX.md).
 
 See [`V1_SPEC.md`](V1_SPEC.md) for what we're building, [`TECH_SPEC.md`](TECH_SPEC.md) for how, and [`ROADMAP.md`](ROADMAP.md) for when.
 
@@ -77,7 +77,8 @@ codemap show <id>                     # Print a node + incident edges
 codemap correct <id> --summary "..."  # Override fields (bypasses agent merge logic)
 codemap deprecate <id> --reason "..." # Mark a node deprecated
 codemap validate                      # Dry-run validator (exit 0 clean / 1 warnings / 2 schema-invalid)
-codemap doctor                        # Graph health; --issue-limit controls stale-anchor detail
+codemap doctor                        # Compact graph health summary
+codemap doctor --json                 # Full graph health report for tooling
 codemap rollup                        # Compute the metrics weekly rollup
 codemap scan                          # Build the local source index cache
 codemap context "auth guard"          # Fused graph + source + dependency context for planning

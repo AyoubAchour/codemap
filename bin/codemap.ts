@@ -29,10 +29,10 @@ import { validate } from "../src/cli/validate.js";
 import type { CommandResult, GlobalOptions } from "../src/cli/_types.js";
 import type { SourceRefreshMode } from "../src/query_context.js";
 
-function emit(result: CommandResult): never {
+function emit(result: CommandResult): void {
   if (result.stdout !== undefined) process.stdout.write(result.stdout);
   if (result.stderr !== undefined) process.stderr.write(result.stderr);
-  process.exit(result.exitCode);
+  process.exitCode = result.exitCode;
 }
 
 function repeatable(value: string, prev: string[] | undefined): string[] {
@@ -162,14 +162,16 @@ program
   )
   .option(
     "--issue-limit <n>",
-    "Maximum stale source entries to include in response arrays.",
+    "Maximum stale source entries to show in compact output.",
     parsePositiveInteger,
   )
+  .option("--json", "Print the full structured health report.")
   .action(async (cmdOpts: Record<string, unknown>) => {
     const opts = program.opts() as { repo: string };
     const flags: DoctorFlags = {
       includeDeprecated: cmdOpts.includeDeprecated as boolean | undefined,
       issueLimit: cmdOpts.issueLimit as number | undefined,
+      json: cmdOpts.json as boolean | undefined,
     };
     emit(await doctor(flags, { repoRoot: opts.repo }));
   });
