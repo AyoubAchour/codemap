@@ -106,7 +106,7 @@ Maintained manually. Update status as tasks land.
 | 024 | M3b retrospective (3 prompts on voice2work; M3 substantively done; drives v0.3) | done | M3 / Sprint 3b | [task-024-m3b-retrospective.md](task-024-m3b-retrospective.md) |
 | 027 | Codebase-scoped writeback + visual reset | done | Phase 4 / behavior consistency | [task-027-codebase-scoped-writeback.md](task-027-codebase-scoped-writeback.md) |
 | 028 | Local source index for code discovery | done | Phase 4 / behavior consistency | [task-028-local-source-index.md](task-028-local-source-index.md) |
-| 029 | Release v0.3.0 | in-progress | Phase 4 / release | [task-029-release-v0.3.0.md](task-029-release-v0.3.0.md) |
+| 029 | Release v0.3.0 | done | Phase 4 / release | [task-029-release-v0.3.0.md](task-029-release-v0.3.0.md) |
 
 ---
 

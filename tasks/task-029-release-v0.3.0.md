@@ -1,6 +1,6 @@
 # Task 029: Release v0.3.0
 
-**Status:** in-progress
+**Status:** done
 **Phase:** Phase 4 / release
 **Started:** 2026-05-04
 **Depends on:** task-027, task-028
@@ -35,9 +35,9 @@ PR #20 merged the codebase-scoped writeback hardening and local source-index sli
 - [x] Version is bumped to `0.3.0`.
 - [x] Release docs describe `0.3.0`.
 - [x] Local release gates pass.
-- [ ] Release PR is merged.
-- [ ] `codemap-mcp@0.3.0` is published to npm.
-- [ ] Global install reports `codemap --version` as `0.3.0`.
+- [x] Release PR is merged.
+- [x] `codemap-mcp@0.3.0` is published to npm.
+- [x] Global install reports `codemap --version` as `0.3.0`.
 
 ## Notes
 
