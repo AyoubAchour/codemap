@@ -4,6 +4,7 @@ import { registerClearIndex } from "./tools/clear_index.js";
 import { registerEmitNode } from "./tools/emit_node.js";
 import { registerGetIndexStatus } from "./tools/get_index_status.js";
 import { registerGetNode } from "./tools/get_node.js";
+import { registerGraphHealth } from "./tools/graph_health.js";
 import { registerIndexCodebase } from "./tools/index_codebase.js";
 import { registerLink } from "./tools/link.js";
 import { registerQueryContext } from "./tools/query_context.js";
@@ -27,6 +28,7 @@ export interface RegisterToolsOptions {
  *  - clear_index
  *
  * Curated memory graph:
+ *  - graph_health
  *  - query_graph
  *  - get_node
  *  - emit_node       (collision-aware; per-turn cap)
@@ -42,6 +44,7 @@ export function registerTools(
   registerSearchSource(server, options);
   registerGetIndexStatus(server, options);
   registerClearIndex(server, options);
+  registerGraphHealth(server, options);
   registerQueryGraph(server, options);
   registerGetNode(server, options);
   registerEmitNode(server, options);

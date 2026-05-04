@@ -120,6 +120,7 @@ describe("MCP server — initialize / instructions", () => {
       "query_context",
       "query_graph",
       "get_node",
+      "graph_health",
       "emit_node",
       "link",
     ]) {
@@ -149,6 +150,7 @@ describe("MCP server — tools/list", () => {
       "emit_node",
       "get_index_status",
       "get_node",
+      "graph_health",
       "index_codebase",
       "link",
       "query_context",
@@ -391,6 +393,41 @@ describe("MCP server — source index tools", () => {
     expect(parsed.related_nodes.map((n: { id: string }) => n.id)).toEqual([
       "auth/active-user",
     ]);
+  });
+
+  test("graph_health reports stale active source anchors", async () => {
+    const { GraphStore } = await import("../../src/graph.js");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode({
+      id: "health/stale",
+      kind: "gotcha",
+      name: "Health stale node",
+      summary: "Old source hashes should be visible in graph health.",
+      sources: [
+        {
+          file_path: "src/x.ts",
+          line_range: [1, 1],
+          content_hash: "sha256:old",
+        },
+      ],
+      tags: ["health"],
+      aliases: [],
+      status: "active",
+      confidence: 0.9,
+      last_verified_at: new Date().toISOString(),
+    });
+    await store.save();
+
+    const result = await client.callTool({
+      name: "graph_health",
+      arguments: {},
+    });
+    const parsed = parseToolText(result as never);
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.summary.fresh).toBe(false);
+    expect(parsed.summary.changed_sources).toBe(1);
+    expect(parsed.issues.changed_sources[0].node_id).toBe("health/stale");
   });
 });
 

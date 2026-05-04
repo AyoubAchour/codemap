@@ -190,6 +190,12 @@ Task 030 builds on the local source-index slice with `query_context`, a fused
 pre-planning read that returns graph matches, source status/search, staleness,
 deduplicated related nodes, warnings, and next steps in one response.
 
+Task 031 tightens the same behavior-first lane with a graph health doctor and
+dependency-aware source context. The doctor makes stale or duplicated graph
+memory visible without writing repairs; dependency context adds nearby
+imports/importers to source hits so agents inspect related files before
+emitting durable findings.
+
 
 ## Cumulative timeline (single dev, half-time)
 

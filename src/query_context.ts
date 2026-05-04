@@ -15,6 +15,7 @@ export interface QueryContextOptions {
   graphLimit?: number;
   sourceLimit?: number;
   maxContentChars?: number;
+  dependencyLimit?: number;
   refreshIndex?: SourceRefreshMode;
 }
 
@@ -34,6 +35,7 @@ export interface QueryContextResponse {
 
 const DEFAULT_GRAPH_LIMIT = 10;
 const DEFAULT_SOURCE_LIMIT = 5;
+const DEFAULT_DEPENDENCY_LIMIT = 3;
 const DEFAULT_REFRESH_INDEX: SourceRefreshMode = "if_missing";
 
 export async function buildQueryContext(
@@ -48,6 +50,7 @@ export async function buildQueryContext(
 
   const graphLimit = options.graphLimit ?? DEFAULT_GRAPH_LIMIT;
   const sourceLimit = options.sourceLimit ?? DEFAULT_SOURCE_LIMIT;
+  const dependencyLimit = options.dependencyLimit ?? DEFAULT_DEPENDENCY_LIMIT;
   const refreshIndex = options.refreshIndex ?? DEFAULT_REFRESH_INDEX;
   const warnings: string[] = [];
 
@@ -82,6 +85,7 @@ export async function buildQueryContext(
     sourceSearch = await searchSourceIndex(repoRoot, trimmedQuestion, {
       limit: sourceLimit,
       maxContentChars: options.maxContentChars,
+      dependencyLimit,
     });
     if (!sourceSearch.ok && sourceSearch.error) {
       warnings.push(`Source search failed: ${sourceSearch.error.message}`);

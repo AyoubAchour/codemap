@@ -8,6 +8,7 @@ export interface ContextFlags {
   graphLimit?: number;
   sourceLimit?: number;
   maxContentChars?: number;
+  dependencyLimit?: number;
   refreshIndex?: SourceRefreshMode;
 }
 
@@ -21,6 +22,7 @@ export async function context(
       graphLimit: flags.graphLimit,
       sourceLimit: flags.sourceLimit,
       maxContentChars: flags.maxContentChars,
+      dependencyLimit: flags.dependencyLimit,
       refreshIndex: flags.refreshIndex,
     });
 

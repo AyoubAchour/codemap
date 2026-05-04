@@ -87,15 +87,15 @@ Maintained manually. Update status as tasks land.
 | 005 | M1 retrospective + GO/NO-GO           | done   | M1              | [task-005-m1-retrospective.md](task-005-m1-retrospective.md)                       |
 | 006 | Implement zod schemas                 | done        | M2 / Sprint 2.1 | [task-006-implement-zod-schemas.md](task-006-implement-zod-schemas.md)         |
 | 007 | Implement GraphStore class            | done        | M2 / Sprint 2.1 | [task-007-implement-graph-store.md](task-007-implement-graph-store.md)         |
-| 008 | Implement validator                   | in-progress | M2 / Sprint 2.1 | [task-008-implement-validator.md](task-008-implement-validator.md)             |
+| 008 | Implement validator                   | done | M2 / Sprint 2.1 | [task-008-implement-validator.md](task-008-implement-validator.md)             |
 | 009 | Build fixture corpus                  | done        | M2 / Sprint 2.1 | [task-009-build-fixture-corpus.md](task-009-build-fixture-corpus.md)           |
 | 010 | Unit tests for schema/store/validator | done        | M2 / Sprint 2.1 | [task-010-graph-store-validator-tests.md](task-010-graph-store-validator-tests.md) |
 | 011 | Pick the M3 cross-codebase target (Phase 3c) | todo | M3 prep    | [task-011-pick-m3-3c-target.md](task-011-pick-m3-3c-target.md)                     |
 | 012 | Implement collision detection         | done        | M2 / Sprint 2.2 | [task-012-implement-collision-detection.md](task-012-implement-collision-detection.md) |
 | 013 | MCP server skeleton + simple tools    | done        | M2 / Sprint 2.2 | [task-013-mcp-server-skeleton.md](task-013-mcp-server-skeleton.md)                 |
 | 014 | emit_node tool + per-turn cap         | done        | M2 / Sprint 2.2 | [task-014-emit-node.md](task-014-emit-node.md)                                       |
-| 015 | CLI commands (show/correct/deprecate/validate/rollup) | todo (decision required) | M2 / Sprint 2.3 | [task-015-cli.md](task-015-cli.md) |
-| 016 | Telemetry (metrics.json) + rollup     | todo (3 decisions required) | M2 / Sprint 2.3 | [task-016-telemetry.md](task-016-telemetry.md)                              |
+| 015 | CLI commands (show/correct/deprecate/validate/rollup) | done | M2 / Sprint 2.3 | [task-015-cli.md](task-015-cli.md) |
+| 016 | Telemetry (metrics.json) + rollup     | done | M2 / Sprint 2.3 | [task-016-telemetry.md](task-016-telemetry.md)                              |
 | 017 | Distribution (README + npm publish + smoke test) | done | M2 / Sprint 2.3 | [task-017-distribution.md](task-017-distribution.md)                                       |
 | 018 | MCP server.instructions + tool-description hardening (v0.1.1) | done | M3 / Sprint 3a | [task-018-server-instructions.md](task-018-server-instructions.md)                         |
 | 019 | Schema-shrink hotfix — emit_node visibility in OpenAI-class clients (v0.1.2) | done | M3 / Sprint 3a | [task-019-schema-shrink.md](task-019-schema-shrink.md)                     |
@@ -108,6 +108,7 @@ Maintained manually. Update status as tasks land.
 | 028 | Local source index for code discovery | done | Phase 4 / behavior consistency | [task-028-local-source-index.md](task-028-local-source-index.md) |
 | 029 | Release v0.3.0 | done | Phase 4 / release | [task-029-release-v0.3.0.md](task-029-release-v0.3.0.md) |
 | 030 | `query_context` fusion tool | done | Phase 4 / behavior consistency | [task-030-query-context.md](task-030-query-context.md) |
+| 031 | Graph health and dependency context | done | Phase 4 / behavior consistency | [task-031-graph-health-context.md](task-031-graph-health-context.md) |
 
 ---
 

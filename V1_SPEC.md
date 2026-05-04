@@ -40,7 +40,7 @@ V1 explicitly addresses pains 1 and 2. Pain 3 is v2.
 - A **graph schema** stored as a single JSON file at `<repo_root>/.codemap/graph.json`.
 - An **agent instruction document** organized around **explicit enforcement checkpoints** (not ad-hoc directives).
 - **Server-side enforcement** of collision detection, schema validation, and per-turn emission caps.
-- A **basic CLI** (`codemap show / correct / deprecate / validate`) so humans can fix the agent's mistakes without a UI, plus source-index commands (`scan / search-source / index-status / clear-index`) for local code discovery.
+- A **basic CLI** (`codemap show / correct / deprecate / validate / doctor`) so humans can inspect and fix graph issues without a UI, plus source-index commands (`scan / search-source / index-status / clear-index`) for local code discovery.
 - Tested end-to-end against **Claude Code** as the reference agent.
 
 ### Out of scope (V1)
@@ -63,6 +63,7 @@ V1 explicitly addresses pains 1 and 2. Pain 3 is v2.
 ┌──────────────────────────────────────┐
 │  Codemap MCP Server                  │
 │  Tools:                              │
+│    - query_context / graph_health    │
 │    - index_codebase / search_source  │
 │    - get_index_status / clear_index  │
 │    - query_graph                     │
@@ -180,7 +181,9 @@ Preferred pre-planning read path for codebase tasks. It composes `query_graph`,
 source staleness checks, source-index status, source search, and related graph
 nodes into one response. It never writes graph memory and never auto-generates
 nodes from the source index; source hits are still a rebuildable discovery cache
-that must be inspected in real files before `emit_node`.
+that must be inspected in real files before `emit_node`. Source search results
+may include bounded dependency context (`imports` / `imported_by`) to help the
+agent inspect nearby files before forming a durable finding.
 
 ### 7.1 `query_graph(question: string) → { nodes, edges }`
 
@@ -231,7 +234,16 @@ Idempotent. Same `(from, to, kind)` updates `note`.
 
 Agent calls at task start. All subsequent `emit_node` calls auto-tag with this topic. If `name` is new, added to `topics{}` with `auto_created: true`. Resets the per-turn emission counter.
 
-### 7.6 Source-index tools
+### 7.6 `graph_health(include_deprecated?: boolean, issue_limit?: number) → { summary, issues, suggestions }`
+
+Read-only health inspector for curated graph memory. It reports validator
+warnings/repairs plus source-anchor staleness grouped by reason (`changed`,
+`missing`, `unsafe_path`, `read_error`). By default it checks active nodes only;
+deprecated nodes can be included explicitly. Response arrays are capped by
+`issue_limit` while summary totals remain uncapped. It never repairs or writes
+the graph.
+
+### 7.7 Source-index tools
 
 `index_codebase`, `search_source`, `get_index_status`, and `clear_index` manage
 the rebuildable local source index at `.codemap/index/source.json`. They are for
@@ -264,7 +276,11 @@ you MUST do this first:
 1. Call set_active_topic(<short-slug>) — e.g. "payment", "auth-bugfix".
 2. Call query_context(<task description>) when available; otherwise call
    query_graph(<task description>) to find existing context.
-3. For each returned node: if any source's stored content_hash differs
+3. Treat source dependency context as a navigation hint, not proof. Inspect
+   the real files before relying on source-index results.
+4. If graph memory looks stale or duplicated, call graph_health to see the
+   grouped source-anchor and validator issues.
+5. For each returned node: if any source's stored content_hash differs
    from current file contents, re-read the source and update via
    emit_node before relying on it.
 

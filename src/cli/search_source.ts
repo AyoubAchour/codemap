@@ -4,6 +4,7 @@ import type { CommandResult, GlobalOptions } from "./_types.js";
 export interface SearchSourceFlags {
   limit?: number;
   maxContentChars?: number;
+  dependencyLimit?: number;
 }
 
 export async function searchSource(
@@ -14,6 +15,7 @@ export async function searchSource(
   const response = await searchSourceIndex(options.repoRoot, query, {
     limit: flags.limit,
     maxContentChars: flags.maxContentChars,
+    dependencyLimit: flags.dependencyLimit,
   });
 
   if (!response.ok) {

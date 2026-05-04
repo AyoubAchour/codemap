@@ -1,6 +1,6 @@
 # Task 008: Implement validator
 
-**Status:** in-progress
+**Status:** done
 **Phase:** M2 — Sprint 2.1
 **Estimate:** 2–3 hours
 **Depends on:** task-006, task-007
@@ -86,4 +86,3 @@ export function applyRepairs(graph: GraphFile, result: ValidationResult): GraphF
 - **Repair telemetry:** in M2 Sprint 2.3 (telemetry, task-019), record the count of repairs applied during load. Useful M3 signal — if humans are heavily editing `graph.json`, the rate spikes.
 - **Order of checks matters slightly.** Run schema first (gating). Then dangling edges (mutates `edges`). Then alias uniqueness (read-only). Then topic coverage (mutates `topics`). Don't reorder.
 - **Aliases pointing to a deprecated node** are still valid — don't filter by status.
-
