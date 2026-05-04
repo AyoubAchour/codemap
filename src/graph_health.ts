@@ -97,6 +97,19 @@ export async function inspectGraphHealth(
     const readErrors = staleSources.filter(
       (source) => source.reason === "read_error",
     );
+    const reportedStaleSources = staleSources.slice(0, issueLimit);
+    const reportedChangedSources = reportedStaleSources.filter(
+      (source) => source.reason === "changed",
+    );
+    const reportedMissingSources = reportedStaleSources.filter(
+      (source) => source.reason === "missing",
+    );
+    const reportedUnsafeSources = reportedStaleSources.filter(
+      (source) => source.reason === "unsafe_path",
+    );
+    const reportedReadErrors = reportedStaleSources.filter(
+      (source) => source.reason === "read_error",
+    );
     const activeNodes = allNodes.filter((node) => node.status === "active").length;
     const deprecatedNodes = allNodes.length - activeNodes;
     const fresh =
@@ -131,15 +144,15 @@ export async function inspectGraphHealth(
       validation,
       staleness: {
         checked_sources: staleness.checked_sources,
-        stale_sources: staleSources.slice(0, issueLimit),
+        stale_sources: reportedStaleSources,
       },
       issues: {
         duplicate_aliases: duplicateAliases,
-        stale_sources: staleSources.slice(0, issueLimit),
-        changed_sources: changedSources.slice(0, issueLimit),
-        missing_sources: missingSources.slice(0, issueLimit),
-        unsafe_sources: unsafeSources.slice(0, issueLimit),
-        read_errors: readErrors.slice(0, issueLimit),
+        stale_sources: reportedStaleSources,
+        changed_sources: reportedChangedSources,
+        missing_sources: reportedMissingSources,
+        unsafe_sources: reportedUnsafeSources,
+        read_errors: reportedReadErrors,
         repairs: validation.repairs,
         errors: validation.errors,
       },

@@ -228,6 +228,62 @@ describe("source index", () => {
     );
   });
 
+  test("dependency context deduplicates repeated imports of the same file", async () => {
+    await write(
+      "src/db.ts",
+      [
+        "export const foo = 1;",
+        "export const bar = 2;",
+      ].join("\n"),
+    );
+    await write(
+      "src/auth.ts",
+      [
+        "import { foo } from './db';",
+        "import { bar } from './db';",
+        "",
+        "export function repeatedAuthImports() {",
+        "  return foo + bar;",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/consumer.ts",
+      [
+        "import { repeatedAuthImports } from './auth';",
+        "import { repeatedAuthImports as again } from './auth';",
+        "",
+        "export function consumeRepeatedAuth() {",
+        "  return repeatedAuthImports() + again();",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(tmpRoot, "repeated auth imports", {
+      limit: 3,
+      dependencyLimit: 4,
+    });
+    const authResult = response.results.find(
+      (result) => result.file_path === "src/auth.ts",
+    );
+
+    expect(
+      authResult?.dependency_context.filter(
+        (dependency) =>
+          dependency.direction === "imports" &&
+          dependency.file_path === "src/db.ts",
+      ),
+    ).toHaveLength(1);
+    expect(
+      authResult?.dependency_context.filter(
+        (dependency) =>
+          dependency.direction === "imported_by" &&
+          dependency.file_path === "src/consumer.ts",
+      ),
+    ).toHaveLength(1);
+  });
+
   test("dependency context resolves emitted .js specifiers back to TypeScript sources", async () => {
     await write(
       "src/runtime.ts",

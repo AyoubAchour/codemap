@@ -917,7 +917,7 @@ function buildDependencyContext(
     file: IndexedSourceFile,
     sourceImport: SourceImport,
   ) {
-    const key = `${direction}:${file.file_path}:${sourceImport.module}:${sourceImport.line}`;
+    const key = `${direction}:${file.file_path}`;
     if (seen.has(key) || dependencies.length >= limit) return;
     seen.add(key);
     dependencies.push({

@@ -116,6 +116,56 @@ describe("graph health", () => {
     expect(health.suggestions.join(" ")).toContain("duplicate aliases");
   });
 
+  test("uses one stale-source reporting budget across categorized issue arrays", async () => {
+    await write("src/x.ts", "export const x = 1;\n");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode(
+      node({
+        id: "x/changed",
+        sources: [
+          {
+            file_path: "src/x.ts",
+            line_range: [1, 1],
+            content_hash: "sha256:old",
+          },
+        ],
+      }),
+    );
+    store.upsertNode(
+      node({
+        id: "x/missing",
+        sources: [
+          {
+            file_path: "src/missing.ts",
+            line_range: [1, 1],
+            content_hash: "sha256:missing",
+          },
+        ],
+      }),
+    );
+    await store.save();
+
+    const health = await inspectGraphHealth(tmpRoot, { issueLimit: 1 });
+
+    expect(health.ok).toBe(true);
+    if (!health.ok) throw new Error("expected ok");
+    expect(health.summary.stale_sources).toBe(2);
+    expect(health.summary.reported_stale_sources).toBe(1);
+    expect(health.issues.stale_sources).toHaveLength(1);
+    expect(
+      health.issues.changed_sources.length +
+        health.issues.missing_sources.length +
+        health.issues.unsafe_sources.length +
+        health.issues.read_errors.length,
+    ).toBe(health.issues.stale_sources.length);
+    expect([
+      ...health.issues.changed_sources,
+      ...health.issues.missing_sources,
+      ...health.issues.unsafe_sources,
+      ...health.issues.read_errors,
+    ]).toEqual(health.issues.stale_sources);
+  });
+
   test("skips deprecated nodes by default and includes them on request", async () => {
     const store = await GraphStore.load(tmpRoot);
     store.upsertNode(
