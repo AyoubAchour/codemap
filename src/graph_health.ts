@@ -213,6 +213,11 @@ function buildSuggestions(input: {
       "Fix schema-level graph errors before using graph memory for planning.",
     );
   }
+  if (suggestions.length === 0) {
+    suggestions.push(
+      "Inspect validator output for graph health issues that do not yet have a specialized suggestion.",
+    );
+  }
 
   return suggestions;
 }

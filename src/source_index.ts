@@ -177,6 +177,13 @@ interface CandidateFile {
   mtime_ms: number;
 }
 
+interface ReverseImportReference {
+  importer: IndexedSourceFile;
+  importEntry: SourceImport;
+}
+
+type ReverseImportIndex = Map<string, ReverseImportReference[]>;
+
 interface CandidateFileSearchResult {
   candidates: CandidateFile[];
   skippedCount: number;
@@ -409,6 +416,8 @@ export async function searchSourceIndex(
 
   const chunks = Object.values(index.files).flatMap((file) => file.chunks);
   const relatedNodesByFile = await loadRelatedNodesByFile(repoRoot);
+  const reverseImportIndex =
+    dependencyLimit > 0 ? buildReverseImportIndex(index) : new Map();
   const allRanked = rankChunks(trimmedQuery, chunks, relatedNodesByFile).filter(
     ({ score }) => score > 0,
   );
@@ -434,6 +443,7 @@ export async function searchSourceIndex(
         chunk.file_path,
         dependencyLimit,
         dependencyContentChars,
+        reverseImportIndex,
       ),
     }));
 
@@ -892,6 +902,7 @@ function buildDependencyContext(
   filePath: string,
   limit: number,
   maxContentChars: number,
+  reverseImportIndex: ReverseImportIndex,
 ): SourceDependencyContext[] {
   if (limit <= 0) return [];
 
@@ -936,25 +947,43 @@ function buildDependencyContext(
 
   if (dependencies.length >= limit) return dependencies;
 
-  const importers = Object.values(index.files)
-    .filter((file) => file.file_path !== filePath)
-    .sort((a, b) => a.file_path.localeCompare(b.file_path));
-
-  for (const file of importers) {
-    for (const sourceImport of file.imports) {
-      const resolved = resolveImportPath(
-        index,
-        file.file_path,
-        sourceImport.module,
-      );
-      if (resolved === filePath) {
-        addDependency("imported_by", file, sourceImport);
-      }
-      if (dependencies.length >= limit) return dependencies;
+  const importers = reverseImportIndex.get(filePath) ?? [];
+  for (const { importer, importEntry } of importers) {
+    if (importer.file_path !== filePath) {
+      addDependency("imported_by", importer, importEntry);
     }
+    if (dependencies.length >= limit) return dependencies;
   }
 
   return dependencies;
+}
+
+function buildReverseImportIndex(index: SourceIndex): ReverseImportIndex {
+  const reverseIndex: ReverseImportIndex = new Map();
+  const files = Object.values(index.files).sort((a, b) =>
+    a.file_path.localeCompare(b.file_path),
+  );
+
+  for (const file of files) {
+    for (const importEntry of file.imports) {
+      const resolved = resolveImportPath(
+        index,
+        file.file_path,
+        importEntry.module,
+      );
+      if (!resolved) continue;
+
+      const reference = { importer: file, importEntry };
+      const existing = reverseIndex.get(resolved);
+      if (existing) {
+        existing.push(reference);
+      } else {
+        reverseIndex.set(resolved, [reference]);
+      }
+    }
+  }
+
+  return reverseIndex;
 }
 
 function resolveImportPath(
@@ -976,20 +1005,21 @@ function resolveImportPath(
   const baseWithoutExtension = explicitExtension
     ? unresolved.slice(0, -explicitExtension.length)
     : unresolved;
+  const supportedExtensions = [...SUPPORTED_EXTENSIONS.keys()];
   const candidates = [
     unresolved,
-    ...[...SUPPORTED_EXTENSIONS.keys()].map(
-      (extension) => `${unresolved}${extension}`,
-    ),
-    ...[...SUPPORTED_EXTENSIONS.keys()].map(
-      (extension) => `${baseWithoutExtension}${extension}`,
-    ),
-    ...[...SUPPORTED_EXTENSIONS.keys()].map(
-      (extension) => `${unresolved}/index${extension}`,
-    ),
-    ...[...SUPPORTED_EXTENSIONS.keys()].map(
-      (extension) => `${baseWithoutExtension}/index${extension}`,
-    ),
+    ...supportedExtensions.map((extension) => `${unresolved}${extension}`),
+    ...(explicitExtension
+      ? supportedExtensions.map(
+          (extension) => `${baseWithoutExtension}${extension}`,
+        )
+      : []),
+    ...supportedExtensions.map((extension) => `${unresolved}/index${extension}`),
+    ...(explicitExtension
+      ? supportedExtensions.map(
+          (extension) => `${baseWithoutExtension}/index${extension}`,
+        )
+      : []),
   ];
 
   return candidates.find((candidate) => index.files[candidate]) ?? null;
