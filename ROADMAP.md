@@ -174,18 +174,17 @@ For all phases:
 - Agent stops calling tools after a few sessions (drift). Mitigation: this is the M1 risk re-emerging at scale; fix the instruction doc, not the server.
 - Measurements drift into pure subjectivity. Mitigation: the prediction-tracking practice keeps it honest.
 
-## Phase 4 — V2 candidates (post-M3)
+## Phase 4 — Behavior consistency (post-M3 reset)
 
-Ranked by expected value-per-week-of-work, lowest scope first. Pick **one** to start, based on M3's biggest pain.
+M3 validated the core thesis, but the next constraint is graph quality, not visuals. The user explicitly parked visual work until the agent behavior is consistent and the graph remains codebase-scoped.
 
-
-| Rank | Candidate                                           | Estimate  | When to pick it                                                  |
-| ---- | --------------------------------------------------- | --------- | ---------------------------------------------------------------- |
-| 1    | VS Code panel (visible graph for humans)            | 3–4 weeks | If the graph is good but invisible — humans never look at it     |
-| 2    | Embeddings-based retrieval                          | 1 week    | If `query_graph` keeps missing relevant nodes                    |
-| 3    | Auto-approve / batched emit                         | 3–5 days  | If approval prompts in M2/M3 hurt UX badly                       |
-| 4    | Branch-safe operation (proper merge)                | 2 weeks   | When 2+ active devs share a graph and conflicts are real         |
-| 5    | Behavioral graph extraction (state machines, enums) | 4+ weeks  | The "cool demo" feature — last because it depends on 1–4 working |
+| Rank | Candidate                                           | Estimate | When to pick it                                           |
+| ---- | --------------------------------------------------- | -------- | --------------------------------------------------------- |
+| 1    | Codebase-only writeback guardrails                  | 1 week   | If agents risk polluting the graph with non-repo facts    |
+| 2    | Instruction lifecycle hardening                     | 3-5 days | If agents over-call tools or skip writeback on repo tasks |
+| 3    | Local source-index retrieval                        | 1 week   | If cold-start source discovery is slower than graph reuse  |
+| 4    | Branch-safe operation (proper merge)                | 2 weeks  | When 2+ active devs share a graph and conflicts are real  |
+| 5    | Behavioral graph extraction (state machines, enums) | 4+ weeks | Only after the basic memory loop is consistently trusted  |
 
 
 ## Cumulative timeline (single dev, half-time)
@@ -198,7 +197,7 @@ Ranked by expected value-per-week-of-work, lowest scope first. Pick **one** to s
 | Phase 2 — M2 server      | 3              | Week 5      |
 | Phase 3 — M3 trial       | 2              | Week 7      |
 | **V1 ships**             |                | **~Week 7** |
-| Phase 4 — One v2 feature | 1–4            | Week 8–11   |
+| Phase 4 — Behavior consistency | 1–3      | Week 8–10   |
 
 
 If full-time: roughly halve. If quarter-time: roughly double.
@@ -207,16 +206,16 @@ If full-time: roughly halve. If quarter-time: roughly double.
 
 Captured here so they're not forgotten and not accidentally added:
 
-- Web UI / VS Code extension.
+- Web UI / editor extension / visual graph viewer.
 - Live file-watcher updates as code changes (without agent involvement).
 - Branch / PR merge UX.
-- Embeddings-based retrieval.
+- Embeddings-based retrieval and hosted/vector providers.
 - HTTP/SSE MCP transport.
 - Multi-language behavioral extraction (state machines, enum invariants, data-flow tracing).
 - Multi-agent verification beyond Claude Code.
 - Hosted / cloud version.
 
-These resurface as v2 candidates ranked by what M3 reveals.
+These resurface only after the codebase-memory loop is consistently trusted.
 
 ## Single most important rule
 

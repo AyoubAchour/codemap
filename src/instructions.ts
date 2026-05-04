@@ -27,28 +27,46 @@
 // =============================================================
 
 export const SERVER_INSTRUCTIONS = `This server is a persistent knowledge graph of the open codebase
-(.codemap/graph.json). Treat it as memory — query before exploring,
-WRITE AFTER.
+(.codemap/graph.json), not general chat or web-research memory. Treat it as
+repo memory — query before exploring, WRITE AFTER.
+
+USE CODEMAP ONLY when the task touches this repository's code, docs,
+architecture, roadmap, tests, or build/release behavior. Do not call
+query_graph, get_node, emit_node, link, index_codebase, search_source,
+get_index_status, or clear_index for unrelated Q&A, general web research,
+installs, recommendations, or tasks not anchored to this repo.
+
+Source discovery tools are a rebuildable cache, not memory:
+index_codebase/search_source/get_index_status/clear_index may help find code
+faster, but they must not be treated as durable conclusions and must not
+auto-generate graph nodes.
 
 LIFECYCLE for any task that touches this codebase:
 
 1. START: set_active_topic("<short-slug>") — resets per-turn emit budget.
 2. BEFORE PLANNING: query_graph("<task description>"). If it returns
    nodes, read via get_node before re-deriving from source.
-3. AFTER EXPLORING: emit_node for what you learned. Cap = 5/turn.
+3. SOURCE DISCOVERY (optional): use search_source for source chunks after
+   query_graph; if the index is missing/stale, use index_codebase or
+   get_index_status. Inspect real files before relying on search results.
+4. AFTER EXPLORING: emit_node only for durable repo-local knowledge
+   anchored to real project files. Cap = 5/turn.
    PRIORITIZE: decision (non-obvious choices), invariant (must-hold
    properties), gotcha (silent failure modes). File / symbol / flow
    only if non-obvious.
-4. CAPTURE RELATIONSHIPS: link(from, to, kind). Kinds: imports, calls,
+5. CAPTURE RELATIONSHIPS: link(from, to, kind). Kinds: imports, calls,
    depends_on (catch-all), implements, replaces, contradicts,
    derived_from, mirrors.
 
-NEVER skip step 3 because the graph "looks empty after step 2" — that's
+NEVER skip step 4 because the graph "looks empty after step 2" — that's
 how it stays empty. The graph is only worth something if every agent
-that explores leaves something behind.
+that explores this repo leaves something behind. But if the task did not
+touch this repo, leave the graph alone.
 
 Emit at confidence >= 0.5 only. emit_node detects collisions and returns
-candidates; re-call with merge_with: <id> or force_new: { reason: "..." }.`;
+candidates; re-call with merge_with: <id> or force_new: { reason: "..." }.
+emit_node rejects sources that are empty, absolute, outside the repo, missing
+from disk, or external URLs.`;
 
 /**
  * Render the project-level AGENTS.md / CLAUDE.md preamble. Wraps
@@ -85,7 +103,8 @@ Without it, an agent that finds the codemap MCP server will treat it as a
 read-only cache: query → miss → fall back to direct exploration → done.
 That leaves the graph empty forever and the next agent re-discovers the
 same things from scratch. The point of codemap is the writeback loop in
-step 3 above. This file tells the agent that.
+step 3 above for real repository exploration. This file tells the agent both
+when to write and when to leave the graph alone.
 
 ## Regenerating
 

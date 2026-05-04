@@ -2,7 +2,7 @@
 
 Persistent knowledge graph of a codebase, built incrementally by AI agents during normal work, exposed via [MCP](https://modelcontextprotocol.io). Stored as a single JSON file in your repo (`.codemap/graph.json`) — diffable, reviewable, no database required.
 
-**Status:** v0.2.0 — **M3 closed** ([M3a retro](tasks/task-020-m3a-retrospective.md), [M3b retro](tasks/task-024-m3b-retrospective.md)): 9 turns × Codex Desktop × voice2work produced 27 nodes / 29 edges across 6 problem domains; 5 of 8 edge kinds + 4 of 9 node kinds exercised; 0 collisions. Codemap thesis validated. **Phase 4 starts**: pick one v2 candidate per [ROADMAP §Phase 4](ROADMAP.md). For agent handoff context see [`HANDOFF-CODEX.md`](HANDOFF-CODEX.md).
+**Status:** v0.2.2 — **M3 closed** ([M3a retro](tasks/task-020-m3a-retrospective.md), [M3b retro](tasks/task-024-m3b-retrospective.md)): 9 turns × Codex Desktop × voice2work produced 27 nodes / 29 edges across 6 problem domains; 5 of 8 edge kinds + 4 of 9 node kinds exercised; 0 collisions. Codemap thesis validated. **Current focus:** behavior consistency and codebase-only graph quality before any human-facing visual surface. For agent handoff context see [`HANDOFF-CODEX.md`](HANDOFF-CODEX.md).
 
 See [`V1_SPEC.md`](V1_SPEC.md) for what we're building, [`TECH_SPEC.md`](TECH_SPEC.md) for how, and [`ROADMAP.md`](ROADMAP.md) for when.
 
@@ -47,17 +47,23 @@ The server reads `process.cwd()` to find the repo root. Run Claude Code from you
 
 Any client that supports stdio MCP servers works. Point `command` at the `codemap-mcp` binary on your PATH.
 
-## The 5 MCP tools
+## MCP tools
 
 | Tool | When the agent calls it |
 | --- | --- |
 | `set_active_topic` | Start of a task. Tags subsequent emissions; resets the per-turn cap counter. |
-| `query_graph` | Find existing nodes relevant to a task description. Call this **before** planning. |
+| `query_graph` | Find existing nodes relevant to a codebase task description. Call this **before** planning repo work. |
 | `get_node` | Fetch a specific node + its incident edges by id or alias. |
-| `emit_node` | Add or merge a node. Capped at 5 per turn (per `V1_SPEC` §7.5) to prevent spam. Detects collisions with existing nodes via name/alias/source/tag similarity. |
+| `emit_node` | Add or merge a durable repo-local finding. Capped at 5 per turn (per `V1_SPEC` §7.5) to prevent spam. Requires real repo-relative source files and rejects empty, absolute, missing, escaping, or external URL anchors. Detects collisions with existing nodes via name/alias/source/tag similarity. |
 | `link` | Create or update an edge between two existing nodes. Idempotent on `(from, to, kind)`. |
+| `index_codebase` | Build the rebuildable local source index for this repo. Does not create graph nodes. |
+| `search_source` | Search indexed source chunks for relevant code before inspecting files directly. |
+| `get_index_status` | Check whether the local source index exists and whether indexed files look fresh. |
+| `clear_index` | Delete the rebuildable source-index cache without touching `.codemap/graph.json`. |
 
 Edge kinds (V1_SPEC §6.2): `imports`, `calls`, `depends_on`, `implements`, `replaces`, `contradicts`, `derived_from`, `mirrors`.
+
+The source index is a disposable cache at `.codemap/index/source.json`. It is separate from the curated graph: use it for cold-start source discovery, then inspect files and emit only durable decisions, invariants, gotchas, and relationships.
 
 ## CLI
 
@@ -70,6 +76,10 @@ codemap correct <id> --summary "..."  # Override fields (bypasses agent merge lo
 codemap deprecate <id> --reason "..." # Mark a node deprecated
 codemap validate                      # Dry-run validator (exit 0 clean / 1 warnings / 2 schema-invalid)
 codemap rollup                        # Compute the metrics weekly rollup
+codemap scan                          # Build the local source index cache
+codemap search-source "auth guard"    # Search indexed source chunks
+codemap index-status                  # Report source-index freshness
+codemap clear-index                   # Delete the rebuildable source index
 codemap --help                        # Full reference
 ```
 
@@ -90,6 +100,8 @@ codemap init --force   # overwrite existing files (e.g. after upgrading codemap-
 ```
 
 The generated file mirrors `src/instructions.ts` — single source of truth. To regenerate after a codemap-mcp upgrade: `codemap init --force`.
+
+Codemap is intentionally **not** general conversation memory. Agents should use it only when the request touches the current repository's code, docs, architecture, roadmap, tests, or build/release behavior. General Q&A, web research, install help, recommendations, and unrelated user questions should leave `.codemap/graph.json` untouched.
 
 ## Telemetry
 

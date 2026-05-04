@@ -104,12 +104,14 @@ Maintained manually. Update status as tasks land.
 | 022 | emit_node tag-hygiene + timestamp-guidance (v0.2.0, bundled with task-021) | done | M3 / Sprint 3b → v0.2.0 | [task-022-tag-timestamp-hygiene.md](task-022-tag-timestamp-hygiene.md) |
 | 023 | M3b prompt set + trial v5 isolation (M3b-1/2/3 done; M3b-4 deferred per user judgment) | done (partial) | M3 / Sprint 3b | [task-023-m3b-prompt-set.md](task-023-m3b-prompt-set.md) |
 | 024 | M3b retrospective (3 prompts on voice2work; M3 substantively done; drives v0.3) | done | M3 / Sprint 3b | [task-024-m3b-retrospective.md](task-024-m3b-retrospective.md) |
+| 027 | Codebase-scoped writeback + visual reset | done | Phase 4 / behavior consistency | [task-027-codebase-scoped-writeback.md](task-027-codebase-scoped-writeback.md) |
+| 028 | Local source index for code discovery | done | Phase 4 / behavior consistency | [task-028-local-source-index.md](task-028-local-source-index.md) |
 
 ---
 
-## M3 closed — Phase 4 begins
+## M3 closed — Phase 4 reset
 
-**Read [`../HANDOFF-CODEX.md`](../HANDOFF-CODEX.md) for the full handoff.** Phase 4 picks ONE v2 candidate from [ROADMAP §Phase 4](../ROADMAP.md). Default recommendation (per M3 pain signals): **VS Code panel** (visible graph for humans). Awaiting user pick before drafting `task-025`.
+**Read [`../HANDOFF-CODEX.md`](../HANDOFF-CODEX.md) for the full handoff.** Visual graph work is parked until Codemap's behavior is consistent. The current priority is codebase-scoped writeback: agents should use the graph for real repo work, and leave it untouched for unrelated Q&A, web research, installs, and recommendations.
 
 
 ## Conventions
@@ -118,4 +120,3 @@ Maintained manually. Update status as tasks land.
 - If a task balloons past its estimate by 2×, stop and split it.
 - Mark `done` only when **all** exit criteria are checked. If something slips, create a follow-up task rather than declare partial done.
 - Tasks reference specs by section number, not by quoting them. Specs are the source of truth; tasks describe execution.
-

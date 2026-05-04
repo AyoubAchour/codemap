@@ -2,19 +2,10 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { lock } from "proper-lockfile";
 
-import { GraphFileSchema, edgeKey } from "./schema.js";
-import type {
-  Edge,
-  EdgeKind,
-  GraphFile,
-  Node,
-  StoredNode,
-} from "./types.js";
-import {
-  applyRepairs,
-  validate,
-  type ValidationResult,
-} from "./validator.js";
+import { edgeKey, GraphFileSchema, parseEdgeKey } from "./schema.js";
+import type { Edge, EdgeKind, GraphFile, Node, StoredNode } from "./types.js";
+import { ensureSeedFile } from "./util/lock.js";
+import { applyRepairs, type ValidationResult, validate } from "./validator.js";
 
 // =============================================================
 // GraphStore — persistence + read/write APIs over .codemap/graph.json
@@ -189,18 +180,9 @@ export class GraphStore {
     const nodes: Node[] = top.map((s) => ({ id: s.id, ...s.node }));
     const edges: Edge[] = [];
     for (const [key, value] of Object.entries(this.data.edges)) {
-      // Parse from the right so the kind suffix is unambiguous even if a node
-      // id ever contained '|'. The schema forbids '|' in ids, so this is
-      // belt-and-suspenders defense — a manual edit that bypasses validation
-      // shouldn't silently drop an edge.
-      const lastBar = key.lastIndexOf("|");
-      if (lastBar <= 0) continue;
-      const secondLastBar = key.lastIndexOf("|", lastBar - 1);
-      if (secondLastBar <= 0) continue;
-      const from = key.slice(0, secondLastBar);
-      const to = key.slice(secondLastBar + 1, lastBar);
-      const kind = key.slice(lastBar + 1) as EdgeKind;
-      if (from.length === 0 || to.length === 0) continue;
+      const parsed = parseEdgeKey(key);
+      if (!parsed) continue;
+      const { from, to, kind } = parsed;
       if (topIds.has(from) && topIds.has(to)) {
         const edge: Edge = { from, to, kind };
         if (value.note !== undefined) {
@@ -236,7 +218,9 @@ export class GraphStore {
     const { id: _id, ...incoming } = node;
 
     if (existing) {
-      const mergedTags = Array.from(new Set([...existing.tags, ...incoming.tags]));
+      const mergedTags = Array.from(
+        new Set([...existing.tags, ...incoming.tags]),
+      );
       if (opts.activeTopic && !mergedTags.includes(opts.activeTopic)) {
         mergedTags.push(opts.activeTopic);
       }
@@ -308,10 +292,7 @@ export class GraphStore {
    *
    * `last_verified_at` defaults to now (the manual edit IS verification).
    */
-  overrideNode(
-    id: string,
-    patch: Partial<StoredNode>,
-  ): boolean {
+  overrideNode(id: string, patch: Partial<StoredNode>): boolean {
     const existing = this.data.nodes[id];
     if (!existing) return false;
     this.data.nodes[id] = {
@@ -327,30 +308,13 @@ export class GraphStore {
   // ===========================================================
 
   async save(): Promise<void> {
-    await fs.mkdir(path.dirname(this.path), { recursive: true });
-
-    // proper-lockfile requires the target file to exist. If this is the first save
-    // (no file yet), seed it with a minimal valid graph so lock() has something to
-    // attach to. Two concurrent first-saves *can* both observe ENOENT and both run
-    // the seed write — neither corrupts data because the seed content is throw-away
-    // (the lock-protected atomic rename below is what actually commits this
-    // process's data, regardless of which seed briefly landed first).
-    try {
-      await fs.access(this.path);
-    } catch {
-      const seed = JSON.stringify(
-        {
-          version: SCHEMA_VERSION,
-          created_at: this.data.created_at,
-          topics: {},
-          nodes: {},
-          edges: {},
-        },
-        null,
-        2,
-      );
-      await fs.writeFile(this.path, `${seed}\n`, "utf8");
-    }
+    await ensureSeedFile(this.path, {
+      version: SCHEMA_VERSION,
+      created_at: this.data.created_at,
+      topics: {},
+      nodes: {},
+      edges: {},
+    });
 
     const release = await lock(this.path, {
       retries: { retries: 5, minTimeout: 50, maxTimeout: 200 },

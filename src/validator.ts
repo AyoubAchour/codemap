@@ -1,3 +1,4 @@
+import { parseEdgeKey } from "./schema.js";
 import type { GraphFile } from "./types.js";
 
 // =============================================================
@@ -45,18 +46,22 @@ export function validate(graph: GraphFile): ValidationResult {
   //    EdgeKeySchema make this redundant for well-formed graphs, but
   //    a manual edit could in principle bypass them.
   for (const key of Object.keys(graph.edges)) {
-    const lastBar = key.lastIndexOf("|");
-    if (lastBar <= 0) continue;
-    const secondLastBar = key.lastIndexOf("|", lastBar - 1);
-    if (secondLastBar <= 0) continue;
-    const from = key.slice(0, secondLastBar);
-    const to = key.slice(secondLastBar + 1, lastBar);
-    if (from.length === 0 || to.length === 0) continue;
+    const parsed = parseEdgeKey(key);
+    if (!parsed) continue;
+    const { from, to } = parsed;
     if (!graph.nodes[from]) {
-      repairs.push({ kind: "dangling_edge", edgeKey: key, missingEndpoint: from });
+      repairs.push({
+        kind: "dangling_edge",
+        edgeKey: key,
+        missingEndpoint: from,
+      });
     }
     if (!graph.nodes[to]) {
-      repairs.push({ kind: "dangling_edge", edgeKey: key, missingEndpoint: to });
+      repairs.push({
+        kind: "dangling_edge",
+        edgeKey: key,
+        missingEndpoint: to,
+      });
     }
   }
 

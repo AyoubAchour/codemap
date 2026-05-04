@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { registerTools } from "../../src/index.js";
 import { SERVER_INSTRUCTIONS } from "../../src/instructions.js";
@@ -21,8 +22,28 @@ let tmpRoot: string;
 let server: McpServer;
 let client: Client;
 
+async function seedRepoFiles() {
+  const files = [
+    "src/x.ts",
+    "src/y.ts",
+    "src/messaging/twilio.ts",
+    "src/auth/distinct.ts",
+    "x.ts",
+    ...Array.from({ length: 6 }, (_value, i) => `src/cap-${i}.ts`),
+  ];
+
+  await Promise.all(
+    files.map(async (filePath) => {
+      const absolutePath = path.join(tmpRoot, filePath);
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+      await fs.writeFile(absolutePath, `// test source: ${filePath}\n`);
+    }),
+  );
+}
+
 beforeEach(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codemap-mcp-"));
+  await seedRepoFiles();
   _resetActiveTopic();
 
   // Mirror the production entry (bin/codemap-mcp.ts) — same options shape.
@@ -59,6 +80,17 @@ function parseToolText(result: { content: { type: string; text?: string }[] }) {
     throw new Error("expected first content item to be text");
   }
   return JSON.parse(first.text);
+}
+
+async function repoFileHash(filePath: string): Promise<string> {
+  const content = await fs.readFile(path.join(tmpRoot, filePath));
+  return `sha256:${createHash("sha256").update(content).digest("hex")}`;
+}
+
+function seededFileHash(filePath: string): string {
+  return `sha256:${createHash("sha256")
+    .update(`// test source: ${filePath}\n`)
+    .digest("hex")}`;
 }
 
 // =============================================================
@@ -99,9 +131,7 @@ describe("MCP server — initialize / instructions", () => {
     // query miss → fall back to direct exploration → don't write back.
     const instructions = client.getInstructions() ?? "";
     expect(instructions).toContain("WRITE AFTER");
-    expect(instructions.toLowerCase()).toContain(
-      "leaves something behind",
-    );
+    expect(instructions.toLowerCase()).toContain("leaves something behind");
   });
 });
 
@@ -110,14 +140,18 @@ describe("MCP server — initialize / instructions", () => {
 // =============================================================
 
 describe("MCP server — tools/list", () => {
-  test("registers all 5 V1_SPEC §7 tools", async () => {
+  test("registers graph-memory and source-index tools", async () => {
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      "clear_index",
       "emit_node",
+      "get_index_status",
       "get_node",
+      "index_codebase",
       "link",
       "query_graph",
+      "search_source",
       "set_active_topic",
     ]);
   });
@@ -139,9 +173,11 @@ describe("MCP server — tools/list", () => {
     const result = await client.listTools();
     const emit = result.tools.find((t) => t.name === "emit_node");
     expect(emit).toBeDefined();
-    const props = (emit!.inputSchema as {
-      properties: Record<string, { description?: string }>;
-    }).properties;
+    const props = (
+      emit!.inputSchema as {
+        properties: Record<string, { description?: string }>;
+      }
+    ).properties;
 
     // F4 — tags description must steer away from kind names + meta-categories
     const tagsDesc = props.tags?.description ?? "";
@@ -153,6 +189,14 @@ describe("MCP server — tools/list", () => {
     const tsDesc = props.last_verified_at?.description ?? "";
     expect(tsDesc).toContain("Current");
     expect(tsDesc).toContain("not a round-number");
+
+    // Scope — emit_node must remain codebase-memory, not general chat memory.
+    const toolDesc = emit!.description ?? "";
+    expect(toolDesc).toContain("codebase-relevant");
+    expect(toolDesc).toContain("never for general Q&A");
+    const sourcesDesc = props.sources?.description ?? "";
+    expect(sourcesDesc).toContain("Real repo-relative files");
+    expect(sourcesDesc).toContain("external URLs");
   });
 
   // task-019 / v0.1.2: pin emit_node's input schema shape to OpenAI-class
@@ -163,10 +207,7 @@ describe("MCP server — tools/list", () => {
     const emit = result.tools.find((t) => t.name === "emit_node");
     expect(emit).toBeDefined();
     const schema = emit!.inputSchema as {
-      properties: Record<
-        string,
-        { pattern?: string; items?: unknown }
-      >;
+      properties: Record<string, { pattern?: string; items?: unknown }>;
     };
 
     // 1. last_verified_at: no `pattern` regex (Zod's z.iso.datetime() emits
@@ -188,6 +229,113 @@ describe("MCP server — tools/list", () => {
 });
 
 // =============================================================
+// source index tools — rebuildable discovery cache
+// =============================================================
+
+describe("MCP server — source index tools", () => {
+  test("index_codebase builds a source index and search_source returns chunks", async () => {
+    await fs.writeFile(
+      path.join(tmpRoot, "src/auth/distinct.ts"),
+      [
+        "export interface AuthenticatedActor { id: string }",
+        "export function requireActiveUser(token: string): AuthenticatedActor {",
+        "  return { id: token };",
+        "}",
+      ].join("\n"),
+    );
+
+    const indexResult = await client.callTool({
+      name: "index_codebase",
+      arguments: {},
+    });
+    const indexed = parseToolText(indexResult as never);
+    expect(indexed.ok).toBe(true);
+    expect(indexed.stats.files_indexed).toBeGreaterThan(0);
+
+    const searchResult = await client.callTool({
+      name: "search_source",
+      arguments: { query: "active user auth", limit: 2 },
+    });
+    const searched = parseToolText(searchResult as never);
+    expect(searched.ok).toBe(true);
+    expect(searched.results[0].file_path).toBe("src/auth/distinct.ts");
+    expect(searched.results[0].symbols.map((s: { name: string }) => s.name)).toContain(
+      "requireActiveUser",
+    );
+  });
+
+  test("get_index_status reports missing and fresh index states", async () => {
+    const before = parseToolText(
+      (await client.callTool({
+        name: "get_index_status",
+        arguments: {},
+      })) as never,
+    );
+    expect(before.indexed).toBe(false);
+
+    await client.callTool({ name: "index_codebase", arguments: {} });
+    const after = parseToolText(
+      (await client.callTool({
+        name: "get_index_status",
+        arguments: {},
+      })) as never,
+    );
+    expect(after.indexed).toBe(true);
+    expect(after.fresh).toBe(true);
+  });
+
+  test("clear_index removes the source cache without touching graph memory", async () => {
+    await client.callTool({ name: "index_codebase", arguments: {} });
+    await client.callTool({
+      name: "set_active_topic",
+      arguments: { name: "source-index-test" },
+    });
+    await client.callTool({
+      name: "emit_node",
+      arguments: {
+        id: "source/test",
+        kind: "invariant",
+        name: "Source test",
+        summary: "Graph memory is separate from source index cache.",
+        sources: [
+          {
+            file_path: "src/x.ts",
+            line_range: [1, 1],
+            content_hash: await repoFileHash("src/x.ts"),
+          },
+        ],
+        tags: ["source"],
+        aliases: [],
+        status: "active",
+        confidence: 0.9,
+        last_verified_at: new Date().toISOString(),
+      },
+    });
+
+    const clear = parseToolText(
+      (await client.callTool({ name: "clear_index", arguments: {} })) as never,
+    );
+    expect(clear.ok).toBe(true);
+
+    const status = parseToolText(
+      (await client.callTool({
+        name: "get_index_status",
+        arguments: {},
+      })) as never,
+    );
+    expect(status.indexed).toBe(false);
+
+    const graphResult = parseToolText(
+      (await client.callTool({
+        name: "get_node",
+        arguments: { id: "source/test" },
+      })) as never,
+    );
+    expect(graphResult.id).toBe("source/test");
+  });
+});
+
+// =============================================================
 // query_graph + get_node — read paths
 // =============================================================
 
@@ -200,6 +348,84 @@ describe("MCP server — read tools", () => {
     const parsed = parseToolText(r as never);
     expect(parsed.nodes).toEqual([]);
     expect(parsed.edges).toEqual([]);
+    expect(parsed.staleness).toEqual({
+      checked_sources: 0,
+      stale_sources: [],
+    });
+  });
+
+  test("query_graph flags stale source hashes by default", async () => {
+    const { GraphStore } = await import("../../src/graph.js");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode({
+      id: "stale/source",
+      kind: "gotcha",
+      name: "Stale source",
+      summary: "This node has an old hash.",
+      sources: [
+        {
+          file_path: "src/x.ts",
+          line_range: [1, 1],
+          content_hash: "sha256:old",
+        },
+      ],
+      tags: ["stale"],
+      aliases: [],
+      status: "active",
+      confidence: 0.9,
+      last_verified_at: "2026-04-28T00:00:00Z",
+    });
+    await store.save();
+
+    const r = await client.callTool({
+      name: "query_graph",
+      arguments: { question: "stale" },
+    });
+    const parsed = parseToolText(r as never);
+    expect(parsed.staleness.checked_sources).toBe(1);
+    expect(parsed.staleness.stale_sources).toEqual([
+      expect.objectContaining({
+        node_id: "stale/source",
+        file_path: "src/x.ts",
+        stored_hash: "sha256:old",
+        stale: true,
+        reason: "changed",
+      }),
+    ]);
+  });
+
+  test("query_graph reports fresh sources without stale entries", async () => {
+    const { GraphStore } = await import("../../src/graph.js");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode({
+      id: "fresh/source",
+      kind: "invariant",
+      name: "Fresh source",
+      summary: "This node has a current hash.",
+      sources: [
+        {
+          file_path: "src/x.ts",
+          line_range: [1, 1],
+          content_hash: await repoFileHash("src/x.ts"),
+        },
+      ],
+      tags: ["fresh"],
+      aliases: [],
+      status: "active",
+      confidence: 0.9,
+      last_verified_at: "2026-04-28T00:00:00Z",
+    });
+    await store.save();
+
+    const r = await client.callTool({
+      name: "query_graph",
+      arguments: { question: "fresh" },
+    });
+    const parsed = parseToolText(r as never);
+    expect(parsed.staleness).toEqual({
+      checked_sources: 1,
+      stale_sources: [],
+    });
   });
 
   test("get_node returns null for unknown id", async () => {
@@ -293,11 +519,21 @@ describe("MCP server — link", () => {
     await seedTwoNodes();
     await client.callTool({
       name: "link",
-      arguments: { from: "auth/a", to: "auth/b", kind: "depends_on", note: "first" },
+      arguments: {
+        from: "auth/a",
+        to: "auth/b",
+        kind: "depends_on",
+        note: "first",
+      },
     });
     await client.callTool({
       name: "link",
-      arguments: { from: "auth/a", to: "auth/b", kind: "depends_on", note: "second" },
+      arguments: {
+        from: "auth/a",
+        to: "auth/b",
+        kind: "depends_on",
+        note: "second",
+      },
     });
 
     const verify = await loadGraphDirect();
@@ -454,7 +690,10 @@ describe("MCP server — link endpoint validation", () => {
     })) as {
       isError?: boolean;
       content: { type: string; text?: string }[];
-      structuredContent?: { ok: boolean; error?: { code: string; message: string } };
+      structuredContent?: {
+        ok: boolean;
+        error?: { code: string; message: string };
+      };
     };
     expect(r.isError).toBe(true);
     expect(r.structuredContent?.error?.code).toBe("NODE_NOT_FOUND");
@@ -487,9 +726,7 @@ describe("MCP server — link endpoint validation", () => {
     const { GraphStore } = await import("../../src/graph.js");
     const verify = await GraphStore.load(tmpRoot);
     expect(verify._data().edges["auth/a|auth/b|depends_on"]).toBeDefined();
-    expect(
-      verify._data().edges["alias-a|auth/b|depends_on"],
-    ).toBeUndefined();
+    expect(verify._data().edges["alias-a|auth/b|depends_on"]).toBeUndefined();
   });
 });
 
@@ -542,8 +779,7 @@ describe("MCP server — emit_node", () => {
         {
           file_path: "src/x.ts",
           line_range: [1, 10] as [number, number],
-          content_hash:
-            "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          content_hash: seededFileHash("src/x.ts"),
         },
       ],
       tags: [],
@@ -566,7 +802,10 @@ describe("MCP server — emit_node", () => {
       ["date-only string", "2026-05-01"],
       ["locale-style string", "May 1 2026 12:00:00 GMT"],
       ["missing trailing Z", "2026-05-01T12:00:00"],
-      ["numeric offset (z.iso.datetime default rejects)", "2026-05-01T12:00:00+05:00"],
+      [
+        "numeric offset (z.iso.datetime default rejects)",
+        "2026-05-01T12:00:00+05:00",
+      ],
       ["calendar-impossible date", "2026-13-45T12:00:00Z"],
       ["empty string", ""],
       ["garbage", "not a date"],
@@ -614,6 +853,140 @@ describe("MCP server — emit_node", () => {
       expect(r.isError).toBeFalsy();
       expect(r.structuredContent?.ok).toBe(true);
     });
+
+    test("rejects timestamps more than five minutes in the future", async () => {
+      await client.callTool({
+        name: "set_active_topic",
+        arguments: { name: "ts-test" },
+      });
+      const future = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      const r = (await client.callTool({
+        name: "emit_node",
+        arguments: emitArgs({
+          id: "ts/future",
+          name: "future timestamp",
+          last_verified_at: future,
+        }),
+      })) as {
+        isError?: boolean;
+        structuredContent?: {
+          ok: boolean;
+          error?: { code: string; message: string };
+        };
+      };
+      expect(r.isError).toBe(true);
+      expect(r.structuredContent?.ok).toBe(false);
+      expect(r.structuredContent?.error?.code).toBe("INVALID_TIMESTAMP");
+      expect(r.structuredContent?.error?.message).toContain("future");
+    });
+  });
+
+  describe("source runtime validation", () => {
+    test.each([
+      ["empty source list", []],
+      ["absolute path", "ABSOLUTE_SOURCE"],
+      [
+        "path escaping repo root",
+        [
+          {
+            file_path: "../outside.ts",
+            line_range: [1, 1] as [number, number],
+            content_hash: "sha256:placeholder",
+          },
+        ],
+      ],
+      [
+        "missing repo-relative file",
+        [
+          {
+            file_path: "src/missing.ts",
+            line_range: [1, 1] as [number, number],
+            content_hash: "sha256:placeholder",
+          },
+        ],
+      ],
+      [
+        "external documentation URL",
+        [
+          {
+            file_path: "https://nextjs.org/docs",
+            line_range: [1, 1] as [number, number],
+            content_hash: "sha256:placeholder",
+          },
+        ],
+      ],
+    ])("rejects %s with INVALID_SOURCE", async (_label, sources) => {
+      await client.callTool({
+        name: "set_active_topic",
+        arguments: { name: "source-test" },
+      });
+      const sourceArgs =
+        sources === "ABSOLUTE_SOURCE"
+          ? [
+              {
+                file_path: path.join(tmpRoot, "src/x.ts"),
+                line_range: [1, 1] as [number, number],
+                content_hash: "sha256:placeholder",
+              },
+            ]
+          : sources;
+      const r = (await client.callTool({
+        name: "emit_node",
+        arguments: emitArgs({
+          id: "source/bad",
+          name: "Bad source",
+          sources: sourceArgs,
+        }),
+      })) as {
+        isError?: boolean;
+        structuredContent?: { ok: boolean; error?: { code: string } };
+      };
+
+      expect(r.isError).toBe(true);
+      expect(r.structuredContent?.ok).toBe(false);
+      expect(r.structuredContent?.error?.code).toBe("INVALID_SOURCE");
+
+      const { GraphStore } = await import("../../src/graph.js");
+      const verify = await GraphStore.load(tmpRoot);
+      expect(verify.getNode("source/bad")).toBeNull();
+    });
+
+    test("rejects source hashes that do not match current file content", async () => {
+      await client.callTool({
+        name: "set_active_topic",
+        arguments: { name: "source-test" },
+      });
+      const r = (await client.callTool({
+        name: "emit_node",
+        arguments: emitArgs({
+          id: "source/hash-mismatch",
+          name: "Hash mismatch",
+          sources: [
+            {
+              file_path: "src/x.ts",
+              line_range: [1, 1],
+              content_hash:
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            },
+          ],
+        }),
+      })) as {
+        isError?: boolean;
+        structuredContent?: {
+          ok: boolean;
+          error?: { code: string; message: string };
+        };
+      };
+
+      expect(r.isError).toBe(true);
+      expect(r.structuredContent?.ok).toBe(false);
+      expect(r.structuredContent?.error?.code).toBe("INVALID_SOURCE");
+      expect(r.structuredContent?.error?.message).toContain("content_hash");
+
+      const { GraphStore } = await import("../../src/graph.js");
+      const verify = await GraphStore.load(tmpRoot);
+      expect(verify.getNode("source/hash-mismatch")).toBeNull();
+    });
   });
 
   test("creates a fresh node and registers the active topic in tags", async () => {
@@ -627,7 +1000,9 @@ describe("MCP server — emit_node", () => {
         id: "auth/middleware",
         name: "Auth middleware",
       }),
-    })) as { structuredContent?: { ok: boolean; createdId: string; merged: boolean } };
+    })) as {
+      structuredContent?: { ok: boolean; createdId: string; merged: boolean };
+    };
     expect(r.structuredContent?.ok).toBe(true);
     expect(r.structuredContent?.merged).toBe(false);
     expect(r.structuredContent?.createdId).toBe("auth/middleware");
@@ -674,7 +1049,7 @@ describe("MCP server — emit_node", () => {
           {
             file_path: "src/messaging/twilio.ts",
             line_range: [42, 80],
-            content_hash: "sha256:placeholder",
+            content_hash: seededFileHash("src/messaging/twilio.ts"),
           },
         ],
         tags: ["messaging"],
@@ -684,7 +1059,13 @@ describe("MCP server — emit_node", () => {
       structuredContent?: {
         ok: boolean;
         collision: boolean;
-        candidates: { id: string; similarity: number }[];
+        candidates: {
+          id: string;
+          kind: string;
+          name: string;
+          summary: string;
+          similarity: number;
+        }[];
         next_action: string;
       };
     };
@@ -694,6 +1075,14 @@ describe("MCP server — emit_node", () => {
     expect(r.structuredContent?.collision).toBe(true);
     expect(r.structuredContent?.candidates.map((c) => c.id)).toContain(
       "messaging/sms-sender",
+    );
+    expect(r.structuredContent?.candidates[0]).toEqual(
+      expect.objectContaining({
+        id: "messaging/sms-sender",
+        kind: "integration",
+        name: "SMS sender via Twilio",
+        summary: "Sends SMS via Twilio.",
+      }),
     );
     expect(r.structuredContent?.next_action).toContain("merge_with");
 
@@ -735,7 +1124,9 @@ describe("MCP server — emit_node", () => {
         confidence: 0.95,
         merge_with: "auth/middleware",
       }),
-    })) as { structuredContent?: { ok: boolean; merged: boolean; createdId: string } };
+    })) as {
+      structuredContent?: { ok: boolean; merged: boolean; createdId: string };
+    };
     expect(r.structuredContent?.ok).toBe(true);
     expect(r.structuredContent?.merged).toBe(true);
     expect(r.structuredContent?.createdId).toBe("auth/middleware");
@@ -799,7 +1190,7 @@ describe("MCP server — emit_node", () => {
           {
             file_path: "src/messaging/twilio.ts",
             line_range: [42, 80],
-            content_hash: "sha256:placeholder",
+            content_hash: seededFileHash("src/messaging/twilio.ts"),
           },
         ],
         tags: ["messaging"],
@@ -860,7 +1251,7 @@ describe("MCP server — per-turn emission cap", () => {
         {
           file_path: `src/cap-${i}.ts`,
           line_range: [1, 10] as [number, number],
-          content_hash: "sha256:placeholder",
+          content_hash: seededFileHash(`src/cap-${i}.ts`),
         },
       ],
       tags: [`cap-${i}`],
@@ -966,7 +1357,7 @@ describe("MCP server — per-turn emission cap", () => {
             {
               file_path: "src/messaging/twilio.ts",
               line_range: [42, 80],
-              content_hash: "sha256:placeholder",
+              content_hash: seededFileHash("src/messaging/twilio.ts"),
             },
           ],
           tags: ["messaging"],
@@ -989,7 +1380,7 @@ describe("MCP server — per-turn emission cap", () => {
           {
             file_path: "src/auth/distinct.ts",
             line_range: [1, 10],
-            content_hash: "sha256:placeholder",
+            content_hash: seededFileHash("src/auth/distinct.ts"),
           },
         ],
         tags: ["auth"],
@@ -1030,7 +1421,7 @@ describe("MCP server — metrics wiring", () => {
           {
             file_path: "src/x.ts",
             line_range: [1, 10],
-            content_hash: "sha256:placeholder",
+            content_hash: seededFileHash("src/x.ts"),
           },
         ],
         tags: [],
@@ -1050,7 +1441,7 @@ describe("MCP server — metrics wiring", () => {
           {
             file_path: "src/y.ts",
             line_range: [1, 10],
-            content_hash: "sha256:placeholder",
+            content_hash: seededFileHash("src/y.ts"),
           },
         ],
         tags: [],

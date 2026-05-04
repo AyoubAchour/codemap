@@ -4,12 +4,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import {
-  MetricsStore,
   computeRollupStats,
-  isTelemetryDisabled,
   isoWeekOf,
-  recordMetric,
+  isTelemetryDisabled,
+  MetricsStore,
   type PerTurnEntry,
+  recordMetric,
 } from "../../src/metrics.js";
 
 let tmpRoot: string;
@@ -146,6 +146,7 @@ describe("MetricsStore record*", () => {
     m.recordCollision();
     m.recordCap();
     m.recordLink();
+    m.recordStaleRecheck(3);
     m.recordValidatorRepairs(2);
     const head = m._data().per_turn[0]!;
     expect(head.queries).toBe(2);
@@ -154,6 +155,7 @@ describe("MetricsStore record*", () => {
     expect(head.collisions_detected).toBe(1);
     expect(head.cap_hit).toBe(true);
     expect(head.links_made).toBe(1);
+    expect(head.stale_rechecks).toBe(3);
     expect(head.validator_repairs).toBe(2);
   });
   test("record before any startTurn is a no-op", async () => {

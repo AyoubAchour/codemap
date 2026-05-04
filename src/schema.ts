@@ -16,9 +16,13 @@ export const SourceRefSchema = z.object({
   line_range: z
     .array(z.number().int().min(1))
     .length(2)
-    .refine(([start, end]) => start! <= end!, {
-      message: "line_range start must be <= end",
-    }),
+    .refine(
+      ([start, end]) =>
+        start !== undefined && end !== undefined && start <= end,
+      {
+        message: "line_range start must be <= end",
+      },
+    ),
   content_hash: z.string().regex(/^sha256:/),
 });
 
@@ -41,7 +45,7 @@ export const NodeStatusSchema = z.enum(["active", "deprecated"]);
  * separator in `GraphFile.edges`). Slugs like `auth/middleware` are the
  * canonical form per V1_SPEC §6.1.
  */
-const NodeIdSchema = z
+export const NodeIdSchema = z
   .string()
   .min(1)
   .regex(/^[^|]+$/, "node id cannot contain '|'");
@@ -90,25 +94,40 @@ export const StoredNodeSchema = NodeSchema.omit({ id: true });
  */
 const VALID_EDGE_KINDS = new Set<string>(EdgeKindSchema.options);
 
-const EdgeKeySchema = z.string().refine(
-  (key) => {
-    const parts = key.split("|");
-    if (parts.length !== 3) return false;
-    const [from, to, kind] = parts;
-    return (
-      typeof from === "string" &&
-      from.length > 0 &&
-      typeof to === "string" &&
-      to.length > 0 &&
-      typeof kind === "string" &&
-      VALID_EDGE_KINDS.has(kind)
-    );
-  },
-  {
-    message:
-      "edge key must be 'from|to|<kind>' with non-empty from/to and kind in EdgeKindSchema",
-  },
-);
+export interface ParsedEdgeKey {
+  from: string;
+  to: string;
+  kind: z.infer<typeof EdgeKindSchema>;
+}
+
+/**
+ * Parse the canonical `<from>|<to>|<kind>` edge-key string.
+ * Uses right-to-left splitting so the edge-kind suffix is authoritative.
+ */
+export function parseEdgeKey(key: string): ParsedEdgeKey | null {
+  const lastBar = key.lastIndexOf("|");
+  if (lastBar <= 0) return null;
+  const secondLastBar = key.lastIndexOf("|", lastBar - 1);
+  if (secondLastBar <= 0) return null;
+
+  const from = key.slice(0, secondLastBar);
+  const to = key.slice(secondLastBar + 1, lastBar);
+  const kind = key.slice(lastBar + 1);
+  if (
+    !NodeIdSchema.safeParse(from).success ||
+    !NodeIdSchema.safeParse(to).success ||
+    !VALID_EDGE_KINDS.has(kind)
+  ) {
+    return null;
+  }
+
+  return { from, to, kind: kind as z.infer<typeof EdgeKindSchema> };
+}
+
+const EdgeKeySchema = z.string().refine((key) => parseEdgeKey(key) !== null, {
+  message:
+    "edge key must be 'from|to|<kind>' with non-empty from/to and kind in EdgeKindSchema",
+});
 
 export const TopicSchema = z.object({
   created_at: z.iso.datetime(),

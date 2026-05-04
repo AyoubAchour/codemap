@@ -1,4 +1,4 @@
-# Handoff to Codex — Phase 4 starts here
+# Handoff to Codex — behavior-first pivot
 
 > **Read this first.** It's the single source of truth for "where the project is and what to do next." Everything else (specs, retros, tasks) is reachable from here.
 
@@ -9,51 +9,38 @@ A persistent knowledge graph of a codebase, built incrementally by AI agents dur
 Three docs are the real source of truth:
 - [`V1_SPEC.md`](V1_SPEC.md) — what we're building
 - [`TECH_SPEC.md`](TECH_SPEC.md) — how it works
-- [`ROADMAP.md`](ROADMAP.md) — milestones + Phase 4 candidate list
+- [`ROADMAP.md`](ROADMAP.md) — milestones + parked v2 candidates
 
 ## Where we are right now
 
-**M3 is closed.** PR #18 merged the wrap-up. Status:
+**M3 is closed, and Phase 4 has been reset.** PR #18 merged the wrap-up; a later visual-extension spike was removed so the project can focus on behavior consistency before any human-facing graph surface. Status:
 
 | | |
 | --- | --- |
-| Published | `codemap-mcp@0.2.0` on npm (https://www.npmjs.com/package/codemap-mcp) |
-| Releases shipped | 0.1.0 → 0.1.1 → 0.1.2 → 0.2.0 (4 versions, all on registry) |
-| MCP tools | 5 working: `set_active_topic`, `query_graph`, `get_node`, `emit_node`, `link` |
-| CLI subcommands | `init`, `show`, `correct`, `deprecate`, `validate`, `rollup` |
+| Published | `codemap-mcp@0.2.2` on npm (https://www.npmjs.com/package/codemap-mcp) |
+| Releases shipped | 0.1.0 → 0.1.1 → 0.1.2 → 0.2.0 → 0.2.1 → 0.2.2 |
+| MCP tools | Graph memory: `set_active_topic`, `query_graph`, `get_node`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index` |
+| CLI subcommands | `init`, `show`, `correct`, `deprecate`, `validate`, `rollup`, `scan`, `search-source`, `index-status`, `clear-index` |
 | M3 trial result | 9 turns × Codex Desktop × voice2work → 27 nodes / 29 edges across 6 problem domains, 5 of 8 edge kinds + 4 of 9 node kinds exercised. **Codemap thesis validated.** |
-| Test count | 254 / 254 pass |
+| Test suite | Run `bun test` before shipping; integration tests pin the MCP lifecycle contract |
 | CI | green on every PR; `publish-dryrun` job is the strict gate |
 
 **Read these two retros before doing anything** — they have the M3 ground truth + open findings:
 - [`tasks/task-020-m3a-retrospective.md`](tasks/task-020-m3a-retrospective.md) — the M3a retro (cold-start trial)
 - [`tasks/task-024-m3b-retrospective.md`](tasks/task-024-m3b-retrospective.md) — the M3b retro (warm-graph trial + decision-kind elicitation)
 
-## What's next: Phase 4
+## What's next: behavior consistency
 
-Per ROADMAP §"Phase 4 — V2 candidates (post-M3)", the playbook is **pick ONE v2 feature based on M3's biggest pain.** Five ranked candidates:
+The user explicitly parked visual work until Codemap's behavior is consistent. The current product priority is graph quality:
 
-| Rank | Candidate | Estimate | When to pick |
-| --- | --- | --- | --- |
-| 1 | **VS Code panel** (visible graph for humans) | 3-4 weeks | If the graph is good but invisible — humans never look at it |
-| 2 | **Embeddings-based retrieval** | 1 week | If `query_graph` keeps missing relevant nodes |
-| 3 | **Auto-approve / batched emit** | 3-5 days | If approval prompts hurt UX |
-| 4 | **Branch-safe operation** (proper merge) | 2 weeks | When 2+ active devs share a graph |
-| 5 | **Behavioral graph extraction** (state machines, enums) | 4+ weeks | The "cool demo" — depends on 1-4 working first |
+| Rank | Focus | Why |
+| --- | --- | --- |
+| 1 | **Codebase-only writeback** | The graph is valuable only if it captures durable repo knowledge, not arbitrary chat, external docs, or one-off research. |
+| 2 | **Instruction discipline** | Agents should query/write for repo tasks, but leave the graph alone for unrelated user questions. |
+| 3 | **Server-side guardrails** | MCP tools are model-controlled, so the server must reject writes that are not anchored to real repo files. |
+| 4 | **Dogfood on real code tasks** | Verify the graph stays useful across follow-up repo work before adding retrieval upgrades or UI. |
 
-### What M3 actually revealed about pain
-
-- **#1 (VS Code panel) — high signal.** Across the M3 trial, the only way the user saw the graph was through me running `jq` queries against `voice2work/.codemap/graph.json`. There's no humans-look-at-the-graph surface today. The graph is good (27 nodes, 5 edge kinds, semantically rich) but invisible.
-- **#2 (Embeddings) — low signal.** `query_graph` consistently returned 10 results (the default cap) when there were ≥10 candidates. Lexical retrieval is doing fine on a 27-node graph. May matter at 100+ nodes, but no current pain.
-- **#3 (Auto-approve) — no signal.** Agent emits autonomously inside Codex; no approval prompts observed.
-- **#4 (Branch-safe) — N/A.** Single-dev project so far.
-- **#5 (Behavioral extraction) — premature.**
-
-**The honest read: candidate #1 (VS Code panel) is the most valuable next move.** Candidate #3 might piggyback as a small addition. Candidate #2 is cheap but hasn't earned its slot from observed pain.
-
-### The Phase 4 decision is the user's call
-
-Don't pick unilaterally. **First action**: read the two retros above, surface a recommendation with reasoning, ask the user which v2 candidate to start. Then draft `tasks/task-025-<slug>.md` with the design decisions and execute.
+Visual surfaces, including editor extensions and graph viewers, are deferred. Re-open them only after codebase-scoped behavior feels trustworthy. A local source-index slice now exists for cold-start code discovery; keep it separate from graph memory and do not auto-generate graph nodes from it.
 
 ## How to work in this repo (the conventions)
 
@@ -87,7 +74,7 @@ The publish flow has 5 friction points the user hit. Capture this in any release
 This repo has its own `AGENTS.md` (auto-generated by `codemap init`). When working in codemap source:
 - The codemap MCP server is wired in `~/.codex/config.toml` under `[mcp_servers.codemap]`.
 - It launches with cwd = the project you have open. Open codemap → it reads/writes `codemap/.codemap/graph.json`.
-- Use the lifecycle in `AGENTS.md` for any codemap-source task: `set_active_topic` → `query_graph` → emit findings → link relationships.
+- Use the lifecycle in `AGENTS.md` for any codemap-source task: `set_active_topic` → `query_graph` → optional `search_source` → emit findings → link relationships.
 
 ## Critical files map
 
@@ -95,7 +82,7 @@ This repo has its own `AGENTS.md` (auto-generated by `codemap init`). When worki
 codemap/
 ├── V1_SPEC.md                     spec source of truth
 ├── TECH_SPEC.md                   technical decisions
-├── ROADMAP.md                     milestones + Phase 4 v2 candidates
+├── ROADMAP.md                     milestones + parked v2 candidates
 ├── README.md                      install + 5-tool overview + agent guidance
 ├── AGENTS.md                      codemap dogfood (auto-generated by `codemap init`)
 ├── HANDOFF-CODEX.md               this file
@@ -106,7 +93,7 @@ codemap/
 │   └── task-024-m3b-retrospective.md   ← read for M3 ground truth
 ├── src/
 │   ├── instructions.ts            SERVER_INSTRUCTIONS + agentsMdContent (single source of truth for lifecycle policy — used by both MCP server and `codemap init`)
-│   ├── tools/                     5 MCP tool implementations
+│   ├── tools/                     MCP tool implementations
 │   │   ├── _active_topic.ts       module-scoped per-turn state + cap counter
 │   │   ├── set_active_topic.ts
 │   │   ├── query_graph.ts
@@ -126,7 +113,7 @@ codemap/
 │   ├── validator.ts               validate() + applyRepairs() for graph integrity
 │   ├── collision.ts               weighted similarity for emit_node dedup
 │   ├── metrics.ts                 telemetry per-turn + weekly rollup
-│   └── index.ts                   registerTools() — wires the 5 MCP tools
+│   └── index.ts                   registerTools() — wires graph and source-index MCP tools
 ├── bin/
 │   ├── codemap.ts                 CLI entry (commander)
 │   └── codemap-mcp.ts             MCP stdio server entry (passes SERVER_INSTRUCTIONS to McpServer constructor)
@@ -147,6 +134,7 @@ codemap/
 | — | M3b-4 isolation test deferred | Optional 10-min experiment: does `codemap init`-generated AGENTS.md remain necessary, or does v0.2.0's improved Codex behavior alone suffice? Useful data point, not blocking. |
 | — | `codemap rollup` not yet run on real data | Should produce a sensible weekly aggregate from the voice2work 9-turn dataset. If it doesn't, that's a v0.2.x bug. |
 | — | M3c (cross-codebase) skipped | User chose to close M3 without it. task-011 is still drafted if anyone wants to revisit later. |
+| — | Visual graph work parked | Do not rebuild editor/viewer surfaces until behavior consistency and graph quality are explicitly accepted. |
 
 ## How to ship a release (recipe)
 
@@ -162,11 +150,9 @@ codemap/
 
 ## Your first three actions
 
-1. **Read the two retros** ([task-020](tasks/task-020-m3a-retrospective.md), [task-024](tasks/task-024-m3b-retrospective.md)) — 5 minutes, gives you the same M3 context I have.
-2. **Surface a Phase 4 recommendation to the user** — concise, with reasoning. Default recommendation: candidate #1 (VS Code panel) based on M3 pain signals.
-3. **Wait for the user to pick.** Then draft `tasks/task-025-<slug>.md` with the design decisions surfaced for review (don't implement before signoff). Same option-B cadence as M3.
-
-If the user has already picked the candidate by the time you read this, skip step 2 and go straight to drafting task-025.
+1. **Read this file plus the task index** so you start from the behavior-first pivot, not the removed visual-extension direction.
+2. **Use Codemap only for repo work**: set a topic, query before planning, emit only durable findings anchored to real project files, and link relationships.
+3. **Keep visual work parked** unless the user explicitly re-opens it after behavior consistency is good enough.
 
 ## Tone + working style notes (small but real)
 
@@ -176,4 +162,4 @@ If the user has already picked the candidate by the time you read this, skip ste
 - When you commit/PR/release: triple-check no agent attribution slips in. The user has called this out twice — don't be the third.
 - The user is a single-dev personal project owner with limited time. Prefer cheap experiments over expensive ones; prefer shipping over polishing.
 
-Good luck. The hard parts (M2 server, M3 validation) are done. Phase 4 is "what would I show off this graph for?" — go answer that.
+Good luck. The hard parts (M2 server, M3 validation) are done. The next hard part is quieter: keep the graph clean enough that future agents can trust it.

@@ -1,30 +1,104 @@
-import { z } from "zod";
+import { createHash } from "node:crypto";
+import { promises as fs } from "node:fs";
+import * as path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 
 import { findCollisions } from "../collision.js";
 import { GraphStore } from "../graph.js";
 import { recordMetric } from "../metrics.js";
 import {
+  NodeIdSchema,
   NodeKindSchema,
   NodeStatusSchema,
   SourceRefSchema,
 } from "../schema.js";
 import type { Node } from "../types.js";
 import {
-  PER_TURN_CAP,
   getActiveTopic,
   getEmissionsThisTurn,
   incrementEmissionsThisTurn,
+  PER_TURN_CAP,
 } from "./_active_topic.js";
 import type { ToolOptions } from "./query_graph.js";
 
-const NodeIdInput = z
-  .string()
-  .min(1)
-  .regex(/^[^|]+$/, "node id cannot contain '|'");
+const MAX_FUTURE_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
 
 function record(value: unknown): Record<string, unknown> {
   return value as unknown as Record<string, unknown>;
+}
+
+type SourceValidationResult = { ok: true } | { ok: false; message: string };
+
+function hashBuffer(value: Buffer): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+async function validateRepoSources(
+  repoRoot: string,
+  sources: Node["sources"],
+): Promise<SourceValidationResult> {
+  if (sources.length === 0) {
+    return {
+      ok: false,
+      message:
+        "emit_node requires at least one source anchored to a real repo file.",
+    };
+  }
+
+  const root = path.resolve(repoRoot);
+  for (const source of sources) {
+    const filePath = source.file_path;
+    const segments = filePath.split(/[\\/]+/).filter(Boolean);
+    if (
+      filePath.trim() === "" ||
+      path.isAbsolute(filePath) ||
+      filePath.includes("\0") ||
+      segments.includes("..")
+    ) {
+      return {
+        ok: false,
+        message: `source.file_path must be a safe repo-relative path, got: ${filePath}`,
+      };
+    }
+
+    const absolutePath = path.resolve(root, filePath);
+    const relativePath = path.relative(root, absolutePath);
+    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+      return {
+        ok: false,
+        message: `source.file_path escapes the repo root, got: ${filePath}`,
+      };
+    }
+
+    let stat: Awaited<ReturnType<typeof fs.stat>>;
+    try {
+      stat = await fs.stat(absolutePath);
+    } catch {
+      return {
+        ok: false,
+        message: `source.file_path must reference an existing repo file, got: ${filePath}`,
+      };
+    }
+
+    if (!stat.isFile()) {
+      return {
+        ok: false,
+        message: `source.file_path must reference a file, got: ${filePath}`,
+      };
+    }
+
+    const content = await fs.readFile(absolutePath);
+    const currentHash = hashBuffer(content);
+    if (source.content_hash !== currentHash) {
+      return {
+        ok: false,
+        message: `source.content_hash must match current file content for ${filePath}; expected ${currentHash}, got ${source.content_hash}`,
+      };
+    }
+  }
+
+  return { ok: true };
 }
 
 export function registerEmitNode(
@@ -36,9 +110,9 @@ export function registerEmitNode(
     {
       title: "Emit node",
       description:
-        "Capture a finding from your exploration as a node in the graph. **Call this after answering any question that required reading code** — capture 1-5 high-value findings (prioritize decision/invariant/gotcha). Server-side collision detection: similar existing nodes return as candidates instead of writing — re-call with merge_with: <id> (same concept) or force_new: { reason: '<short>' } (genuinely different). Per-turn cap of 5; reset by calling set_active_topic. Auto-tags with the active topic. Skipping this is the #1 way the graph stays empty.",
+        "Capture a codebase-relevant finding from repo exploration as a node in the graph. **Call this only after reading project code/docs and only for durable repo-local knowledge** — never for general Q&A, web research, installs, or external documentation. Sources must be real repo-relative files. Capture 1-5 high-value findings (prioritize decision/invariant/gotcha). Server-side collision detection: similar existing nodes return as candidates instead of writing — re-call with merge_with: <id> (same concept) or force_new: { reason: '<short>' } (genuinely different). Per-turn cap of 5; reset by calling set_active_topic. Auto-tags with the active topic.",
       inputSchema: {
-        id: NodeIdInput.describe(
+        id: NodeIdSchema.describe(
           "Stable slug, e.g. 'auth/middleware'. Must not contain '|'.",
         ),
         kind: NodeKindSchema.describe(
@@ -46,9 +120,11 @@ export function registerEmitNode(
         ),
         name: z.string().min(1),
         summary: z.string(),
-        sources: z.array(SourceRefSchema).describe(
-          "Files (with line ranges) where this node is anchored in the codebase.",
-        ),
+        sources: z
+          .array(SourceRefSchema)
+          .describe(
+            "Real repo-relative files (with line ranges) where this node is anchored. Required; external URLs, absolute paths, missing files, and non-codebase conversation sources are rejected.",
+          ),
         tags: z
           .array(z.string())
           .optional()
@@ -145,17 +221,34 @@ export function registerEmitNode(
       //   2. Number.isNaN(Date.parse(...)) catches calendar-impossible
       //      dates that pass the regex's loose \d{2} ranges (e.g.
       //      "2026-13-45T12:00:00Z").
-      const ISO_8601_UTC =
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$/;
+      //   3. A small future-skew guard catches fabricated round-number
+      //      timestamps while tolerating ordinary clock drift.
+      const ISO_8601_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$/;
+      const parsedTimestamp = Date.parse(args.last_verified_at);
       if (
         !ISO_8601_UTC.test(args.last_verified_at) ||
-        Number.isNaN(Date.parse(args.last_verified_at))
+        Number.isNaN(parsedTimestamp)
       ) {
         const result = {
           ok: false,
           error: {
             code: "INVALID_TIMESTAMP",
             message: `last_verified_at must be ISO 8601 UTC (e.g. 2026-05-01T12:00:00Z), got: ${args.last_verified_at}`,
+          },
+        };
+        return {
+          isError: true,
+          content: [{ type: "text", text: JSON.stringify(result) }],
+          structuredContent: record(result),
+        };
+      }
+      if (parsedTimestamp - Date.now() > MAX_FUTURE_TIMESTAMP_SKEW_MS) {
+        const result = {
+          ok: false,
+          error: {
+            code: "INVALID_TIMESTAMP",
+            message:
+              "last_verified_at appears to be in the future — use the current UTC time at emission.",
           },
         };
         return {
@@ -179,6 +272,29 @@ export function registerEmitNode(
         last_verified_at: args.last_verified_at,
       };
       const activeTopic = getActiveTopic() ?? undefined;
+
+      // ---------- 3b. Source anchoring ----------
+      // Codemap is codebase memory, not general conversation memory. The schema
+      // validates shape; this runtime guard validates that every source points
+      // at an actual file inside the current repo before any graph write.
+      const sourceValidation = await validateRepoSources(
+        options.repoRoot,
+        incoming.sources,
+      );
+      if (!sourceValidation.ok) {
+        const result = {
+          ok: false,
+          error: {
+            code: "INVALID_SOURCE",
+            message: sourceValidation.message,
+          },
+        };
+        return {
+          isError: true,
+          content: [{ type: "text", text: JSON.stringify(result) }],
+          structuredContent: record(result),
+        };
+      }
 
       const store = await GraphStore.load(options.repoRoot);
 
@@ -232,6 +348,8 @@ export function registerEmitNode(
             return {
               id: c.id,
               name: node?.name ?? c.id,
+              kind: node?.kind,
+              summary: node?.summary.slice(0, 200),
               similarity: c.similarity,
             };
           }),

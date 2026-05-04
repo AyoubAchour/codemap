@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { lock } from "proper-lockfile";
+import { ensureSeedFile } from "./util/lock.js";
 
 // =============================================================
 // Telemetry — local-only metrics for M3 measurability.
@@ -177,6 +178,12 @@ export class MetricsStore {
     e.links_made += 1;
   }
 
+  recordStaleRecheck(count: number): void {
+    const e = this.currentEntry();
+    if (!e) return;
+    e.stale_rechecks += count;
+  }
+
   recordValidatorRepairs(count: number): void {
     const e = this.currentEntry();
     if (!e) return;
@@ -201,21 +208,11 @@ export class MetricsStore {
   }
 
   async save(): Promise<void> {
-    await fs.mkdir(path.dirname(this.path), { recursive: true });
-
-    // Same lockfile-bootstrap pattern as GraphStore — `proper-lockfile`
-    // requires the file to exist before lock(). Seed with empty content
-    // on first save; subsequent atomic write replaces it.
-    try {
-      await fs.access(this.path);
-    } catch {
-      const seed = JSON.stringify(
-        { version: SCHEMA_VERSION, per_turn: [], rollup_weekly: [] },
-        null,
-        2,
-      );
-      await fs.writeFile(this.path, `${seed}\n`, "utf8");
-    }
+    await ensureSeedFile(this.path, {
+      version: SCHEMA_VERSION,
+      per_turn: [],
+      rollup_weekly: [],
+    });
 
     const release = await lock(this.path, {
       retries: { retries: 5, minTimeout: 50, maxTimeout: 200 },
@@ -223,7 +220,11 @@ export class MetricsStore {
     });
     try {
       const tmp = `${this.path}.tmp`;
-      await fs.writeFile(tmp, `${JSON.stringify(this.data, null, 2)}\n`, "utf8");
+      await fs.writeFile(
+        tmp,
+        `${JSON.stringify(this.data, null, 2)}\n`,
+        "utf8",
+      );
       await fs.rename(tmp, this.path);
     } finally {
       await release();
