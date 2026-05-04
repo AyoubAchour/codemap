@@ -2,7 +2,7 @@
 
 Persistent knowledge graph of a codebase, built incrementally by AI agents during normal work, exposed via [MCP](https://modelcontextprotocol.io). Stored as a single JSON file in your repo (`.codemap/graph.json`) — diffable, reviewable, no database required.
 
-**Status:** v0.2.2 — **M3 closed** ([M3a retro](tasks/task-020-m3a-retrospective.md), [M3b retro](tasks/task-024-m3b-retrospective.md)): 9 turns × Codex Desktop × voice2work produced 27 nodes / 29 edges across 6 problem domains; 5 of 8 edge kinds + 4 of 9 node kinds exercised; 0 collisions. Codemap thesis validated. **Current focus:** behavior consistency and codebase-only graph quality before any human-facing visual surface. For agent handoff context see [`HANDOFF-CODEX.md`](HANDOFF-CODEX.md).
+**Status:** v0.3.0 — **M3 closed** ([M3a retro](tasks/task-020-m3a-retrospective.md), [M3b retro](tasks/task-024-m3b-retrospective.md)): 9 turns on voice2work produced 27 nodes / 29 edges across 6 problem domains; 5 of 8 edge kinds + 4 of 9 node kinds exercised; 0 collisions. Codemap thesis validated. **Current focus:** behavior consistency, codebase-only graph quality, and local source discovery before any human-facing visual surface. For agent handoff context see [`HANDOFF-CODEX.md`](HANDOFF-CODEX.md).
 
 See [`V1_SPEC.md`](V1_SPEC.md) for what we're building, [`TECH_SPEC.md`](TECH_SPEC.md) for how, and [`ROADMAP.md`](ROADMAP.md) for when.
 
