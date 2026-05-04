@@ -142,10 +142,7 @@ export async function inspectGraphHealth(
         fresh,
       },
       validation,
-      staleness: {
-        checked_sources: staleness.checked_sources,
-        stale_sources: reportedStaleSources,
-      },
+      staleness,
       issues: {
         duplicate_aliases: duplicateAliases,
         stale_sources: reportedStaleSources,

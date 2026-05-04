@@ -150,6 +150,7 @@ describe("graph health", () => {
     expect(health.ok).toBe(true);
     if (!health.ok) throw new Error("expected ok");
     expect(health.summary.stale_sources).toBe(2);
+    expect(health.staleness.stale_sources).toHaveLength(2);
     expect(health.summary.reported_stale_sources).toBe(1);
     expect(health.issues.stale_sources).toHaveLength(1);
     expect(
