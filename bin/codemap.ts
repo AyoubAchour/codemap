@@ -29,10 +29,18 @@ import { validate } from "../src/cli/validate.js";
 import type { CommandResult, GlobalOptions } from "../src/cli/_types.js";
 import type { SourceRefreshMode } from "../src/query_context.js";
 
-function emit(result: CommandResult): void {
+class CommandCompleted extends Error {
+  constructor(readonly exitCode: number) {
+    super("COMMAND_COMPLETED");
+  }
+}
+
+function emit(result: CommandResult): never {
   if (result.stdout !== undefined) process.stdout.write(result.stdout);
   if (result.stderr !== undefined) process.stderr.write(result.stderr);
-  process.exitCode = result.exitCode;
+  // Keep `emit()` non-returning without `process.exit()`, which can truncate
+  // large piped stdout reports before the runtime flushes them.
+  throw new CommandCompleted(result.exitCode);
 }
 
 function repeatable(value: string, prev: string[] | undefined): string[] {
@@ -162,7 +170,7 @@ program
   )
   .option(
     "--issue-limit <n>",
-    "Maximum stale source entries to show in compact output.",
+    "Maximum stale source entries to show in compact output and JSON issue arrays.",
     parsePositiveInteger,
   )
   .option("--json", "Print the full structured health report.")
@@ -278,4 +286,12 @@ program
     emit(await clearIndex({ repoRoot: opts.repo }));
   });
 
-await program.parseAsync(process.argv);
+try {
+  await program.parseAsync(process.argv);
+} catch (err: unknown) {
+  if (err instanceof CommandCompleted) {
+    process.exitCode = err.exitCode;
+  } else {
+    throw err;
+  }
+}
