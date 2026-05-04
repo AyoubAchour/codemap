@@ -17,11 +17,11 @@ Three docs are the real source of truth:
 
 | | |
 | --- | --- |
-| Published | `codemap-mcp@0.2.2` on npm (https://www.npmjs.com/package/codemap-mcp) |
-| Releases shipped | 0.1.0 → 0.1.1 → 0.1.2 → 0.2.0 → 0.2.1 → 0.2.2 |
+| Published | `codemap-mcp@0.3.0` on npm (https://www.npmjs.com/package/codemap-mcp) |
+| Releases shipped | 0.1.0 → 0.1.1 → 0.1.2 → 0.2.0 → 0.2.1 → 0.2.2 → 0.3.0 |
 | MCP tools | Graph memory: `set_active_topic`, `query_graph`, `get_node`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index` |
 | CLI subcommands | `init`, `show`, `correct`, `deprecate`, `validate`, `rollup`, `scan`, `search-source`, `index-status`, `clear-index` |
-| M3 trial result | 9 turns × Codex Desktop × voice2work → 27 nodes / 29 edges across 6 problem domains, 5 of 8 edge kinds + 4 of 9 node kinds exercised. **Codemap thesis validated.** |
+| M3 trial result | 9 turns on voice2work → 27 nodes / 29 edges across 6 problem domains, 5 of 8 edge kinds + 4 of 9 node kinds exercised. **Codemap thesis validated.** |
 | Test suite | Run `bun test` before shipping; integration tests pin the MCP lifecycle contract |
 | CI | green on every PR; `publish-dryrun` job is the strict gate |
 
@@ -54,10 +54,10 @@ These were learned during M3, not in any spec — propagate them.
 
 ### Commits
 
-- **NEVER** include `Co-Authored-By: Claude` (or any Claude/Anthropic trailer) — user-level rule. Same applies to **OpenAI/Codex/GPT trailers**: don't add them either. Pure-content commits, no agent attribution.
-- **NEVER** add `🤖 Generated with [Claude Code](...)` or `🤖 Generated with [Codex](...)` footers to PR bodies, issue bodies, or comments. Same rule, broader scope.
+- **NEVER** include assistant/provider attribution trailers. Pure-content commits only.
+- **NEVER** add generated-by footers to PR bodies, issue bodies, comments, release notes, or branch names. Same rule, broader scope.
+- Branch names, commit messages, PR titles, release names, and release notes must use neutral product/task wording only. Use names like `release-v0.3.0` or `source-index-status`, with no assistant/tool/vendor attribution.
 - Concise commit messages, lead with the why. HEREDOC for multi-line.
-- See `~/.claude/CLAUDE.md` for the full rule (it's strict and the user has called it out twice).
 
 ### Releasing
 
@@ -142,7 +142,7 @@ codemap/
 2. Code + tests + task file update.
 3. `bun run typecheck && bun test && ./scripts/smoke-test.sh` — must all be clean locally.
 4. `npm publish --dry-run --provenance --access public` — must show **zero** `npm warn publish` lines.
-5. Bump version in 3 places: `package.json`, `bin/codemap.ts`, `bin/codemap-mcp.ts` (the McpServer constructor call).
+5. Bump `package.json`; the CLI and MCP server read the version from `package.json`.
 6. Commit with concise message, no agent attribution.
 7. Push, open PR, address greptile P1.
 8. After CI green + user merges: `git checkout main && git pull && npm publish --access public` from local. (No `--provenance` from local — only works in CI.)
