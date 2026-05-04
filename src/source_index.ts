@@ -61,6 +61,19 @@ export interface SourceImport {
   line: number;
 }
 
+export type SourceDependencyDirection = "imports" | "imported_by";
+
+export interface SourceDependencyContext {
+  direction: SourceDependencyDirection;
+  file_path: string;
+  module: string;
+  import_line: number;
+  symbols: SourceSymbol[];
+  imports: SourceImport[];
+  exports: string[];
+  content_preview: string;
+}
+
 export interface SourceChunk {
   id: string;
   file_path: string;
@@ -136,6 +149,7 @@ export interface SourceSearchResult {
   imports: SourceImport[];
   exports: string[];
   related_nodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
+  dependency_context: SourceDependencyContext[];
 }
 
 export interface SourceSearchResponse {
@@ -148,6 +162,13 @@ export interface SourceSearchResponse {
   error?: { code: string; message: string };
 }
 
+export interface SourceSearchOptions {
+  limit?: number;
+  maxContentChars?: number;
+  dependencyLimit?: number;
+  dependencyContentChars?: number;
+}
+
 interface CandidateFile {
   file_path: string;
   absolute_path: string;
@@ -155,6 +176,13 @@ interface CandidateFile {
   size_bytes: number;
   mtime_ms: number;
 }
+
+interface ReverseImportReference {
+  importer: IndexedSourceFile;
+  importEntry: SourceImport;
+}
+
+type ReverseImportIndex = Map<string, ReverseImportReference[]>;
 
 interface CandidateFileSearchResult {
   candidates: CandidateFile[];
@@ -338,12 +366,14 @@ export async function getSourceIndexStatus(
 export async function searchSourceIndex(
   repoRoot: string,
   query: string,
-  options: { limit?: number; maxContentChars?: number } = {},
+  options: SourceSearchOptions = {},
 ): Promise<SourceSearchResponse> {
   const startedAt = Date.now();
   const trimmedQuery = query.trim();
   const limit = options.limit ?? 5;
   const maxContentChars = options.maxContentChars ?? 2400;
+  const dependencyLimit = options.dependencyLimit ?? 0;
+  const dependencyContentChars = options.dependencyContentChars ?? 600;
 
   if (!trimmedQuery) {
     return {
@@ -386,6 +416,8 @@ export async function searchSourceIndex(
 
   const chunks = Object.values(index.files).flatMap((file) => file.chunks);
   const relatedNodesByFile = await loadRelatedNodesByFile(repoRoot);
+  const reverseImportIndex =
+    dependencyLimit > 0 ? buildReverseImportIndex(index) : new Map();
   const allRanked = rankChunks(trimmedQuery, chunks, relatedNodesByFile).filter(
     ({ score }) => score > 0,
   );
@@ -406,6 +438,13 @@ export async function searchSourceIndex(
       imports: chunk.imports,
       exports: chunk.exports,
       related_nodes,
+      dependency_context: buildDependencyContext(
+        index,
+        chunk.file_path,
+        dependencyLimit,
+        dependencyContentChars,
+        reverseImportIndex,
+      ),
     }));
 
   return {
@@ -856,6 +895,141 @@ async function loadRelatedNodesByFile(
     // Source search should still work if the curated graph is absent/invalid.
   }
   return byFile;
+}
+
+function buildDependencyContext(
+  index: SourceIndex,
+  filePath: string,
+  limit: number,
+  maxContentChars: number,
+  reverseImportIndex: ReverseImportIndex,
+): SourceDependencyContext[] {
+  if (limit <= 0) return [];
+
+  const targetFile = index.files[filePath];
+  if (!targetFile) return [];
+
+  const dependencies: SourceDependencyContext[] = [];
+  const seen = new Set<string>();
+
+  function addDependency(
+    direction: SourceDependencyDirection,
+    file: IndexedSourceFile,
+    sourceImport: SourceImport,
+  ) {
+    const key = `${direction}:${file.file_path}`;
+    if (seen.has(key) || dependencies.length >= limit) return;
+    seen.add(key);
+    dependencies.push({
+      direction,
+      file_path: file.file_path,
+      module: sourceImport.module,
+      import_line: sourceImport.line,
+      symbols: file.symbols.slice(0, 5),
+      imports: file.imports.slice(0, 10),
+      exports: file.exports.slice(0, 10),
+      content_preview: filePreview(file, maxContentChars),
+    });
+  }
+
+  for (const sourceImport of targetFile.imports) {
+    const resolved = resolveImportPath(
+      index,
+      targetFile.file_path,
+      sourceImport.module,
+    );
+    if (!resolved) continue;
+    const importedFile = index.files[resolved];
+    if (importedFile) {
+      addDependency("imports", importedFile, sourceImport);
+    }
+  }
+
+  if (dependencies.length >= limit) return dependencies;
+
+  const importers = reverseImportIndex.get(filePath) ?? [];
+  for (const { importer, importEntry } of importers) {
+    if (importer.file_path !== filePath) {
+      addDependency("imported_by", importer, importEntry);
+    }
+    if (dependencies.length >= limit) return dependencies;
+  }
+
+  return dependencies;
+}
+
+function buildReverseImportIndex(index: SourceIndex): ReverseImportIndex {
+  const reverseIndex: ReverseImportIndex = new Map();
+  const files = Object.values(index.files).sort((a, b) =>
+    a.file_path.localeCompare(b.file_path),
+  );
+
+  for (const file of files) {
+    for (const importEntry of file.imports) {
+      const resolved = resolveImportPath(
+        index,
+        file.file_path,
+        importEntry.module,
+      );
+      if (!resolved) continue;
+
+      const reference = { importer: file, importEntry };
+      const existing = reverseIndex.get(resolved);
+      if (existing) {
+        existing.push(reference);
+      } else {
+        reverseIndex.set(resolved, [reference]);
+      }
+    }
+  }
+
+  return reverseIndex;
+}
+
+function resolveImportPath(
+  index: SourceIndex,
+  fromFilePath: string,
+  moduleSpecifier: string,
+): string | null {
+  if (!moduleSpecifier.startsWith(".")) return null;
+
+  const baseDir = path.posix.dirname(fromFilePath);
+  const unresolved = path.posix.normalize(
+    path.posix.join(baseDir, moduleSpecifier),
+  );
+  if (unresolved.startsWith("../") || path.posix.isAbsolute(unresolved)) {
+    return null;
+  }
+
+  const explicitExtension = path.posix.extname(unresolved);
+  const baseWithoutExtension = explicitExtension
+    ? unresolved.slice(0, -explicitExtension.length)
+    : unresolved;
+  const supportedExtensions = [...SUPPORTED_EXTENSIONS.keys()];
+  const candidates = [
+    unresolved,
+    ...supportedExtensions.map((extension) => `${unresolved}${extension}`),
+    ...(explicitExtension
+      ? supportedExtensions.map(
+          (extension) => `${baseWithoutExtension}${extension}`,
+        )
+      : []),
+    ...supportedExtensions.map((extension) => `${unresolved}/index${extension}`),
+    ...(explicitExtension
+      ? supportedExtensions.map(
+          (extension) => `${baseWithoutExtension}/index${extension}`,
+        )
+      : []),
+  ];
+
+  return candidates.find((candidate) => index.files[candidate]) ?? null;
+}
+
+function filePreview(file: IndexedSourceFile, maxContentChars: number): string {
+  const content = file.chunks.find((chunk) => chunk.content.trim().length > 0)
+    ?.content ?? "";
+  if (content.length <= maxContentChars) return content;
+  return `${content.slice(0, maxContentChars)}\n// ... truncated`;
 }
 
 function chunkDocument(chunk: SourceChunk): string {

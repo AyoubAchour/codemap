@@ -9,6 +9,7 @@ import { clearIndex } from "../../src/cli/clear_index.js";
 import { context } from "../../src/cli/context.js";
 import { correct } from "../../src/cli/correct.js";
 import { deprecate } from "../../src/cli/deprecate.js";
+import { doctor } from "../../src/cli/doctor.js";
 import { indexStatus } from "../../src/cli/index_status.js";
 import { init } from "../../src/cli/init.js";
 import { rollup } from "../../src/cli/rollup.js";
@@ -423,6 +424,28 @@ describe("CLI: validate", () => {
 });
 
 // =============================================================
+// doctor
+// =============================================================
+
+describe("CLI: doctor", () => {
+  test("empty graph exits 0 with a clean health report", async () => {
+    const r = await doctor({}, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout!).summary.fresh).toBe(true);
+  });
+
+  test("stale graph exits 1 with grouped issues", async () => {
+    await seed([makeNode({ id: "a/stale" })]);
+    const r = await doctor({}, { repoRoot: tmpRoot });
+
+    expect(r.exitCode).toBe(1);
+    const out = JSON.parse(r.stdout!);
+    expect(out.summary.fresh).toBe(false);
+    expect(out.summary.missing_sources).toBe(1);
+  });
+});
+
+// =============================================================
 // rollup (real implementation lands in task-016 — comprehensive tests
 // for behavior live in test/unit/metrics.test.ts; here we just verify
 // the CLI wiring exits 0 and respects telemetry opt-out).
@@ -619,7 +642,7 @@ describe("CLI: source index", () => {
 
     const searchResult = await searchSource(
       "active user",
-      { limit: 1 },
+      { limit: 1, dependencyLimit: 1 },
       { repoRoot: tmpRoot },
     );
     expect(searchResult.exitCode).toBe(0);

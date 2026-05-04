@@ -46,6 +46,15 @@ export function registerQueryContext(
           .max(10000)
           .optional()
           .describe("Maximum chunk-content characters per source result. Default 2400."),
+        dependency_limit: z
+          .number()
+          .int()
+          .min(0)
+          .max(10)
+          .optional()
+          .describe(
+            "Max import/importer context entries per source result. Default 3.",
+          ),
         refresh_index: z
           .enum(["never", "if_missing", "if_stale"])
           .optional()
@@ -59,12 +68,14 @@ export function registerQueryContext(
       graph_limit,
       source_limit,
       max_content_chars,
+      dependency_limit,
       refresh_index,
     }) => {
       const response = await buildQueryContext(options.repoRoot, question, {
         graphLimit: graph_limit,
         sourceLimit: source_limit,
         maxContentChars: max_content_chars,
+        dependencyLimit: dependency_limit,
         refreshIndex: refresh_index as SourceRefreshMode | undefined,
       });
       await recordMetric(options.repoRoot, (m) => {

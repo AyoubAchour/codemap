@@ -35,12 +35,22 @@ export function registerSearchSource(
           .max(10000)
           .optional()
           .describe("Maximum chunk-content characters per result. Default 2400."),
+        dependency_limit: z
+          .number()
+          .int()
+          .min(0)
+          .max(10)
+          .optional()
+          .describe(
+            "Maximum import/importer context entries per result. Default 0.",
+          ),
       },
     },
-    async ({ query, limit, max_content_chars }) => {
+    async ({ query, limit, max_content_chars, dependency_limit }) => {
       const response = await searchSourceIndex(options.repoRoot, query, {
         limit,
         maxContentChars: max_content_chars,
+        dependencyLimit: dependency_limit,
       });
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],

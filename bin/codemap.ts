@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * `codemap` CLI entry. Subcommands: init, show, correct, deprecate,
- * validate, rollup, scan, context, search-source, index-status, clear-index.
+ * validate, doctor, rollup, scan, context, search-source, index-status,
+ * clear-index.
  *
  * Each subcommand's logic lives in src/cli/<name>.ts as a pure function
  * returning { exitCode, stdout?, stderr? }; this entry file is the thin
@@ -14,6 +15,7 @@ import { clearIndex } from "../src/cli/clear_index.js";
 import { context, type ContextFlags } from "../src/cli/context.js";
 import { correct, type CorrectFlags } from "../src/cli/correct.js";
 import { deprecate, type DeprecateFlags } from "../src/cli/deprecate.js";
+import { doctor, type DoctorFlags } from "../src/cli/doctor.js";
 import { indexStatus } from "../src/cli/index_status.js";
 import { init, type InitFlags } from "../src/cli/init.js";
 import { rollup } from "../src/cli/rollup.js";
@@ -150,6 +152,29 @@ program
   });
 
 program
+  .command("doctor")
+  .description(
+    "Inspect graph health: validation warnings/repairs plus source-anchor staleness.",
+  )
+  .option(
+    "--include-deprecated",
+    "Include deprecated nodes when checking source-anchor staleness.",
+  )
+  .option(
+    "--issue-limit <n>",
+    "Maximum stale source entries to include in response arrays.",
+    parsePositiveInteger,
+  )
+  .action(async (cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: DoctorFlags = {
+      includeDeprecated: cmdOpts.includeDeprecated as boolean | undefined,
+      issueLimit: cmdOpts.issueLimit as number | undefined,
+    };
+    emit(await doctor(flags, { repoRoot: opts.repo }));
+  });
+
+program
   .command("rollup")
   .description("Compute the metrics weekly rollup for the current ISO week.")
   .action(async () => {
@@ -186,11 +211,17 @@ program
     "Maximum characters of chunk content per result.",
     parsePositiveInteger,
   )
+  .option(
+    "--dependency-limit <n>",
+    "Maximum import/importer context entries per result.",
+    parsePositiveInteger,
+  )
   .action(async (query: string, cmdOpts: Record<string, unknown>) => {
     const opts = program.opts() as { repo: string };
     const flags: SearchSourceFlags = {
       limit: cmdOpts.limit as number | undefined,
       maxContentChars: cmdOpts.maxContentChars as number | undefined,
+      dependencyLimit: cmdOpts.dependencyLimit as number | undefined,
     };
     emit(await searchSource(query, flags, { repoRoot: opts.repo }));
   });
@@ -208,6 +239,11 @@ program
     parsePositiveInteger,
   )
   .option(
+    "--dependency-limit <n>",
+    "Maximum import/importer context entries per source result.",
+    parsePositiveInteger,
+  )
+  .option(
     "--refresh-index <mode>",
     "Source index refresh mode: never, if_missing, or if_stale.",
     parseRefreshIndex,
@@ -218,6 +254,7 @@ program
       graphLimit: cmdOpts.graphLimit as number | undefined,
       sourceLimit: cmdOpts.sourceLimit as number | undefined,
       maxContentChars: cmdOpts.maxContentChars as number | undefined,
+      dependencyLimit: cmdOpts.dependencyLimit as number | undefined,
       refreshIndex: cmdOpts.refreshIndex as SourceRefreshMode | undefined,
     };
     emit(await context(question, flags, { repoRoot: opts.repo }));

@@ -1,6 +1,6 @@
 # Task 016: Telemetry (`metrics.json`) + `rollup` implementation
 
-**Status:** in-progress (PR open)
+**Status:** done
 **Phase:** M2 — Sprint 2.3
 **Estimate:** 2–3 hours
 **Depends on:** task-013 (MCP tools), task-014 (emit_node), task-015 (CLI rollup stub)
@@ -132,3 +132,4 @@ Per V1_SPEC §11 the metrics aren't intended to drive any production behavior �
 
 - Don't add network telemetry. Local-only is the v1 design and the M3 measurement need.
 - Telemetry on `link` success (and the equivalent CLI mutations) is added as a later mini-task if M3 reveals the existing counters miss something useful.
+- Historical status corrected during task-031 docs truth pass; telemetry and `codemap rollup` are implemented and covered by `test/unit/metrics.test.ts`.

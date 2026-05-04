@@ -1,6 +1,6 @@
 # Task 015: CLI commands (`codemap show / correct / deprecate / validate / rollup`)
 
-**Status:** in-progress (PR open)
+**Status:** done
 **Phase:** M2 — Sprint 2.3 (CLI + polish)
 **Estimate:** 3–4 hours
 **Depends on:** task-007 (GraphStore), task-008 (validator)
@@ -123,3 +123,4 @@ References:
 - The CLI deliberately doesn't attempt to be a full graph editor. Its purpose is "fix the agent's mistakes without opening graph.json by hand." Anything more ergonomic (TUI, $EDITOR integration) is v2.
 - `rollup` lives here for command discoverability but its implementation lands in task-016.
 - After this + 016 + 017, **Sprint 2.3 closes and v0.1.0 ships**.
+- Historical status corrected during task-031 docs truth pass; the CLI shipped and is covered by `test/unit/cli.test.ts`.
