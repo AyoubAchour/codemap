@@ -10,6 +10,7 @@ import { ensureSeedFile } from "./util/lock.js";
 const INDEX_VERSION = 1 as const;
 const INDEX_DIR = ".codemap/index";
 const INDEX_FILE = "source.json";
+const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
 
 const SUPPORTED_EXTENSIONS = new Map<string, string>([
   [".cjs", "javascript"],
@@ -100,6 +101,7 @@ export interface SourceIndex {
   version: typeof INDEX_VERSION;
   created_at: string;
   updated_at: string;
+  max_file_bytes: number;
   stats: SourceIndexStats;
   files: Record<string, IndexedSourceFile>;
 }
@@ -196,9 +198,10 @@ export async function scanSourceIndex(
   options: ScanSourceIndexOptions = {},
 ): Promise<SourceIndex> {
   const now = new Date().toISOString();
+  const maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
   const { candidates, skippedCount } = await findCandidateFiles(
     repoRoot,
-    options,
+    { maxFileBytes },
   );
   const files: Record<string, IndexedSourceFile> = {};
   let chunksIndexed = 0;
@@ -218,6 +221,7 @@ export async function scanSourceIndex(
     version: INDEX_VERSION,
     created_at: now,
     updated_at: now,
+    max_file_bytes: maxFileBytes,
     stats: {
       files_indexed: Object.keys(files).length,
       files_skipped: skippedCount,
@@ -278,7 +282,9 @@ export async function getSourceIndexStatus(
     };
   }
 
-  const { candidates: currentFiles } = await findCandidateFiles(repoRoot);
+  const { candidates: currentFiles } = await findCandidateFiles(repoRoot, {
+    maxFileBytes: index.max_file_bytes ?? DEFAULT_MAX_FILE_BYTES,
+  });
   const currentByPath = new Map(
     currentFiles.map((file) => [file.file_path, file] as const),
   );
@@ -421,6 +427,7 @@ async function saveSourceIndex(
     version: INDEX_VERSION,
     created_at: index.created_at,
     updated_at: index.updated_at,
+    max_file_bytes: index.max_file_bytes,
     stats: {
       files_indexed: 0,
       files_skipped: 0,
@@ -448,7 +455,7 @@ async function findCandidateFiles(
   repoRoot: string,
   options: ScanSourceIndexOptions = {},
 ): Promise<CandidateFileSearchResult> {
-  const maxFileBytes = options.maxFileBytes ?? 256 * 1024;
+  const maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
   const candidates: CandidateFile[] = [];
   let skippedCount = 0;
 

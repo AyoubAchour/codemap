@@ -186,6 +186,23 @@ describe("source index", () => {
     expect(status.fresh).toBe(false);
   });
 
+  test("status uses the max file size recorded during scan", async () => {
+    await write(
+      "src/large.ts",
+      `export function largeSource() {}\n${"x".repeat(300 * 1024)}`,
+    );
+
+    const index = await scanSourceIndex(tmpRoot, {
+      maxFileBytes: 512 * 1024,
+    });
+    expect(index.max_file_bytes).toBe(512 * 1024);
+    expect(index.files["src/large.ts"]).toBeDefined();
+
+    const status = await getSourceIndexStatus(tmpRoot);
+    expect(status.missing_files).toBe(0);
+    expect(status.fresh).toBe(true);
+  });
+
   test("clear removes the source index cache", async () => {
     await scanSourceIndex(tmpRoot);
     expect(await loadSourceIndex(tmpRoot)).not.toBeNull();
