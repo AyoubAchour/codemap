@@ -29,10 +29,18 @@ import { validate } from "../src/cli/validate.js";
 import type { CommandResult, GlobalOptions } from "../src/cli/_types.js";
 import type { SourceRefreshMode } from "../src/query_context.js";
 
+class CommandCompleted extends Error {
+  constructor(readonly exitCode: number) {
+    super("COMMAND_COMPLETED");
+  }
+}
+
 function emit(result: CommandResult): never {
   if (result.stdout !== undefined) process.stdout.write(result.stdout);
   if (result.stderr !== undefined) process.stderr.write(result.stderr);
-  process.exit(result.exitCode);
+  // Keep `emit()` non-returning without `process.exit()`, which can truncate
+  // large piped stdout reports before the runtime flushes them.
+  throw new CommandCompleted(result.exitCode);
 }
 
 function repeatable(value: string, prev: string[] | undefined): string[] {
@@ -162,14 +170,16 @@ program
   )
   .option(
     "--issue-limit <n>",
-    "Maximum stale source entries to include in response arrays.",
+    "Maximum stale source entries to show in compact output and JSON issue arrays.",
     parsePositiveInteger,
   )
+  .option("--json", "Print the full structured health report.")
   .action(async (cmdOpts: Record<string, unknown>) => {
     const opts = program.opts() as { repo: string };
     const flags: DoctorFlags = {
       includeDeprecated: cmdOpts.includeDeprecated as boolean | undefined,
       issueLimit: cmdOpts.issueLimit as number | undefined,
+      json: cmdOpts.json as boolean | undefined,
     };
     emit(await doctor(flags, { repoRoot: opts.repo }));
   });
@@ -276,4 +286,12 @@ program
     emit(await clearIndex({ repoRoot: opts.repo }));
   });
 
-await program.parseAsync(process.argv);
+try {
+  await program.parseAsync(process.argv);
+} catch (err: unknown) {
+  if (err instanceof CommandCompleted) {
+    process.exitCode = err.exitCode;
+  } else {
+    throw err;
+  }
+}

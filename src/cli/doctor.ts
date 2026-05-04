@@ -1,9 +1,13 @@
-import { inspectGraphHealth } from "../graph_health.js";
+import {
+  inspectGraphHealth,
+  type GraphHealthOkResponse,
+} from "../graph_health.js";
 import type { CommandResult, GlobalOptions } from "./_types.js";
 
 export interface DoctorFlags {
   includeDeprecated?: boolean;
   issueLimit?: number;
+  json?: boolean;
 }
 
 export async function doctor(
@@ -22,8 +26,55 @@ export async function doctor(
     };
   }
 
+  if (flags.json) {
+    return {
+      exitCode: response.summary.fresh ? 0 : 1,
+      stdout: `${JSON.stringify(response, null, 2)}\n`,
+    };
+  }
+
   return {
     exitCode: response.summary.fresh ? 0 : 1,
-    stdout: `${JSON.stringify(response, null, 2)}\n`,
+    stdout: formatDoctorSummary(response),
   };
+}
+
+function formatDoctorSummary(response: GraphHealthOkResponse): string {
+  const { summary, issues, suggestions } = response;
+  const lines = [
+    `Codemap graph health: ${summary.fresh ? "clean" : "issues found"}`,
+    "",
+    `Nodes: ${summary.active_nodes} active, ${summary.deprecated_nodes} deprecated, ${summary.total_edges} edges`,
+    `Sources: ${summary.checked_sources} checked, ${summary.stale_sources} stale (${summary.changed_sources} changed, ${summary.missing_sources} missing, ${summary.unsafe_sources} unsafe, ${summary.read_errors} read errors)`,
+    `Validator: ${summary.duplicate_aliases} duplicate aliases, ${summary.validator_repairs} repairs, ${summary.validator_errors} errors`,
+  ];
+
+  if (summary.truncated_stale_sources) {
+    lines.push(
+      `Reported stale anchors: ${summary.reported_stale_sources} of ${summary.stale_sources} (use --json for the full staleness report)`,
+    );
+  }
+
+  if (issues.stale_sources.length > 0) {
+    lines.push("", "Stale source anchors:");
+    for (const source of issues.stale_sources) {
+      lines.push(`- ${source.reason}: ${source.node_id} -> ${source.file_path}`);
+    }
+  }
+
+  if (issues.duplicate_aliases.length > 0) {
+    lines.push("", "Duplicate aliases:");
+    for (const issue of issues.duplicate_aliases) {
+      lines.push(`- ${issue.alias}: ${issue.nodeIds.join(", ")}`);
+    }
+  }
+
+  if (suggestions.length > 0) {
+    lines.push("", "Suggestions:");
+    for (const suggestion of suggestions) {
+      lines.push(`- ${suggestion}`);
+    }
+  }
+
+  return `${lines.join("\n")}\n`;
 }
