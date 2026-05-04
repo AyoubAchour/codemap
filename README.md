@@ -2,7 +2,7 @@
 
 Persistent knowledge graph of a codebase, built incrementally by AI agents during normal work, exposed via [MCP](https://modelcontextprotocol.io). Stored as a single JSON file in your repo (`.codemap/graph.json`) — diffable, reviewable, no database required.
 
-**Status:** v0.3.0 — **M3 closed** ([M3a retro](tasks/task-020-m3a-retrospective.md), [M3b retro](tasks/task-024-m3b-retrospective.md)): 9 turns on voice2work produced 27 nodes / 29 edges across 6 problem domains; 5 of 8 edge kinds + 4 of 9 node kinds exercised; 0 collisions. Codemap thesis validated. **Current focus:** behavior consistency, codebase-only graph quality, and local source discovery before any human-facing visual surface. For agent handoff context see [`HANDOFF-CODEX.md`](HANDOFF-CODEX.md).
+**Status:** v0.4.0 — **M3 closed** ([M3a retro](tasks/task-020-m3a-retrospective.md), [M3b retro](tasks/task-024-m3b-retrospective.md)): 9 turns on voice2work produced 27 nodes / 29 edges across 6 problem domains; 5 of 8 edge kinds + 4 of 9 node kinds exercised; 0 collisions. Codemap thesis validated. **Current focus:** behavior consistency, codebase-only graph quality, and fused local source discovery before any human-facing visual surface. For agent handoff context see [`HANDOFF-CODEX.md`](HANDOFF-CODEX.md).
 
 See [`V1_SPEC.md`](V1_SPEC.md) for what we're building, [`TECH_SPEC.md`](TECH_SPEC.md) for how, and [`ROADMAP.md`](ROADMAP.md) for when.
 
@@ -52,6 +52,7 @@ Any client that supports stdio MCP servers works. Point `command` at the `codema
 | Tool | When the agent calls it |
 | --- | --- |
 | `set_active_topic` | Start of a task. Tags subsequent emissions; resets the per-turn cap counter. |
+| `query_context` | Preferred pre-planning read for repo work. Fuses graph matches, source-index status/search, staleness, related graph nodes, warnings, and next steps. |
 | `query_graph` | Find existing nodes relevant to a codebase task description. Call this **before** planning repo work. |
 | `get_node` | Fetch a specific node + its incident edges by id or alias. |
 | `emit_node` | Add or merge a durable repo-local finding. Capped at 5 per turn (per `V1_SPEC` §7.5) to prevent spam. Requires real repo-relative source files and rejects empty, absolute, missing, escaping, or external URL anchors. Detects collisions with existing nodes via name/alias/source/tag similarity. |
@@ -77,6 +78,7 @@ codemap deprecate <id> --reason "..." # Mark a node deprecated
 codemap validate                      # Dry-run validator (exit 0 clean / 1 warnings / 2 schema-invalid)
 codemap rollup                        # Compute the metrics weekly rollup
 codemap scan                          # Build the local source index cache
+codemap context "auth guard"          # Fused graph + source context for planning
 codemap search-source "auth guard"    # Search indexed source chunks
 codemap index-status                  # Report source-index freshness
 codemap clear-index                   # Delete the rebuildable source index

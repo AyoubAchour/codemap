@@ -6,6 +6,7 @@ import * as path from "node:path";
 
 import { GraphStore } from "../../src/graph.js";
 import { clearIndex } from "../../src/cli/clear_index.js";
+import { context } from "../../src/cli/context.js";
 import { correct } from "../../src/cli/correct.js";
 import { deprecate } from "../../src/cli/deprecate.js";
 import { indexStatus } from "../../src/cli/index_status.js";
@@ -642,6 +643,21 @@ describe("CLI: source index", () => {
     expect(JSON.parse(missingSearch.stderr!).error.code).toBe("INDEX_MISSING");
   });
 
+  test("context builds a missing source index by default", async () => {
+    const result = await context(
+      "active user",
+      { sourceLimit: 1 },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.ok).toBe(true);
+    expect(out.source.refreshed).toBe(true);
+    expect(out.source.status.indexed).toBe(true);
+    expect(out.source.search.results[0].file_path).toBe("src/auth.ts");
+  });
+
   test("bin scan rejects non-numeric max-file-bytes values", async () => {
     const result = await runCodemapBin([
       "scan",
@@ -651,5 +667,17 @@ describe("CLI: source index", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("expected a positive integer");
+  });
+
+  test("bin context rejects invalid refresh-index modes", async () => {
+    const result = await runCodemapBin([
+      "context",
+      "active user",
+      "--refresh-index",
+      "sometimes",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("expected one of never, if_missing, if_stale");
   });
 });

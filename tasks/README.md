@@ -107,6 +107,7 @@ Maintained manually. Update status as tasks land.
 | 027 | Codebase-scoped writeback + visual reset | done | Phase 4 / behavior consistency | [task-027-codebase-scoped-writeback.md](task-027-codebase-scoped-writeback.md) |
 | 028 | Local source index for code discovery | done | Phase 4 / behavior consistency | [task-028-local-source-index.md](task-028-local-source-index.md) |
 | 029 | Release v0.3.0 | done | Phase 4 / release | [task-029-release-v0.3.0.md](task-029-release-v0.3.0.md) |
+| 030 | `query_context` fusion tool | done | Phase 4 / behavior consistency | [task-030-query-context.md](task-030-query-context.md) |
 
 ---
 
