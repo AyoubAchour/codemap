@@ -676,6 +676,19 @@ describe("CLI: init", () => {
     expect(r.stdout).toContain(GUIDANCE_POLICY_HASH);
   });
 
+  test("--check --force is rejected because check mode is read-only", async () => {
+    await fs.writeFile(
+      path.join(tmpRoot, "AGENTS.md"),
+      "previous content",
+      "utf8",
+    );
+    const r = await init({ check: true, force: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("--check is read-only");
+    const after = await fs.readFile(path.join(tmpRoot, "AGENTS.md"), "utf8");
+    expect(after).toBe("previous content");
+  });
+
   test("--check reports stale guidance without metadata", async () => {
     await fs.writeFile(
       path.join(tmpRoot, "AGENTS.md"),
@@ -701,6 +714,23 @@ describe("CLI: init", () => {
     expect(r.exitCode).toBe(1);
     expect(r.stdout).toContain("version_mismatch");
     expect(r.stdout).toContain("version 0.0.0");
+  });
+
+  test("--check reports stale guidance with a mismatched policy hash", async () => {
+    await init({}, { repoRoot: tmpRoot });
+    const target = path.join(tmpRoot, "AGENTS.md");
+    const current = await fs.readFile(target, "utf8");
+    const staleHash = `sha256:${"0".repeat(64)}`;
+    expect(staleHash).not.toBe(GUIDANCE_POLICY_HASH);
+    await fs.writeFile(
+      target,
+      current.replace(GUIDANCE_POLICY_HASH, staleHash),
+      "utf8",
+    );
+    const r = await init({ check: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toContain("policy_hash_mismatch");
+    expect(r.stdout).toContain(staleHash);
   });
 
   test("--check --claude reports partial current/missing state", async () => {

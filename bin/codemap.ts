@@ -91,7 +91,10 @@ program
     "Generate AGENTS.md (and optionally CLAUDE.md) with the codemap lifecycle policy. Run once per project.",
   )
   .option("-f, --force", "Overwrite existing files.")
-  .option("--check", "Check generated guidance freshness without writing files.")
+  .option(
+    "--check",
+    "Check generated guidance freshness without writing files; cannot be combined with --force.",
+  )
   .option("--claude", "Also write CLAUDE.md.")
   .option("--all", "Write all known agent-preamble files (AGENTS.md + CLAUDE.md).")
   .action(async (cmdOpts: Record<string, unknown>) => {

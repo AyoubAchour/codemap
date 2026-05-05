@@ -188,6 +188,14 @@ export async function init(
   flags: InitFlags,
   globals: GlobalOptions,
 ): Promise<CommandResult> {
+  if (flags.check && flags.force) {
+    return {
+      exitCode: 1,
+      stderr:
+        "error: --check is read-only and cannot be combined with --force\n",
+    };
+  }
+
   const targets = pickTargets(flags);
   const projectName = path.basename(path.resolve(globals.repoRoot));
   const body = agentsMdContent(projectName, {
