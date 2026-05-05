@@ -46,6 +46,20 @@ Task 033 shipped `codemap-mcp@0.5.1` as a patch release for the merged
 post-0.5.0 polish: compact doctor output, safer CLI flushing, and the
 professional public README/package metadata.
 
+After the DeepContext/GitNexus/codebase-memory/Serena comparison, the next
+Phase 4 sequence is behavior-first competitive hardening:
+
+1. task-034 — agent compliance and onboarding
+2. task-035 — `query_context` v2 retrieval
+3. task-036 — TS/JS symbol and impact context
+4. task-037 — memory quality and ranking
+5. task-038 — workflow auto-capture suggestions
+
+Task 034 implements the first compliance slice: versioned generated-guidance
+metadata plus `codemap init --check`, a read-only freshness check for
+`AGENTS.md` / `CLAUDE.md`. The goal is to make agents use Codemap correctly
+without chat reminders before adding more retrieval machinery.
+
 ## How to work in this repo (the conventions)
 
 These were learned during M3, not in any spec — propagate them.

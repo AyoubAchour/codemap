@@ -204,6 +204,20 @@ Task 033 shipped the post-0.5.0 polish as `codemap-mcp@0.5.1`: compact
 doctor/CLI flush improvements plus the public README cleanup before the next
 behavior slice starts.
 
+The next competitive-hardening sequence borrows the useful parts of
+DeepContext, GitNexus, codebase-memory, Serena, Memento/Engram, and workflow
+hook systems without abandoning Codemap's core thesis as curated repo memory:
+
+- Task 034: agent compliance and onboarding.
+- Task 035: `query_context` v2 with better local retrieval and match reasons.
+- Task 036: TS/JS symbol and impact context.
+- Task 037: memory quality and ranking.
+- Task 038: workflow auto-capture suggestions that never write graph nodes
+  automatically.
+
+This order is intentional: improve agent behavior first, then retrieval, then
+impact context, then trust/ranking, then end-of-turn capture assistance.
+
 
 ## Cumulative timeline (single dev, half-time)
 

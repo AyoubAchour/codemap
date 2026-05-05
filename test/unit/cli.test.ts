@@ -17,7 +17,10 @@ import { scan } from "../../src/cli/scan.js";
 import { searchSource } from "../../src/cli/search_source.js";
 import { show } from "../../src/cli/show.js";
 import { validate } from "../../src/cli/validate.js";
-import { SERVER_INSTRUCTIONS } from "../../src/instructions.js";
+import {
+  GUIDANCE_POLICY_HASH,
+  SERVER_INSTRUCTIONS,
+} from "../../src/instructions.js";
 import type { Node } from "../../src/types.js";
 
 let tmpRoot: string;
@@ -561,7 +564,14 @@ describe("CLI: init", () => {
     // agentsMdContent reusing SERVER_INSTRUCTIONS).
     expect(written).toContain(SERVER_INSTRUCTIONS);
     expect(written).toContain("agent guidance (codemap)");
+    expect(written).toContain("<!-- codemap:init version=");
+    expect(written).toContain(`policy_hash=${GUIDANCE_POLICY_HASH}`);
+    expect(written).toContain("Agent Contract");
+    expect(written).toContain("Use Codemap for repository work only.");
+    expect(written).toContain("source-index results as discovery hints only");
+    expect(written).toContain("call `graph_health`");
     expect(written).toContain("Why this file exists");
+    expect(written).toContain("codemap init --check");
     expect(written).toContain("codemap init --force");
   });
 
@@ -649,6 +659,93 @@ describe("CLI: init", () => {
     expect(r.exitCode).toBe(0);
     expect(r.stderr).toContain("skipped AGENTS.md");
     expect(r.stdout).toContain("wrote CLAUDE.md");
+  });
+
+  test("--check reports missing guidance without writing", async () => {
+    const r = await init({ check: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toContain("AGENTS.md: missing");
+    await expect(fs.access(path.join(tmpRoot, "AGENTS.md"))).rejects.toThrow();
+  });
+
+  test("--check reports current guidance", async () => {
+    await init({}, { repoRoot: tmpRoot });
+    const r = await init({ check: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("AGENTS.md: current");
+    expect(r.stdout).toContain(GUIDANCE_POLICY_HASH);
+  });
+
+  test("--check --force is rejected because check mode is read-only", async () => {
+    await fs.writeFile(
+      path.join(tmpRoot, "AGENTS.md"),
+      "previous content",
+      "utf8",
+    );
+    const r = await init({ check: true, force: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("--check is read-only");
+    const after = await fs.readFile(path.join(tmpRoot, "AGENTS.md"), "utf8");
+    expect(after).toBe("previous content");
+  });
+
+  test("--check reports stale guidance without metadata", async () => {
+    await fs.writeFile(
+      path.join(tmpRoot, "AGENTS.md"),
+      "previous content",
+      "utf8",
+    );
+    const r = await init({ check: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toContain("AGENTS.md: stale");
+    expect(r.stdout).toContain("missing_metadata");
+  });
+
+  test("--check reports stale guidance with an old version marker", async () => {
+    await init({}, { repoRoot: tmpRoot });
+    const target = path.join(tmpRoot, "AGENTS.md");
+    const current = await fs.readFile(target, "utf8");
+    await fs.writeFile(
+      target,
+      current.replace(/version=\S+/, "version=0.0.0"),
+      "utf8",
+    );
+    const r = await init({ check: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toContain("version_mismatch");
+    expect(r.stdout).toContain("version 0.0.0");
+  });
+
+  test("--check reports stale guidance with a mismatched policy hash", async () => {
+    await init({}, { repoRoot: tmpRoot });
+    const target = path.join(tmpRoot, "AGENTS.md");
+    const current = await fs.readFile(target, "utf8");
+    const staleHash = `sha256:${"0".repeat(64)}`;
+    expect(staleHash).not.toBe(GUIDANCE_POLICY_HASH);
+    await fs.writeFile(
+      target,
+      current.replace(GUIDANCE_POLICY_HASH, staleHash),
+      "utf8",
+    );
+    const r = await init({ check: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toContain("policy_hash_mismatch");
+    expect(r.stdout).toContain(staleHash);
+  });
+
+  test("--check --claude reports partial current/missing state", async () => {
+    await init({}, { repoRoot: tmpRoot });
+    const r = await init({ check: true, claude: true }, { repoRoot: tmpRoot });
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toContain("AGENTS.md: current");
+    expect(r.stdout).toContain("CLAUDE.md: missing");
+  });
+
+  test("bin init --check reports current guidance", async () => {
+    await init({}, { repoRoot: tmpRoot });
+    const result = await runCodemapBin(["init", "--check"]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("AGENTS.md: current");
   });
 });
 

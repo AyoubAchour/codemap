@@ -104,9 +104,14 @@ MCP server instructions to the agent.
 Useful variants:
 
 ```sh
+codemap init --check   # verify generated guidance is current without writing
 codemap init --force   # overwrite an existing generated file
 codemap init --all     # write every supported agent guidance file
 ```
+
+Generated guidance includes a Codemap version and lifecycle-policy hash. After
+upgrading `codemap-mcp`, run `codemap init --check`; if it reports stale or
+missing guidance, regenerate with `codemap init --force`.
 
 ## Agent Workflow
 
@@ -154,6 +159,7 @@ The `codemap` CLI lets humans inspect, repair, and audit the graph.
 
 ```sh
 codemap init                          # Generate agent guidance for this repo
+codemap init --check                  # Check generated guidance freshness
 codemap show <id>                     # Print a node and its incident edges
 codemap correct <id> --summary "..."  # Override node fields by hand
 codemap deprecate <id> --reason "..." # Mark stale knowledge as deprecated
