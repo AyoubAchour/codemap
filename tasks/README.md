@@ -112,7 +112,7 @@ Maintained manually. Update status as tasks land.
 | 032 | Post-release graph hygiene | done | Phase 4 / behavior consistency | [task-032-post-release-graph-hygiene.md](task-032-post-release-graph-hygiene.md) |
 | 033 | Release v0.5.1 | done | Phase 4 / release | [task-033-release-v0.5.1.md](task-033-release-v0.5.1.md) |
 | 034 | Agent compliance and onboarding | done | Phase 4 / behavior consistency | [task-034-agent-compliance-onboarding.md](task-034-agent-compliance-onboarding.md) |
-| 035 | `query_context` v2 retrieval | todo | Phase 4 / behavior consistency | [task-035-query-context-v2-retrieval.md](task-035-query-context-v2-retrieval.md) |
+| 035 | `query_context` v2 retrieval | done | Phase 4 / behavior consistency | [task-035-query-context-v2-retrieval.md](task-035-query-context-v2-retrieval.md) |
 | 036 | TS/JS symbol and impact context | todo | Phase 4 / behavior consistency | [task-036-symbol-impact-context.md](task-036-symbol-impact-context.md) |
 | 037 | Memory quality and ranking | todo | Phase 4 / behavior consistency | [task-037-memory-quality-ranking.md](task-037-memory-quality-ranking.md) |
 | 038 | Workflow auto-capture suggestions | todo | Phase 4 / behavior consistency | [task-038-workflow-auto-capture.md](task-038-workflow-auto-capture.md) |

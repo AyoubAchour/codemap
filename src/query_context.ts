@@ -56,6 +56,11 @@ export async function buildQueryContext(
 
   const store = await GraphStore.load(repoRoot);
   const graphResult = store.query(trimmedQuestion, graphLimit);
+  if (graphResult.nodes.length > 0) {
+    warnings.push(
+      "Graph matches are curated repo memory; prefer fresh graph decisions/invariants/gotchas over re-deriving them.",
+    );
+  }
   const staleness = await checkSourceStaleness(repoRoot, graphResult.nodes);
   if (staleness.stale_sources.length > 0) {
     warnings.push(
@@ -89,6 +94,10 @@ export async function buildQueryContext(
     });
     if (!sourceSearch.ok && sourceSearch.error) {
       warnings.push(`Source search failed: ${sourceSearch.error.message}`);
+    } else if (sourceSearch.ok && sourceSearch.results.length > 0) {
+      warnings.push(
+        "Source hits come from the rebuildable local index; treat them as discovery hints until you inspect the files.",
+      );
     }
   } else if (!sourceStatus.indexed) {
     warnings.push(

@@ -1,6 +1,6 @@
 # Task 035: query_context V2 Retrieval
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 4 / behavior consistency
 **Estimate:** 2-4 days
 **Depends on:** task-034
@@ -54,16 +54,30 @@ result quality and explainability before considering optional embeddings.
 
 ## Exit Criteria
 
-- [ ] `query_context` results include bounded, useful match reasons.
-- [ ] Source result ordering improves on fixture queries for symbol names,
+- [x] `query_context` results include bounded, useful match reasons.
+- [x] Source result ordering improves on fixture queries for symbol names,
       path names, imports, and broad natural-language questions.
-- [ ] Diversity prevents repeated chunks from crowding out adjacent files.
-- [ ] Existing MCP/CLI callers remain backward compatible.
-- [ ] Tests cover score reasons, diversity, and deterministic ordering.
-- [ ] Docs explain that source hits are discovery hints, not graph memory.
+- [x] Diversity prevents repeated chunks from crowding out adjacent files.
+- [x] Existing MCP/CLI callers remain backward compatible.
+- [x] Tests cover score reasons, diversity, and deterministic ordering.
+- [x] Docs explain that source hits are discovery hints, not graph memory.
 
 ## Notes
 
 Keep this local-first. Hosted embeddings or rerankers should remain optional
 design notes until we have dogfood evidence that local retrieval is missing
 important context.
+
+Implementation adds:
+
+- graph match metadata from `query_graph` / `query_context`
+- source `score_breakdown` and `match_reasons`
+- deterministic source-result diversity that prefers distinct files before
+  filling repeat chunks
+- query-time warnings that separate curated graph memory from rebuildable source
+  discovery
+
+Embedding/provider design remains deliberately disabled. The next candidate
+shape is a pluggable optional reranking layer behind explicit configuration,
+but only after local lexical + symbol retrieval produces real missed-context
+evidence in dogfood.

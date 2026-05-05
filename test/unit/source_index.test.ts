@@ -89,6 +89,72 @@ describe("source index", () => {
     );
   });
 
+  test("search explains source matches with score breakdowns", async () => {
+    await scanSourceIndex(tmpRoot);
+
+    const response = await searchSourceIndex(tmpRoot, "requireActiveUser db auth", {
+      limit: 1,
+    });
+    const result = response.results[0];
+
+    expect(result?.file_path).toBe("src/auth.ts");
+    expect(result?.score_breakdown.symbol).toBeGreaterThan(0);
+    expect(result?.score_breakdown.path).toBeGreaterThan(0);
+    expect(result?.score_breakdown.import).toBeGreaterThan(0);
+    expect(result?.match_reasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: "symbol", value: "requireActiveUser" }),
+        expect.objectContaining({ field: "path", value: "src/auth.ts" }),
+        expect.objectContaining({ field: "import", value: "./db" }),
+      ]),
+    );
+  });
+
+  test("search explains export matches", async () => {
+    await scanSourceIndex(tmpRoot);
+
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "createCheckoutSession payment",
+      { limit: 1 },
+    );
+    const result = response.results[0];
+
+    expect(result?.file_path).toBe("src/payment.ts");
+    expect(result?.score_breakdown.export).toBeGreaterThan(0);
+    expect(result?.match_reasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "export",
+          value: "createCheckoutSession",
+        }),
+      ]),
+    );
+  });
+
+  test("search diversifies top results across files before filling repeats", async () => {
+    await write(
+      "src/auth-many.ts",
+      [
+        "export function needleAlpha() { return 'needle auth alpha'; }",
+        "export function needleBeta() { return 'needle auth beta'; }",
+        "export function needleGamma() { return 'needle auth gamma'; }",
+      ].join("\n"),
+    );
+    await write(
+      "src/billing-needle.ts",
+      "export function needleBilling() { return 'needle billing'; }",
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(tmpRoot, "needle", { limit: 3 });
+
+    expect(response.results).toHaveLength(3);
+    expect(
+      new Set(response.results.slice(0, 2).map((result) => result.file_path)),
+    ).toEqual(new Set(["src/auth-many.ts", "src/billing-needle.ts"]));
+  });
+
   test("search total_results reports matches beyond the returned limit", async () => {
     await write("src/needle-a.ts", "export function sharedNeedleAlpha() {}");
     await write("src/needle-b.ts", "export function sharedNeedleBeta() {}");

@@ -218,7 +218,7 @@ program
 program
   .command("search-source <query>")
   .description(
-    "Search the local source index for relevant code chunks. Run `codemap scan` first.",
+    "Search the local source index for relevant code chunks with match reasons. Run `codemap scan` first.",
   )
   .option("-l, --limit <n>", "Maximum results to return.", parsePositiveInteger)
   .option(
@@ -244,7 +244,7 @@ program
 program
   .command("context <question>")
   .description(
-    "Return fused repo context: graph matches, source-index status/search, staleness, warnings, and next steps.",
+    "Return fused repo context: graph/source matches, match reasons, staleness, warnings, and next steps.",
   )
   .option("--graph-limit <n>", "Maximum graph nodes to return.", parsePositiveInteger)
   .option("--source-limit <n>", "Maximum source chunks to return.", parsePositiveInteger)

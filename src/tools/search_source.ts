@@ -13,7 +13,7 @@ export function registerSearchSource(
     {
       title: "Search source",
       description:
-        "Search the rebuildable local source index for relevant code chunks. Use after query_graph when you need source discovery; inspect returned files before emitting durable graph knowledge.",
+        "Search the rebuildable local source index for relevant code chunks with match reasons, score breakdowns, and optional dependency context. Use after query_graph when you need source discovery; inspect returned files before emitting durable graph knowledge.",
       inputSchema: {
         query: z
           .string()

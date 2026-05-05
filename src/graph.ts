@@ -22,6 +22,25 @@ const SCHEMA_VERSION = 1 as const;
 export interface QueryResult {
   nodes: Node[];
   edges: Edge[];
+  matches: GraphNodeMatch[];
+}
+
+export type GraphMatchField = "alias" | "name" | "summary" | "tag";
+
+export interface GraphMatchReason {
+  field: GraphMatchField;
+  token: string;
+  value: string;
+  score: number;
+}
+
+export type GraphScoreBreakdown = Record<GraphMatchField, number>;
+
+export interface GraphNodeMatch {
+  node_id: string;
+  score: number;
+  score_breakdown: GraphScoreBreakdown;
+  match_reasons: GraphMatchReason[];
 }
 
 export interface UpsertOptions {
@@ -148,36 +167,35 @@ export class GraphStore {
    */
   query(question: string, limit = 10): QueryResult {
     const tokens = question.toLowerCase().split(/\s+/).filter(Boolean);
-    const scored: Array<{ id: string; node: StoredNode; score: number }> = [];
+    const scored: Array<{
+      id: string;
+      node: StoredNode;
+      score: number;
+      score_breakdown: GraphScoreBreakdown;
+      match_reasons: GraphMatchReason[];
+    }> = [];
 
     for (const [id, node] of Object.entries(this.data.nodes)) {
       if (node.status === "deprecated") continue;
 
-      const nameLower = node.name.toLowerCase();
-      const summaryLower = node.summary.toLowerCase();
-      const tagsLower = node.tags.map((t) => t.toLowerCase());
-      const aliasesLower = node.aliases.map((a) => a.toLowerCase());
+      const match = scoreGraphNode(node, tokens);
 
-      let score = 0;
-      for (const token of tokens) {
-        // Substring match across all fields for symmetry with name/summary.
-        // Higher-signal channels (tag, alias) keep their higher weight.
-        if (tagsLower.some((t) => t.includes(token))) score += 2;
-        if (nameLower.includes(token)) score += 1;
-        if (summaryLower.includes(token)) score += 1;
-        if (aliasesLower.some((a) => a.includes(token))) score += 1.5;
-      }
-
-      if (score > 0) {
-        scored.push({ id, node, score });
+      if (match.score > 0) {
+        scored.push({ id, node, ...match });
       }
     }
 
-    scored.sort((a, b) => b.score - a.score);
+    scored.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
     const top = scored.slice(0, limit);
     const topIds = new Set(top.map((s) => s.id));
 
     const nodes: Node[] = top.map((s) => ({ id: s.id, ...s.node }));
+    const matches: GraphNodeMatch[] = top.map((s) => ({
+      node_id: s.id,
+      score: s.score,
+      score_breakdown: s.score_breakdown,
+      match_reasons: s.match_reasons,
+    }));
     const edges: Edge[] = [];
     for (const [key, value] of Object.entries(this.data.edges)) {
       const parsed = parseEdgeKey(key);
@@ -192,7 +210,7 @@ export class GraphStore {
       }
     }
 
-    return { nodes, edges };
+    return { nodes, edges, matches };
   }
 
   // ===========================================================
@@ -353,6 +371,73 @@ export class GraphStore {
   private serialize(): string {
     return `${JSON.stringify(sortKeysDeep(this.data), null, 2)}\n`;
   }
+}
+
+function scoreGraphNode(
+  node: StoredNode,
+  tokens: string[],
+): {
+  score: number;
+  score_breakdown: GraphScoreBreakdown;
+  match_reasons: GraphMatchReason[];
+} {
+  const nameLower = node.name.toLowerCase();
+  const summaryLower = node.summary.toLowerCase();
+  const tags = node.tags.map((tag) => ({
+    value: tag,
+    lower: tag.toLowerCase(),
+  }));
+  const aliases = node.aliases.map((alias) => ({
+    value: alias,
+    lower: alias.toLowerCase(),
+  }));
+  const score_breakdown: GraphScoreBreakdown = {
+    alias: 0,
+    name: 0,
+    summary: 0,
+    tag: 0,
+  };
+  const match_reasons: GraphMatchReason[] = [];
+
+  function addReason(
+    field: GraphMatchField,
+    token: string,
+    value: string,
+    score: number,
+  ): void {
+    score_breakdown[field] += score;
+    match_reasons.push({ field, token, value, score });
+  }
+
+  for (const token of tokens) {
+    const tag = tags.find((entry) => entry.lower.includes(token));
+    if (tag) addReason("tag", token, tag.value, 2);
+    if (nameLower.includes(token)) addReason("name", token, node.name, 1);
+    if (summaryLower.includes(token)) {
+      addReason("summary", token, snippetForToken(node.summary, token), 1);
+    }
+    const alias = aliases.find((entry) => entry.lower.includes(token));
+    if (alias) addReason("alias", token, alias.value, 1.5);
+  }
+
+  const score = Object.values(score_breakdown).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  return {
+    score,
+    score_breakdown,
+    match_reasons: match_reasons.slice(0, 8),
+  };
+}
+
+function snippetForToken(value: string, token: string): string {
+  const lower = value.toLowerCase();
+  const index = lower.indexOf(token);
+  if (index < 0) return value.slice(0, 80);
+  const start = Math.max(0, index - 24);
+  const end = Math.min(value.length, index + token.length + 56);
+  return value.slice(start, end);
 }
 
 /**

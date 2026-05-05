@@ -74,6 +74,26 @@ export interface SourceDependencyContext {
   content_preview: string;
 }
 
+export type SourceMatchField =
+  | "content"
+  | "export"
+  | "import"
+  | "path"
+  | "related_graph_node"
+  | "symbol";
+
+export interface SourceMatchReason {
+  field: SourceMatchField;
+  value: string;
+  score: number;
+  detail?: string;
+}
+
+export type SourceScoreBreakdown = Record<
+  "bm25" | SourceMatchField,
+  number
+>;
+
 export interface SourceChunk {
   id: string;
   file_path: string;
@@ -144,6 +164,8 @@ export interface SourceSearchResult {
   language: string;
   chunk_type: SourceChunk["chunk_type"];
   score: number;
+  score_breakdown: SourceScoreBreakdown;
+  match_reasons: SourceMatchReason[];
   content: string;
   symbols: SourceSymbol[];
   imports: SourceImport[];
@@ -192,8 +214,12 @@ interface CandidateFileSearchResult {
 interface RankedChunk {
   chunk: SourceChunk;
   score: number;
+  score_breakdown: SourceScoreBreakdown;
+  match_reasons: SourceMatchReason[];
   related_nodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
 }
+
+const MAX_MATCH_REASONS = 8;
 
 export function sourceIndexPath(repoRoot: string): string {
   return path.join(repoRoot, INDEX_DIR, INDEX_FILE);
@@ -421,15 +447,16 @@ export async function searchSourceIndex(
   const allRanked = rankChunks(trimmedQuery, chunks, relatedNodesByFile).filter(
     ({ score }) => score > 0,
   );
-  const ranked = allRanked
-    .slice(0, limit)
-    .map(({ chunk, score, related_nodes }) => ({
+  const ranked = diversifyRankedChunks(allRanked, limit)
+    .map(({ chunk, score, score_breakdown, match_reasons, related_nodes }) => ({
       file_path: chunk.file_path,
       start_line: chunk.start_line,
       end_line: chunk.end_line,
       language: chunk.language,
       chunk_type: chunk.chunk_type,
       score: Number(score.toFixed(4)),
+      score_breakdown: roundScoreBreakdown(score_breakdown),
+      match_reasons: roundMatchReasons(match_reasons),
       content:
         chunk.content.length > maxContentChars
           ? `${chunk.content.slice(0, maxContentChars)}\n// ... truncated`
@@ -793,13 +820,43 @@ function rankChunks(
   return documents
     .map(({ chunk, tokens }) => {
       const relatedNodes = relatedNodesByFile.get(chunk.file_path) ?? [];
+      const bm25Score = bm25(
+        queryTokens,
+        tokens,
+        df,
+        documents.length,
+        avgLength,
+      );
+      const fieldScore = scoreSourceFields(
+        query,
+        queryTokens,
+        chunk,
+        relatedNodes,
+        bm25Score,
+      );
       const score =
-        bm25(queryTokens, tokens, df, documents.length, avgLength) +
-        fieldBoost(query, queryTokens, chunk, relatedNodes);
-      return { chunk, score, related_nodes: relatedNodes.slice(0, 3) };
+        fieldScore.score_breakdown.bm25 +
+        fieldScore.score_breakdown.content +
+        fieldScore.score_breakdown.export +
+        fieldScore.score_breakdown.import +
+        fieldScore.score_breakdown.path +
+        fieldScore.score_breakdown.related_graph_node +
+        fieldScore.score_breakdown.symbol;
+      return {
+        chunk,
+        score,
+        score_breakdown: fieldScore.score_breakdown,
+        match_reasons: fieldScore.match_reasons,
+        related_nodes: relatedNodes.slice(0, 3),
+      };
     })
     .filter((result) => result.score > 0)
-    .sort((a, b) => b.score - a.score);
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.chunk.file_path.localeCompare(b.chunk.file_path) ||
+        a.chunk.start_line - b.chunk.start_line,
+    );
 }
 
 function bm25(
@@ -835,37 +892,185 @@ function bm25(
   return score;
 }
 
-function fieldBoost(
+function scoreSourceFields(
   query: string,
   queryTokens: string[],
   chunk: SourceChunk,
   relatedNodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>,
-): number {
+  bm25Score: number,
+): {
+  score_breakdown: SourceScoreBreakdown;
+  match_reasons: SourceMatchReason[];
+} {
   const queryLower = query.toLowerCase();
   const pathLower = chunk.file_path.toLowerCase();
-  const symbolText = chunk.symbols.map((s) => s.name).join(" ").toLowerCase();
-  const importText = chunk.imports.map((i) => i.module).join(" ").toLowerCase();
-  const exportText = chunk.exports.join(" ").toLowerCase();
   const contentLower = chunk.content.toLowerCase();
-  const relatedText = relatedNodes
-    .map((node) => `${node.name} ${node.summary}`)
-    .join(" ")
-    .toLowerCase();
-  let boost = 0;
+  const score_breakdown: SourceScoreBreakdown = {
+    bm25: bm25Score,
+    content: 0,
+    export: 0,
+    import: 0,
+    path: 0,
+    related_graph_node: 0,
+    symbol: 0,
+  };
+  const match_reasons: SourceMatchReason[] = [];
+  const reasonIndexes = new Map<string, number>();
 
-  if (pathLower.includes(queryLower)) boost += 4;
-  if (symbolText.includes(queryLower)) boost += 5;
-  if (contentLower.includes(queryLower)) boost += 2;
-
-  for (const token of queryTokens) {
-    if (pathLower.includes(token)) boost += 1.5;
-    if (symbolText.includes(token)) boost += 3;
-    if (importText.includes(token)) boost += 1;
-    if (exportText.includes(token)) boost += 1;
-    if (relatedText.includes(token)) boost += 1.25;
+  function addReason(
+    field: SourceMatchField,
+    value: string,
+    score: number,
+    detail?: string,
+    contributesToFieldScore = true,
+  ): void {
+    if (contributesToFieldScore) {
+      score_breakdown[field] += score;
+    }
+    const key = `${field}:${value}`;
+    const existingIndex = reasonIndexes.get(key);
+    if (existingIndex !== undefined) {
+      match_reasons[existingIndex].score += score;
+      return;
+    }
+    reasonIndexes.set(key, match_reasons.length);
+    match_reasons.push({ field, value, score, detail });
   }
 
-  return boost;
+  if (pathLower.includes(queryLower)) {
+    addReason("path", chunk.file_path, 4, "exact query matched the file path");
+  }
+  const exactSymbol = chunk.symbols.find((symbol) =>
+    symbol.name.toLowerCase().includes(queryLower),
+  );
+  if (exactSymbol) {
+    addReason("symbol", exactSymbol.name, 5, "exact query matched a symbol name");
+  }
+  if (contentLower.includes(queryLower)) {
+    addReason(
+      "content",
+      snippetForQuery(chunk.content, queryLower),
+      2,
+      "exact query matched chunk content",
+    );
+  }
+
+  if (bm25Score > 0) {
+    const matchedTokens = queryTokens.filter((token) =>
+      contentLower.includes(token),
+    );
+    if (matchedTokens.length > 0) {
+      addReason(
+        "content",
+        matchedTokens.slice(0, 5).join(" "),
+        bm25Score,
+        "query terms matched indexed content",
+        false,
+      );
+    }
+  }
+
+  for (const token of queryTokens) {
+    if (pathLower.includes(token)) {
+      addReason("path", chunk.file_path, 1.5, `path contains "${token}"`);
+    }
+    const symbol = chunk.symbols.find((entry) =>
+      entry.name.toLowerCase().includes(token),
+    );
+    if (symbol) {
+      addReason("symbol", symbol.name, 3, `symbol contains "${token}"`);
+    }
+    const sourceImport = chunk.imports.find((entry) =>
+      entry.module.toLowerCase().includes(token),
+    );
+    if (sourceImport) {
+      addReason("import", sourceImport.module, 1, `import contains "${token}"`);
+    }
+    const sourceExport = chunk.exports.find((entry) =>
+      entry.toLowerCase().includes(token),
+    );
+    if (sourceExport) {
+      addReason("export", sourceExport, 1, `export contains "${token}"`);
+    }
+    const relatedNode = relatedNodes.find((node) =>
+      `${node.name} ${node.summary}`.toLowerCase().includes(token),
+    );
+    if (relatedNode) {
+      addReason(
+        "related_graph_node",
+        relatedNode.id,
+        1.25,
+        `related graph node contains "${token}"`,
+      );
+    }
+  }
+
+  return {
+    score_breakdown,
+    match_reasons: match_reasons
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          a.field.localeCompare(b.field) ||
+          a.value.localeCompare(b.value),
+      )
+      .slice(0, MAX_MATCH_REASONS),
+  };
+}
+
+function diversifyRankedChunks(
+  ranked: RankedChunk[],
+  limit: number,
+): RankedChunk[] {
+  const selected: RankedChunk[] = [];
+  const selectedIds = new Set<string>();
+  const fileCounts = new Map<string, number>();
+  const maxPerFile = Math.max(2, Math.ceil(limit / 4));
+
+  function add(candidate: RankedChunk, maxForFile: number): void {
+    if (selected.length >= limit || selectedIds.has(candidate.chunk.id)) return;
+    const count = fileCounts.get(candidate.chunk.file_path) ?? 0;
+    if (count >= maxForFile) return;
+    selected.push(candidate);
+    selectedIds.add(candidate.chunk.id);
+    fileCounts.set(candidate.chunk.file_path, count + 1);
+  }
+
+  for (const candidate of ranked) add(candidate, 1);
+  for (const candidate of ranked) add(candidate, maxPerFile);
+  for (const candidate of ranked) add(candidate, Number.POSITIVE_INFINITY);
+
+  return selected;
+}
+
+function roundScoreBreakdown(
+  breakdown: SourceScoreBreakdown,
+): SourceScoreBreakdown {
+  return {
+    bm25: Number(breakdown.bm25.toFixed(4)),
+    content: Number(breakdown.content.toFixed(4)),
+    export: Number(breakdown.export.toFixed(4)),
+    import: Number(breakdown.import.toFixed(4)),
+    path: Number(breakdown.path.toFixed(4)),
+    related_graph_node: Number(breakdown.related_graph_node.toFixed(4)),
+    symbol: Number(breakdown.symbol.toFixed(4)),
+  };
+}
+
+function roundMatchReasons(reasons: SourceMatchReason[]): SourceMatchReason[] {
+  return reasons.map((reason) => ({
+    ...reason,
+    score: Number(reason.score.toFixed(4)),
+  }));
+}
+
+function snippetForQuery(value: string, queryLower: string): string {
+  const lower = value.toLowerCase();
+  const index = lower.indexOf(queryLower);
+  if (index < 0) return value.slice(0, 80);
+  const start = Math.max(0, index - 24);
+  const end = Math.min(value.length, index + queryLower.length + 56);
+  return value.slice(start, end);
 }
 
 async function loadRelatedNodesByFile(

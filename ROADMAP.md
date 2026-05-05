@@ -222,6 +222,11 @@ Task 039 shipped the `0.5.2` patch release for task 034, so installed MCP users
 receive the generated-guidance freshness check and stricter Agent Contract
 before task 035 starts.
 
+Task 035 improves local-first retrieval by adding graph/source match reasons,
+compact score breakdowns, deterministic source-result diversity, and clearer
+query-time provenance warnings. Embeddings remain a future optional layer only
+after local retrieval misses are observed in dogfood.
+
 
 ## Cumulative timeline (single dev, half-time)
 
