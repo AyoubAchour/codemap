@@ -380,6 +380,33 @@ describe("GraphStore.query", () => {
     );
   });
 
+  test("query match reasons keep higher-signal fields before slicing", async () => {
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode(makeNode({
+      id: "auth/reason-ordering",
+      name: "Alpha beta gamma delta epsilon zeta eta theta",
+      summary: "Alpha beta gamma delta epsilon zeta eta theta",
+      tags: ["auth"],
+      aliases: ["secure auth"],
+    }));
+
+    const result = store.query(
+      "alpha beta gamma delta epsilon zeta eta theta auth",
+      1,
+    );
+
+    expect(result.matches[0]?.match_reasons).toContainEqual(
+      expect.objectContaining({ field: "tag", value: "auth", score: 2 }),
+    );
+    expect(result.matches[0]?.match_reasons).toContainEqual(
+      expect.objectContaining({
+        field: "alias",
+        value: "secure auth",
+        score: 1.5,
+      }),
+    );
+  });
+
   test("excludes deprecated nodes by default", async () => {
     const store = await GraphStore.load(tmpRoot);
     store.upsertNode(makeNode({

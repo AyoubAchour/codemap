@@ -101,12 +101,17 @@ describe("source index", () => {
     expect(result?.score_breakdown.symbol).toBeGreaterThan(0);
     expect(result?.score_breakdown.path).toBeGreaterThan(0);
     expect(result?.score_breakdown.import).toBeGreaterThan(0);
+    expect(result?.score_breakdown.bm25).toBeGreaterThan(0);
     expect(result?.match_reasons).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ field: "bm25" }),
         expect.objectContaining({ field: "symbol", value: "requireActiveUser" }),
         expect.objectContaining({ field: "path", value: "src/auth.ts" }),
         expect.objectContaining({ field: "import", value: "./db" }),
       ]),
+    );
+    expect(result?.match_reasons.find((reason) => reason.field === "bm25")?.score).toBe(
+      result?.score_breakdown.bm25,
     );
   });
 

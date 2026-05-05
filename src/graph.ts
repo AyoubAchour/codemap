@@ -427,7 +427,14 @@ function scoreGraphNode(
   return {
     score,
     score_breakdown,
-    match_reasons: match_reasons.slice(0, 8),
+    match_reasons: match_reasons
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          a.field.localeCompare(b.field) ||
+          a.token.localeCompare(b.token),
+      )
+      .slice(0, 8),
   };
 }
 

@@ -75,6 +75,7 @@ export interface SourceDependencyContext {
 }
 
 export type SourceMatchField =
+  | "bm25"
   | "content"
   | "export"
   | "import"
@@ -89,10 +90,7 @@ export interface SourceMatchReason {
   detail?: string;
 }
 
-export type SourceScoreBreakdown = Record<
-  "bm25" | SourceMatchField,
-  number
->;
+export type SourceScoreBreakdown = Record<SourceMatchField, number>;
 
 export interface SourceChunk {
   id: string;
@@ -961,7 +959,7 @@ function scoreSourceFields(
     );
     if (matchedTokens.length > 0) {
       addReason(
-        "content",
+        "bm25",
         matchedTokens.slice(0, 5).join(" "),
         bm25Score,
         "query terms matched indexed content",
