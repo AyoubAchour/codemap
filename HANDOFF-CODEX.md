@@ -17,9 +17,8 @@ Three docs are the real source of truth:
 
 | | |
 | --- | --- |
-| Published | `codemap-mcp@0.5.1` on npm (https://www.npmjs.com/package/codemap-mcp); GitHub release `v0.5.1` is live |
-| Pending release | `0.5.2` patch prep for the merged agent-guidance freshness check |
-| Releases shipped | 0.1.0 → 0.1.1 → 0.1.2 → 0.2.0 → 0.2.1 → 0.2.2 → 0.3.0 → 0.4.0 → 0.5.0 → 0.5.1 |
+| Published | `codemap-mcp@0.5.2` on npm (https://www.npmjs.com/package/codemap-mcp); GitHub release `v0.5.2` is live |
+| Releases shipped | 0.1.0 → 0.1.1 → 0.1.2 → 0.2.0 → 0.2.1 → 0.2.2 → 0.3.0 → 0.4.0 → 0.5.0 → 0.5.1 → 0.5.2 |
 | MCP tools | Graph memory: `set_active_topic`, `query_context`, `query_graph`, `get_node`, `graph_health`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index` |
 | CLI subcommands | `init`, `show`, `correct`, `deprecate`, `validate`, `doctor`, `rollup`, `scan`, `context`, `search-source`, `index-status`, `clear-index` |
 | M3 trial result | 9 turns on voice2work → 27 nodes / 29 edges across 6 problem domains, 5 of 8 edge kinds + 4 of 9 node kinds exercised. **Codemap thesis validated.** |
@@ -61,9 +60,10 @@ metadata plus `codemap init --check`, a read-only freshness check for
 `AGENTS.md` / `CLAUDE.md`. The goal is to make agents use Codemap correctly
 without chat reminders before adding more retrieval machinery.
 
-Task 039 prepares `codemap-mcp@0.5.2` so the merged task-034 onboarding work can
-ship before task 035 starts. It should remain a patch release: version bump,
-release gates, PR, then npm/GitHub publish after merge.
+Task 039 shipped `codemap-mcp@0.5.2` as a patch release for the merged task-034
+onboarding work: versioned generated-guidance metadata, `codemap init --check`,
+stricter generated Agent Contract wording, explicit `--check --force`
+rejection, and policy-hash mismatch coverage. Task 035 is now unblocked.
 
 ## How to work in this repo (the conventions)
 

@@ -218,9 +218,9 @@ hook systems without abandoning Codemap's core thesis as curated repo memory:
 This order is intentional: improve agent behavior first, then retrieval, then
 impact context, then trust/ranking, then end-of-turn capture assistance.
 
-Task 039 prepares the `0.5.2` patch release for task 034 before starting task
-035, so installed MCP users receive the generated-guidance freshness check and
-stricter Agent Contract.
+Task 039 shipped the `0.5.2` patch release for task 034, so installed MCP users
+receive the generated-guidance freshness check and stricter Agent Contract
+before task 035 starts.
 
 
 ## Cumulative timeline (single dev, half-time)

@@ -1,6 +1,6 @@
 # Task 039: Release v0.5.2
 
-**Status:** in progress
+**Status:** done
 **Phase:** Phase 4 / release
 **Started:** 2026-05-05
 **Depends on:** task-034
@@ -60,13 +60,13 @@ onboarding behavior without changing the graph schema.
 ## Exit criteria
 
 - [x] Version is bumped to `0.5.2`.
-- [x] Release docs describe the pending `0.5.2` patch.
+- [x] Release docs describe the `0.5.2` patch.
 - [x] Local release gates pass.
-- [ ] Release PR is opened.
-- [ ] Release PR is merged.
-- [ ] `codemap-mcp@0.5.2` is published to npm.
-- [ ] Global install reports `codemap --version` as `0.5.2`.
-- [ ] GitHub release `v0.5.2` is published.
+- [x] Release PR is opened.
+- [x] Release PR is merged.
+- [x] `codemap-mcp@0.5.2` is published to npm.
+- [x] Global install reports `codemap --version` as `0.5.2`.
+- [x] GitHub release `v0.5.2` is published.
 
 ## Notes
 
@@ -80,3 +80,10 @@ Release-prep verification passed on 2026-05-05: `bun run typecheck`,
 `npm publish --dry-run --provenance --access public`, `npx --yes publint`,
 `npx --yes @arethetypeswrong/cli --pack --ignore-rules cjs-resolves-to-esm`,
 and `bun run bin/codemap.ts --version`.
+Release PR: https://github.com/AyoubAchour/codemap/pull/28
+
+Publish verification passed on 2026-05-05: `npm publish --access public`,
+`npm view codemap-mcp version dist-tags --json --registry=https://registry.npmjs.org/ --prefer-online`,
+global `npm i -g codemap-mcp@0.5.2 --prefer-online --registry=https://registry.npmjs.org/`,
+`codemap --version`, `codemap init --help`, `codemap init --check --force`,
+and GitHub release `v0.5.2`.
