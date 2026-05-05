@@ -18,6 +18,7 @@ Three docs are the real source of truth:
 | | |
 | --- | --- |
 | Published | `codemap-mcp@0.5.0` on npm (https://www.npmjs.com/package/codemap-mcp); GitHub release `v0.5.0` is live |
+| Pending patch | `0.5.1` release prep packages the post-0.5.0 CLI polish and professional public README for npm |
 | Releases shipped | 0.1.0 → 0.1.1 → 0.1.2 → 0.2.0 → 0.2.1 → 0.2.2 → 0.3.0 → 0.4.0 → 0.5.0 |
 | MCP tools | Graph memory: `set_active_topic`, `query_context`, `query_graph`, `get_node`, `graph_health`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index` |
 | CLI subcommands | `init`, `show`, `correct`, `deprecate`, `validate`, `doctor`, `rollup`, `scan`, `context`, `search-source`, `index-status`, `clear-index` |
@@ -41,6 +42,10 @@ The user explicitly parked visual work until Codemap's behavior is consistent. T
 | 4 | **Dogfood on real code tasks** | Verify the graph stays useful across follow-up repo work before adding retrieval upgrades or UI. |
 
 Visual surfaces, including editor extensions and graph viewers, are deferred. Re-open them only after codebase-scoped behavior feels trustworthy. A local source-index slice now exists for cold-start code discovery, and `query_context` fuses it with graph memory for pre-planning. `graph_health` exposes stale or duplicated graph memory without writing repairs. The CLI `codemap doctor` defaults to compact human output; use `--json` for the full structured health report. Keep the source index separate from graph memory and do not auto-generate graph nodes from it.
+
+Task 033 prepares `codemap-mcp@0.5.1` as a patch release for the merged
+post-0.5.0 polish: compact doctor output, safer CLI flushing, and the
+professional public README/package metadata.
 
 ## How to work in this repo (the conventions)
 

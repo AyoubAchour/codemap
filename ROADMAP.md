@@ -200,6 +200,10 @@ Task 032 follows the 0.5.0 release by dogfooding those health signals: update
 release-truth docs, make `codemap doctor` readable by default, clean stale local
 graph memory, and verify the published package in another real checkout.
 
+Task 033 is the patch-release prep for the post-0.5.0 polish already merged on
+main. It packages the compact doctor/CLI flush improvements and the public
+README cleanup as `codemap-mcp@0.5.1` before the next behavior slice starts.
+
 
 ## Cumulative timeline (single dev, half-time)
 
