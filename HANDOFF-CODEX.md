@@ -65,6 +65,12 @@ onboarding work: versioned generated-guidance metadata, `codemap init --check`,
 stricter generated Agent Contract wording, explicit `--check --force`
 rejection, and policy-hash mismatch coverage. Task 035 is now unblocked.
 
+Task 035 is the retrieval-quality slice: `query_context`, `query_graph`, and
+source search should explain why each result matched, prefer distinct source
+files before repeated chunks, and keep source hits clearly framed as rebuildable
+discovery hints. Do not add hosted embeddings or rerankers until local lexical
+and symbol retrieval show real dogfood misses.
+
 ## How to work in this repo (the conventions)
 
 These were learned during M3, not in any spec — propagate them.

@@ -368,6 +368,43 @@ describe("GraphStore.query", () => {
 
     const result = store.query("auth", 5);
     expect(result.nodes.map((n) => n.id)).toEqual(["auth/middleware"]);
+    expect(result.matches[0]).toEqual(
+      expect.objectContaining({
+        node_id: "auth/middleware",
+        score_breakdown: expect.objectContaining({ name: 1, tag: 2 }),
+        match_reasons: expect.arrayContaining([
+          expect.objectContaining({ field: "tag", value: "auth" }),
+          expect.objectContaining({ field: "name", value: "Auth middleware" }),
+        ]),
+      }),
+    );
+  });
+
+  test("query match reasons keep higher-signal fields before slicing", async () => {
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode(makeNode({
+      id: "auth/reason-ordering",
+      name: "Alpha beta gamma delta epsilon zeta eta theta",
+      summary: "Alpha beta gamma delta epsilon zeta eta theta",
+      tags: ["auth"],
+      aliases: ["secure auth"],
+    }));
+
+    const result = store.query(
+      "alpha beta gamma delta epsilon zeta eta theta auth",
+      1,
+    );
+
+    expect(result.matches[0]?.match_reasons).toContainEqual(
+      expect.objectContaining({ field: "tag", value: "auth", score: 2 }),
+    );
+    expect(result.matches[0]?.match_reasons).toContainEqual(
+      expect.objectContaining({
+        field: "alias",
+        value: "secure auth",
+        score: 1.5,
+      }),
+    );
   });
 
   test("excludes deprecated nodes by default", async () => {

@@ -119,8 +119,8 @@ For repository tasks, agents should follow this loop:
 
 1. `set_active_topic` to name the task and reset per-turn write limits.
 2. `query_context` before planning. This combines graph memory, source-index
-   status, source search, dependency context, stale-anchor warnings, and next
-   steps.
+   status, source search, dependency context, match reasons, stale-anchor
+   warnings, and next steps.
 3. Inspect real project files before relying on search results.
 4. `emit_node` only for durable repo-local knowledge, anchored to real source
    files.
@@ -137,14 +137,14 @@ per turn to prevent graph spam.
 | Tool | Purpose |
 | --- | --- |
 | `set_active_topic` | Mark the current task and reset the per-turn emit budget. |
-| `query_context` | Preferred planning tool. Combines graph, source search, staleness, dependencies, and next steps. |
-| `query_graph` | Search curated graph memory for relevant nodes and edges. |
+| `query_context` | Preferred planning tool. Combines graph, source search, staleness, match reasons, dependencies, and next steps. |
+| `query_graph` | Search curated graph memory for relevant nodes, edges, and match reasons. |
 | `get_node` | Fetch one node by id or alias. |
 | `graph_health` | Read-only graph health report: validator warnings and source-anchor staleness. |
 | `emit_node` | Create or merge a durable repo-local finding. |
 | `link` | Create or update a typed relationship between two nodes. |
 | `index_codebase` | Build the rebuildable local source index. |
-| `search_source` | Search indexed source chunks, optionally with import/importer context. |
+| `search_source` | Search indexed source chunks with score breakdowns, match reasons, and optional import/importer context. |
 | `get_index_status` | Check whether the source index exists and looks fresh. |
 | `clear_index` | Delete the source-index cache without touching graph memory. |
 

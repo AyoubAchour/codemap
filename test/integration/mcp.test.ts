@@ -384,15 +384,37 @@ describe("MCP server — source index tools", () => {
 
     expect(parsed.ok).toBe(true);
     expect(parsed.graph.nodes[0].id).toBe("auth/active-user");
+    expect(parsed.graph.matches[0]).toEqual(
+      expect.objectContaining({
+        node_id: "auth/active-user",
+        match_reasons: expect.arrayContaining([
+          expect.objectContaining({ field: "tag", value: "auth" }),
+        ]),
+      }),
+    );
     expect(parsed.source.refreshed).toBe(true);
     expect(parsed.source.status.indexed).toBe(true);
     expect(parsed.source.search.ok).toBe(true);
     expect(parsed.source.search.results[0].file_path).toBe(
       "src/auth/distinct.ts",
     );
+    expect(parsed.source.search.results[0].match_reasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: "symbol", value: "requireActiveUser" }),
+      ]),
+    );
+    expect(parsed.source.search.results[0].score_breakdown.symbol).toBeGreaterThan(
+      0,
+    );
     expect(parsed.related_nodes.map((n: { id: string }) => n.id)).toEqual([
       "auth/active-user",
     ]);
+    expect(parsed.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Graph matches are curated repo memory"),
+        expect.stringContaining("Source hits come from the rebuildable local index"),
+      ]),
+    );
   });
 
   test("graph_health reports stale active source anchors", async () => {
