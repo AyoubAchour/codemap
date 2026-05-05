@@ -1,35 +1,66 @@
 # Codemap
 
-Persistent knowledge graph of a codebase, built incrementally by AI agents during normal work, exposed via [MCP](https://modelcontextprotocol.io). Stored as a single JSON file in your repo (`.codemap/graph.json`) — diffable, reviewable, no database required.
+Persistent codebase memory for MCP-enabled coding agents.
 
-**Status:** v0.5.0 shipped — **M3 closed** ([M3a retro](tasks/task-020-m3a-retrospective.md), [M3b retro](tasks/task-024-m3b-retrospective.md)): 9 turns on voice2work produced 27 nodes / 29 edges across 6 problem domains; 5 of 8 edge kinds + 4 of 9 node kinds exercised; 0 collisions. Codemap thesis validated. **Current focus:** post-release graph hygiene, codebase-only graph quality, and fused local source discovery before any human-facing visual surface. For agent handoff context see [`HANDOFF-CODEX.md`](HANDOFF-CODEX.md).
+Codemap gives agents a small, reviewable knowledge graph for each repository.
+It captures the things that are easy to lose between sessions: architectural
+decisions, invariants, gotchas, important relationships, and the source files
+that prove them.
 
-See [`V1_SPEC.md`](V1_SPEC.md) for what we're building, [`TECH_SPEC.md`](TECH_SPEC.md) for how, and [`ROADMAP.md`](ROADMAP.md) for when.
+Everything stays local. The curated graph is stored as JSON in your repo at
+`.codemap/graph.json`; the source index is a rebuildable cache; no database or
+hosted service is required.
+
+## Why Use Codemap?
+
+AI coding agents are good at reading a repo once. They are much less reliable at
+remembering what mattered the next time.
+
+Codemap helps by giving them a shared, repo-scoped memory:
+
+- preserve decisions and constraints that are not obvious from one file
+- reduce repeated rediscovery across sessions and tools
+- keep findings anchored to real source files
+- inspect stale or missing source anchors before trusting old knowledge
+- search local source chunks when the graph is empty or incomplete
+- correct or deprecate graph knowledge from the CLI when humans know better
+
+Codemap is not general chat memory. It is for durable knowledge about the
+current codebase.
+
+## How It Works
+
+1. An agent starts a task and queries the graph for related repo knowledge.
+2. If needed, Codemap searches a local source index to help the agent find
+   relevant files faster.
+3. After inspecting real project files, the agent writes only durable findings
+   back to the graph.
+4. Future agents can reuse, update, link, or deprecate that knowledge instead
+   of starting from zero.
+
+The graph and the source index are intentionally separate:
+
+- `.codemap/graph.json` is curated memory: decisions, invariants, gotchas, and
+  relationships.
+- `.codemap/index/source.json` is a disposable cache for code discovery. It can
+  be rebuilt at any time and never creates graph nodes by itself.
 
 ## Install
 
-Requires Node 22+. No Bun required at runtime — the published bundle is plain Node-compatible JS.
+Requires Node.js 22 or newer.
 
 ```sh
-# 1. Install globally (puts `codemap` and `codemap-mcp` on PATH)
 npm install -g codemap-mcp
-
-# 2. Wire it into your MCP client (see "Configure your MCP client" below)
-
-# 3. In each project where you want to use codemap, drop AGENTS.md
-#    so the lifecycle policy reaches the agent regardless of the
-#    MCP client's behavior:
-cd /path/to/your-project
-codemap init
 ```
 
-The third step is required for MCP clients that drop the server's `instructions` field (Codex Desktop as of 2026-04). Without `AGENTS.md` the agent will treat codemap as a read-only cache and never write back. See [Agent guidance](#agent-guidance) for details.
+This installs two commands:
 
-## Configure your MCP client
+- `codemap-mcp` — the MCP stdio server
+- `codemap` — the CLI for setup, inspection, health checks, and source indexing
 
-### Claude Code
+## Configure Your MCP Client
 
-Add to `~/.config/claude-code/mcp.json` (or your project's `.mcp.json`):
+Add Codemap as a stdio MCP server:
 
 ```json
 {
@@ -41,104 +72,167 @@ Add to `~/.config/claude-code/mcp.json` (or your project's `.mcp.json`):
 }
 ```
 
-The server reads `process.cwd()` to find the repo root. Run Claude Code from your project directory and `.codemap/graph.json` will be created/read there.
+Run your MCP client from the repository root. Codemap uses the process working
+directory to find or create `.codemap/graph.json`.
 
-### Other MCP clients
+You can also use Codemap without a global install:
 
-Any client that supports stdio MCP servers works. Point `command` at the `codemap-mcp` binary on your PATH.
-
-## MCP tools
-
-| Tool | When the agent calls it |
-| --- | --- |
-| `set_active_topic` | Start of a task. Tags subsequent emissions; resets the per-turn cap counter. |
-| `query_context` | Preferred pre-planning read for repo work. Fuses graph matches, source-index status/search, staleness, related graph nodes, dependency context, warnings, and next steps. |
-| `query_graph` | Find existing nodes relevant to a codebase task description. Call this **before** planning repo work. |
-| `get_node` | Fetch a specific node + its incident edges by id or alias. |
-| `graph_health` | Inspect graph validator issues and source-anchor staleness. Read-only; useful when returned graph memory looks stale or duplicated. |
-| `emit_node` | Add or merge a durable repo-local finding. Capped at 5 per turn (per `V1_SPEC` §7.5) to prevent spam. Requires real repo-relative source files and rejects empty, absolute, missing, escaping, or external URL anchors. Detects collisions with existing nodes via name/alias/source/tag similarity. |
-| `link` | Create or update an edge between two existing nodes. Idempotent on `(from, to, kind)`. |
-| `index_codebase` | Build the rebuildable local source index for this repo. Does not create graph nodes. |
-| `search_source` | Search indexed source chunks for relevant code before inspecting files directly; can include nearby import/importer context. |
-| `get_index_status` | Check whether the local source index exists and whether indexed files look fresh. |
-| `clear_index` | Delete the rebuildable source-index cache without touching `.codemap/graph.json`. |
-
-Edge kinds (V1_SPEC §6.2): `imports`, `calls`, `depends_on`, `implements`, `replaces`, `contradicts`, `derived_from`, `mirrors`.
-
-The source index is a disposable cache at `.codemap/index/source.json`. It is separate from the curated graph: use it for cold-start source discovery, then inspect files and emit only durable decisions, invariants, gotchas, and relationships.
-
-## CLI
-
-The `codemap` command is a manual inspector and corrector for the graph. Use it when you want to override the agent's view by hand.
-
-```sh
-codemap init                          # Generate AGENTS.md (run once per project; --force to overwrite, --claude adds CLAUDE.md)
-codemap show <id>                     # Print a node + incident edges
-codemap correct <id> --summary "..."  # Override fields (bypasses agent merge logic)
-codemap deprecate <id> --reason "..." # Mark a node deprecated
-codemap validate                      # Dry-run validator (exit 0 clean / 1 warnings / 2 schema-invalid)
-codemap doctor                        # Compact graph health summary
-codemap doctor --json                 # Full graph health report for tooling
-codemap rollup                        # Compute the metrics weekly rollup
-codemap scan                          # Build the local source index cache
-codemap context "auth guard"          # Fused graph + source + dependency context for planning
-codemap search-source "auth guard"    # Search indexed source chunks; --dependency-limit adds imports/importers
-codemap index-status                  # Report source-index freshness
-codemap clear-index                   # Delete the rebuildable source index
-codemap --help                        # Full reference
+```json
+{
+  "mcpServers": {
+    "codemap": {
+      "command": "npx",
+      "args": ["-y", "codemap-mcp"]
+    }
+  }
+}
 ```
 
-By default `codemap` operates on the current working directory; pass `--repo <path>` to target a different repo root.
+## Initialize A Project
 
-## Agent guidance
-
-The MCP server attaches a short lifecycle policy to the agent's system prompt at `initialize` time (per the MCP `instructions` field). Some MCP clients pick this up automatically; **some don't.** We've confirmed Codex Desktop drops it (M3a finding F1, [task-020](tasks/task-020-m3a-retrospective.md)).
-
-The robust install path: run `codemap init` in your project to drop an `AGENTS.md` containing the same lifecycle policy. Codex (CLI + Desktop) reads `AGENTS.md` reliably; Claude Code reads `CLAUDE.md` (`codemap init --claude` or `--all`).
+In each repo where you want agents to use Codemap:
 
 ```sh
 cd /path/to/your-project
-codemap init           # writes ./AGENTS.md
-codemap init --claude  # writes ./AGENTS.md and ./CLAUDE.md
-codemap init --all     # writes every known agent-preamble file
-codemap init --force   # overwrite existing files (e.g. after upgrading codemap-mcp)
+codemap init
 ```
 
-The generated file mirrors `src/instructions.ts` — single source of truth. To regenerate after a codemap-mcp upgrade: `codemap init --force`.
+This writes an `AGENTS.md` file with the Codemap lifecycle policy. Keeping the
+policy in the repo makes behavior consistent even when a client does not forward
+MCP server instructions to the agent.
 
-Codemap is intentionally **not** general conversation memory. Agents should use it only when the request touches the current repository's code, docs, architecture, roadmap, tests, or build/release behavior. General Q&A, web research, install help, recommendations, and unrelated user questions should leave `.codemap/graph.json` untouched.
-
-## Telemetry
-
-Codemap writes per-turn counters and weekly rollups to `<repo>/.codemap/metrics.json` for local visibility into agent behavior (queries per turn, emission rate, collisions, cap hits). **No network. No PII. Counts only.** The file is committed to git so the team can see it diff over time.
-
-Opt out at any time:
+Useful variants:
 
 ```sh
-export CODEMAP_TELEMETRY=false   # tool-specific
-# or
-export DO_NOT_TRACK=1            # cross-tool industry standard
+codemap init --force   # overwrite an existing generated file
+codemap init --all     # write every supported agent guidance file
 ```
 
-## Development
+## Agent Workflow
 
-This repo is itself developed via the option-B cadence (one task per PR; see [`tasks/`](tasks/)). To work on Codemap locally:
+For repository tasks, agents should follow this loop:
+
+1. `set_active_topic` to name the task and reset per-turn write limits.
+2. `query_context` before planning. This combines graph memory, source-index
+   status, source search, dependency context, stale-anchor warnings, and next
+   steps.
+3. Inspect real project files before relying on search results.
+4. `emit_node` only for durable repo-local knowledge, anchored to real source
+   files.
+5. `link` related nodes when one decision, invariant, or gotcha depends on
+   another.
+
+Codemap intentionally rejects low-quality graph writes. `emit_node` requires
+real repo-relative source files and matching content hashes; it rejects empty,
+absolute, missing, path-escaping, or external URL anchors. It also caps writes
+per turn to prevent graph spam.
+
+## MCP Tools
+
+| Tool | Purpose |
+| --- | --- |
+| `set_active_topic` | Mark the current task and reset the per-turn emit budget. |
+| `query_context` | Preferred planning tool. Combines graph, source search, staleness, dependencies, and next steps. |
+| `query_graph` | Search curated graph memory for relevant nodes and edges. |
+| `get_node` | Fetch one node by id or alias. |
+| `graph_health` | Read-only graph health report: validator warnings and source-anchor staleness. |
+| `emit_node` | Create or merge a durable repo-local finding. |
+| `link` | Create or update a typed relationship between two nodes. |
+| `index_codebase` | Build the rebuildable local source index. |
+| `search_source` | Search indexed source chunks, optionally with import/importer context. |
+| `get_index_status` | Check whether the source index exists and looks fresh. |
+| `clear_index` | Delete the source-index cache without touching graph memory. |
+
+Supported edge kinds:
+
+`imports`, `calls`, `depends_on`, `implements`, `replaces`, `contradicts`,
+`derived_from`, `mirrors`
+
+## CLI
+
+The `codemap` CLI lets humans inspect, repair, and audit the graph.
+
+```sh
+codemap init                          # Generate agent guidance for this repo
+codemap show <id>                     # Print a node and its incident edges
+codemap correct <id> --summary "..."  # Override node fields by hand
+codemap deprecate <id> --reason "..." # Mark stale knowledge as deprecated
+codemap validate                      # Validate and dry-run graph repairs
+codemap doctor                        # Compact graph health summary
+codemap doctor --json                 # Full structured health report
+codemap scan                          # Build the local source index
+codemap context "auth guard"          # Graph + source context for planning
+codemap search-source "auth guard"    # Search indexed source chunks
+codemap index-status                  # Report source-index freshness
+codemap clear-index                   # Delete the rebuildable source index
+codemap --help                        # Full command reference
+```
+
+By default, commands operate on the current working directory. Use
+`--repo <path>` to target a different repository.
+
+## Graph Health
+
+`codemap doctor` helps you decide whether graph memory is still trustworthy.
+
+It reports:
+
+- active and deprecated node counts
+- checked source anchors
+- changed, missing, unsafe, or unreadable anchors
+- validator warnings and repairs
+- suggestions for cleanup
+
+The default output is readable in a terminal. Use `--json` when piping to other
+tools.
+
+## Local Metrics
+
+Codemap can write local counters to `.codemap/metrics.json`, such as queries,
+emits, collisions, and cap hits. These metrics are for repository visibility
+only.
+
+No network. No hosted analytics. No code contents are sent anywhere.
+
+Disable local metrics with either environment variable:
+
+```sh
+export CODEMAP_TELEMETRY=false
+export DO_NOT_TRACK=1
+```
+
+## What To Commit
+
+Recommended:
+
+- `.codemap/graph.json` — curated, reviewable project memory
+- generated agent guidance files, such as `AGENTS.md`
+
+Optional:
+
+- `.codemap/metrics.json` if your team wants local behavior counters in git
+
+Usually ignored:
+
+- `.codemap/index/source.json` because it is a rebuildable cache
+
+## Development
 
 ```sh
 bun install
 bun test
 bun run typecheck
-bun run build           # bundles bin/* → dist/cli/*.js
+bun run build
 ```
 
-Run the bundled MCP server against your project:
+Run a local build as an MCP server:
 
 ```json
 {
   "mcpServers": {
     "codemap": {
       "command": "node",
-      "args": ["/abs/path/to/codemap/dist/cli/codemap-mcp.js"]
+      "args": ["/absolute/path/to/codemap/dist/cli/codemap-mcp.js"]
     }
   }
 }

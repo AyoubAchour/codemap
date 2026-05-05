@@ -3,13 +3,14 @@
   "version": "0.5.0",
   "type": "module",
   "license": "MIT",
-  "description": "Persistent knowledge graph of a codebase, built incrementally by AI agents during normal work, exposed via MCP.",
+  "description": "Local-first persistent codebase memory for MCP-enabled coding agents.",
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "claude",
     "knowledge-graph",
     "codebase",
+    "codebase-memory",
+    "ai-agents",
     "agent"
   ],
   "homepage": "https://github.com/AyoubAchour/codemap",
