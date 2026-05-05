@@ -110,7 +110,7 @@ Maintained manually. Update status as tasks land.
 | 030 | `query_context` fusion tool | done | Phase 4 / behavior consistency | [task-030-query-context.md](task-030-query-context.md) |
 | 031 | Graph health and dependency context | done | Phase 4 / behavior consistency | [task-031-graph-health-context.md](task-031-graph-health-context.md) |
 | 032 | Post-release graph hygiene | done | Phase 4 / behavior consistency | [task-032-post-release-graph-hygiene.md](task-032-post-release-graph-hygiene.md) |
-| 033 | Release v0.5.1 | in-progress | Phase 4 / release | [task-033-release-v0.5.1.md](task-033-release-v0.5.1.md) |
+| 033 | Release v0.5.1 | done | Phase 4 / release | [task-033-release-v0.5.1.md](task-033-release-v0.5.1.md) |
 
 ---
 

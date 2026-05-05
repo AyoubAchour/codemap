@@ -1,19 +1,19 @@
 # Task 033: Release v0.5.1
 
-**Status:** in-progress
+**Status:** done
 **Phase:** Phase 4 / release
 **Started:** 2026-05-05
 **Depends on:** task-031, task-032
 
 ## Goal
 
-Prepare `codemap-mcp@0.5.1` so the merged post-0.5.0 CLI polish and public
-README cleanup can be published to npm.
+Publish `codemap-mcp@0.5.1` so the merged post-0.5.0 CLI polish and public
+README cleanup are available through npm.
 
 ## Context
 
-Main now contains package-facing improvements that are not published while npm
-latest remains `0.5.0`:
+Main contained package-facing improvements that were not published while npm
+latest remained `0.5.0`:
 
 - `codemap doctor` defaults to compact human output, while `--json` keeps the
   structured tooling response.
@@ -58,10 +58,10 @@ slice and updates the npm README at the same time as the package version.
 - [x] Release docs describe the pending `0.5.1` patch.
 - [x] Local release gates pass.
 - [x] Release PR is opened.
-- [ ] Release PR is merged.
-- [ ] `codemap-mcp@0.5.1` is published to npm.
-- [ ] Global install reports `codemap --version` as `0.5.1`.
-- [ ] GitHub release `v0.5.1` is published.
+- [x] Release PR is merged.
+- [x] `codemap-mcp@0.5.1` is published to npm.
+- [x] Global install reports `codemap --version` as `0.5.1`.
+- [x] GitHub release `v0.5.1` is published.
 
 ## Notes
 
@@ -72,3 +72,8 @@ Release-prep verification passed on 2026-05-05: `bun run typecheck`,
 `npm publish --dry-run --provenance --access public`, `npx --yes publint`, and
 `npx --yes @arethetypeswrong/cli --pack --ignore-rules cjs-resolves-to-esm`.
 Release PR: https://github.com/AyoubAchour/codemap/pull/26
+
+Publish verification passed on 2026-05-05: `npm publish --access public`,
+`npm view codemap-mcp version dist-tags.latest --json`, global
+`npm i -g codemap-mcp@0.5.1 --prefer-online`, `codemap --version`, and GitHub
+release `v0.5.1`.
