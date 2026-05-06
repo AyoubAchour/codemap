@@ -36,43 +36,50 @@ export interface GenerateRepoSkillsResponse {
   next_steps: string[];
 }
 
+interface RepoSkillRender {
+  body: string;
+  sourceStatus: SourceIndexStatus;
+  graphNodeCount: number;
+  areas: Array<{
+    name: string;
+    files: number;
+    symbols: number;
+  }>;
+}
+
 export async function generateRepoSkills(
   repoRoot: string,
   options: GenerateRepoSkillsOptions = {},
 ): Promise<GenerateRepoSkillsResponse & { content?: string }> {
   const targetPath = path.resolve(repoRoot, options.outputPath ?? DEFAULT_OUTPUT);
-  const body = await repoSkillBody(repoRoot);
-  const current = await fileMatches(targetPath, body);
-  const sourceStatus = await getSourceIndexStatus(repoRoot);
-  const index = await loadSourceIndex(repoRoot);
-  const graph = await GraphStore.load(repoRoot);
+  const render = await repoSkillRender(repoRoot);
+  const current = await fileMatches(targetPath, render.body);
   const warnings: string[] = [];
 
-  if (!sourceStatus.indexed) {
+  if (!render.sourceStatus.indexed) {
     warnings.push("Source index is missing; generated repo skill has limited source-area detail.");
-  } else if (!sourceStatus.fresh) {
+  } else if (!render.sourceStatus.fresh) {
     warnings.push("Source index is stale; generated repo skill may describe old source structure.");
   }
 
   let wrote = false;
   if (!options.check && !options.stdout && !current) {
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.writeFile(targetPath, body, "utf8");
+    await fs.writeFile(targetPath, render.body, "utf8");
     wrote = true;
   }
 
-  const areas = summarizeAreas(Object.values(index?.files ?? {}));
   const response = {
     ok: true as const,
     target_path: path.relative(repoRoot, targetPath),
     wrote,
     current,
-    source: sourceStatus,
+    source: render.sourceStatus,
     summary: {
-      graph_nodes: graph.listNodes({ includeDeprecated: true }).length,
-      source_files: sourceStatus.files_indexed,
-      source_symbols: sourceStatus.symbols_indexed,
-      areas: areas.map((area) => area.name),
+      graph_nodes: render.graphNodeCount,
+      source_files: render.sourceStatus.files_indexed,
+      source_symbols: render.sourceStatus.symbols_indexed,
+      areas: render.areas.map((area) => area.name),
     },
     warnings,
     next_steps: repoSkillNextSteps({
@@ -80,14 +87,14 @@ export async function generateRepoSkills(
       stdout: options.stdout ?? false,
       current,
       wrote,
-      sourceStatus,
+      sourceStatus: render.sourceStatus,
     }),
   };
 
-  return options.stdout ? { ...response, content: body } : response;
+  return options.stdout ? { ...response, content: render.body } : response;
 }
 
-async function repoSkillBody(repoRoot: string): Promise<string> {
+async function repoSkillRender(repoRoot: string): Promise<RepoSkillRender> {
   const projectName = path.basename(path.resolve(repoRoot));
   const sourceStatus = await getSourceIndexStatus(repoRoot);
   const index = await loadSourceIndex(repoRoot);
@@ -111,7 +118,7 @@ async function repoSkillBody(repoRoot: string): Promise<string> {
     )
     .digest("hex");
 
-  return `---
+  const body = `---
 name: codemap-repo-context
 description: Generated Codemap repo context for ${projectName}. Use for repository tasks only; regenerate with codemap generate-skills.
 ---
@@ -166,6 +173,12 @@ ${memory.length > 0 ? memory.map((node) => `- ${node.id} (${node.kind}): ${node.
 - Prefer fresh graph nodes and inspected files over this file.
 - For unrelated Q&A, web research, installs, or recommendations, do not use Codemap.
 `;
+  return {
+    body,
+    sourceStatus,
+    graphNodeCount: graph.listNodes({ includeDeprecated: true }).length,
+    areas,
+  };
 }
 
 function summarizeAreas(files: IndexedSourceFile[]): Array<{

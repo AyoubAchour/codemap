@@ -1080,6 +1080,19 @@ describe("CLI: source index", () => {
     expect(check.exitCode).toBe(0);
     expect(JSON.parse(check.stdout!).current).toBe(true);
   });
+
+  test("generate-skills builds content and response metadata from one repo snapshot", async () => {
+    const source = await fs.readFile(
+      path.join(process.cwd(), "src", "repo_guidance.ts"),
+      "utf8",
+    );
+    const countCallSites = (pattern: RegExp) =>
+      source.match(pattern)?.length ?? 0;
+
+    expect(countCallSites(/\bgetSourceIndexStatus\s*\(/g)).toBe(1);
+    expect(countCallSites(/\bloadSourceIndex\s*\(/g)).toBe(1);
+    expect(countCallSites(/\bGraphStore\.load\s*\(/g)).toBe(1);
+  });
 });
 
 // =============================================================
