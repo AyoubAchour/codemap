@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
+import { registerChangesContext } from "./tools/changes_context.js";
 import { registerClearIndex } from "./tools/clear_index.js";
 import { registerEmitNode } from "./tools/emit_node.js";
 import { registerGetIndexStatus } from "./tools/get_index_status.js";
@@ -24,6 +25,7 @@ export interface RegisterToolsOptions {
  * Source discovery:
  *  - index_codebase
  *  - query_context   (fused graph/source/dependency/impact planning context)
+ *  - changes_context (git diff impact + writeback planning context)
  *  - search_source   (chunk search with optional dependency + impact context)
  *  - get_index_status
  *  - clear_index
@@ -43,6 +45,7 @@ export function registerTools(
 ): void {
   registerIndexCodebase(server, options);
   registerQueryContext(server, options);
+  registerChangesContext(server, options);
   registerSearchSource(server, options);
   registerGetIndexStatus(server, options);
   registerClearIndex(server, options);

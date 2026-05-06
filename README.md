@@ -33,9 +33,12 @@ current codebase.
 1. An agent starts a task and queries the graph for related repo knowledge.
 2. If needed, Codemap searches a local source index to help the agent find
    relevant files faster.
-3. After inspecting real project files, the agent writes only durable findings
+3. Before reviewing or finishing a diff, Codemap can map changed files to
+   source-index impact context, stale graph anchors, likely affected tests/docs,
+   and writeback prompts.
+4. After inspecting real project files, the agent writes only durable findings
    back to the graph.
-4. Future agents can reuse, update, link, or deprecate that knowledge instead
+5. Future agents can reuse, update, link, or deprecate that knowledge instead
    of starting from zero.
 
 The graph and the source index are intentionally separate:
@@ -57,6 +60,17 @@ This installs two commands:
 
 - `codemap-mcp` — the MCP stdio server
 - `codemap` — the CLI for setup, inspection, health checks, and source indexing
+
+To configure supported MCP clients from one place:
+
+```sh
+codemap setup
+codemap setup --check
+```
+
+`setup` can write global Codemap entries for Codex, OpenCode, and Cursor, and
+prints the manual command for clients that manage MCP through their own CLI. It
+also checks whether the configured server command is available on `PATH`.
 
 ## Configure Your MCP Client
 
@@ -122,12 +136,15 @@ For repository tasks, agents should follow this loop:
    source-index status, source search, dependency/impact context, match reasons,
    stale-anchor warnings, and next steps.
 3. Inspect real project files before relying on search results.
-4. Run `suggest_writeback` near the end when useful. It is read-only and turns
+4. Run `changes_context` before committing, reviewing, or summarizing a diff.
+   It maps changed files to indexed symbols, impact context, stale graph nodes,
+   likely tests/docs, and read-only writeback suggestions.
+5. Run `suggest_writeback` near the end when useful. It is read-only and turns
    inspected files, changed files, and a work summary into possible writeback
    prompts.
-5. `emit_node` only for durable repo-local knowledge, anchored to real source
+6. `emit_node` only for durable repo-local knowledge, anchored to real source
    files.
-6. `link` related nodes when one decision, invariant, or gotcha depends on
+7. `link` related nodes when one decision, invariant, or gotcha depends on
    another.
 
 Codemap intentionally rejects low-quality graph writes. `emit_node` requires
@@ -141,6 +158,7 @@ per turn to prevent graph spam.
 | --- | --- |
 | `set_active_topic` | Mark the current task and reset the per-turn emit budget. |
 | `query_context` | Preferred planning tool. Combines quality-ranked graph memory, source search, staleness, match reasons, dependencies, impact context, and next steps. |
+| `changes_context` | Diff-aware planning tool. Maps git changes to source impact context, stale graph anchors, likely tests/docs, and read-only writeback prompts. |
 | `query_graph` | Search curated graph memory for relevant nodes, edges, match reasons, and trust metadata. |
 | `get_node` | Fetch one node by id or alias. |
 | `graph_health` | Read-only graph health report: validator warnings and source-anchor staleness. |
@@ -164,6 +182,8 @@ The `codemap` CLI lets humans inspect, repair, and audit the graph.
 ```sh
 codemap init                          # Generate agent guidance for this repo
 codemap init --check                  # Check generated guidance freshness
+codemap setup                         # Configure global MCP clients
+codemap setup --check                 # Check global MCP client configuration
 codemap show <id>                     # Print a node and its incident edges
 codemap correct <id> --summary "..."  # Override node fields by hand
 codemap deprecate <id> --reason "..." # Mark stale knowledge as deprecated
@@ -172,7 +192,10 @@ codemap doctor                        # Compact graph health summary
 codemap doctor --json                 # Full structured health report
 codemap scan                          # Build the local source index
 codemap context "auth guard"          # Graph + source context for planning
+codemap changes-context               # Diff impact, stale graph anchors, tests/docs
 codemap suggest-writeback --summary "what changed"
+codemap generate-skills               # Generate repo-local orientation guidance
+codemap generate-skills --check       # Check generated repo guidance freshness
 codemap search-source "auth guard"    # Search indexed source chunks
 codemap search-source "requireActiveUser" --include-impact
 codemap index-status                  # Report source-index freshness

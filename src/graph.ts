@@ -161,6 +161,19 @@ export class GraphStore {
   }
 
   /**
+   * Return graph nodes for read-only whole-graph inspections such as health,
+   * change-impact checks, and generated guidance. Deprecated nodes are excluded
+   * by default to match query() behavior.
+   */
+  listNodes(options: { includeDeprecated?: boolean } = {}): Node[] {
+    const includeDeprecated = options.includeDeprecated ?? false;
+    return Object.entries(this.data.nodes)
+      .filter(([, node]) => includeDeprecated || node.status !== "deprecated")
+      .map(([id, node]) => ({ id, ...node }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  /**
    * Score nodes against a free-text question by tag overlap + name/summary/alias text match.
    * Returns top `limit` nodes plus all edges whose endpoints are both in the result set.
    * Deprecated nodes are excluded by default.
