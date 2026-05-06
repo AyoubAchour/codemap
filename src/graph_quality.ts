@@ -99,12 +99,15 @@ export function filterStalenessReportForNodes(
 	sourceChecksEnabled = true,
 ): StalenessReport {
 	if (!sourceChecksEnabled) {
-		return { checked_sources: 0, stale_sources: [] };
+		return { checked_sources: 0, stale_sources: [], range_fresh_sources: [] };
 	}
 	const nodeIds = new Set(nodes.map((node) => node.id));
 	return {
 		checked_sources: nodes.reduce((sum, node) => sum + node.sources.length, 0),
 		stale_sources: staleness.stale_sources.filter((source) =>
+			nodeIds.has(source.node_id),
+		),
+		range_fresh_sources: staleness.range_fresh_sources.filter((source) =>
 			nodeIds.has(source.node_id),
 		),
 	};

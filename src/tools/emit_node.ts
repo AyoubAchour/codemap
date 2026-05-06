@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -13,6 +12,7 @@ import {
   NodeStatusSchema,
   SourceRefSchema,
 } from "../schema.js";
+import { hashBuffer, hashSourceRange } from "../staleness.js";
 import type { Node } from "../types.js";
 import {
   getActiveTopic,
@@ -28,11 +28,9 @@ function record(value: unknown): Record<string, unknown> {
   return value as unknown as Record<string, unknown>;
 }
 
-type SourceValidationResult = { ok: true } | { ok: false; message: string };
-
-function hashBuffer(value: Buffer): string {
-  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
-}
+type SourceValidationResult =
+  | { ok: true; sources: Node["sources"] }
+  | { ok: false; message: string };
 
 async function validateRepoSources(
   repoRoot: string,
@@ -47,6 +45,7 @@ async function validateRepoSources(
   }
 
   const root = path.resolve(repoRoot);
+  const enrichedSources: Node["sources"] = [];
   for (const source of sources) {
     const filePath = source.file_path;
     const segments = filePath.split(/[\\/]+/).filter(Boolean);
@@ -96,9 +95,21 @@ async function validateRepoSources(
         message: `source.content_hash must match current file content for ${filePath}; expected ${currentHash}, got ${source.content_hash}`,
       };
     }
+
+    const currentRangeHash = hashSourceRange(content, source.line_range);
+    if (
+      source.range_hash !== undefined &&
+      source.range_hash !== currentRangeHash
+    ) {
+      return {
+        ok: false,
+        message: `source.range_hash must match current line_range content for ${filePath}; expected ${currentRangeHash}, got ${source.range_hash}`,
+      };
+    }
+    enrichedSources.push({ ...source, range_hash: currentRangeHash });
   }
 
-  return { ok: true };
+  return { ok: true, sources: enrichedSources };
 }
 
 export function registerEmitNode(
@@ -123,7 +134,7 @@ export function registerEmitNode(
         sources: z
           .array(SourceRefSchema)
           .describe(
-            "Real repo-relative files (with line ranges) where this node is anchored. Required; external URLs, absolute paths, missing files, and non-codebase conversation sources are rejected.",
+            "Real repo-relative files (with line ranges) where this node is anchored. Required; external URLs, absolute paths, missing files, and non-codebase conversation sources are rejected. The server verifies content_hash and fills range_hash automatically.",
           ),
         tags: z
           .array(z.string())
@@ -295,6 +306,7 @@ export function registerEmitNode(
           structuredContent: record(result),
         };
       }
+      incoming.sources = sourceValidation.sources;
 
       const store = await GraphStore.load(options.repoRoot);
 

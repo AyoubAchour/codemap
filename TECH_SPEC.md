@@ -69,6 +69,7 @@ export const SourceRefSchema = z.object({
   file_path: z.string(),                       // relative to repo_root
   line_range: z.tuple([z.number(), z.number()]),
   content_hash: z.string().regex(/^sha256:/),
+  range_hash: z.string().regex(/^sha256:/).optional(),
 });
 
 export const NodeKindSchema = z.enum([

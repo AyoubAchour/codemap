@@ -626,6 +626,7 @@ describe("MCP server — read tools", () => {
     expect(parsed.staleness).toEqual({
       checked_sources: 0,
       stale_sources: [],
+      range_fresh_sources: [],
     });
   });
 
@@ -714,6 +715,7 @@ describe("MCP server — read tools", () => {
     expect(parsed.staleness).toEqual({
       checked_sources: 1,
       stale_sources: [],
+      range_fresh_sources: [],
     });
   });
 
@@ -1316,6 +1318,35 @@ describe("MCP server — emit_node", () => {
       arguments: { id: "auth/middleware" },
     })) as { structuredContent?: { node: { tags: string[] } | null } };
     expect(get.structuredContent?.node?.tags).toContain("auth");
+  });
+
+  test("fills range_hash on accepted source anchors", async () => {
+    await client.callTool({
+      name: "set_active_topic",
+      arguments: { name: "anchors" },
+    });
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: emitArgs({
+        id: "anchors/range-hash",
+        name: "Range hash",
+      }),
+    })) as {
+      structuredContent?: { ok: boolean; createdId: string; merged: boolean };
+    };
+    expect(r.structuredContent?.ok).toBe(true);
+
+    const get = (await client.callTool({
+      name: "get_node",
+      arguments: { id: "anchors/range-hash" },
+    })) as {
+      structuredContent?: {
+        node: { sources: Array<{ range_hash?: string }> } | null;
+      };
+    };
+    expect(get.structuredContent?.node?.sources[0]?.range_hash).toMatch(
+      /^sha256:/,
+    );
   });
 
   test("collision response (D1): returns ok:false collision:true with candidates, no write", async () => {

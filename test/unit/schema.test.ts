@@ -34,6 +34,26 @@ describe("SourceRefSchema", () => {
     expect(() => SourceRefSchema.parse(valid)).not.toThrow();
   });
 
+  test("accepts optional range_hash for line-range anchors", () => {
+    const parsed = SourceRefSchema.parse({
+      file_path: "src/auth.ts",
+      line_range: [4, 8] as [number, number],
+      content_hash: "sha256:file",
+      range_hash: "sha256:range",
+    });
+    expect(parsed.range_hash).toBe("sha256:range");
+  });
+
+  test("rejects range_hash without sha256: prefix", () => {
+    const invalid = {
+      file_path: "src/auth.ts",
+      line_range: [1, 10] as [number, number],
+      content_hash: "sha256:abc123",
+      range_hash: "abc123",
+    };
+    expect(() => SourceRefSchema.parse(invalid)).toThrow();
+  });
+
   test("rejects content_hash without sha256: prefix", () => {
     const invalid = {
       file_path: "src/auth.ts",

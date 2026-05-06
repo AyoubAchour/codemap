@@ -119,6 +119,13 @@ Maintained manually. Update status as tasks land.
 | 039 | Release v0.5.2 | done | Phase 4 / release | [task-039-release-v0.5.2.md](task-039-release-v0.5.2.md) |
 | 040 | Release v0.6.0 | done | Phase 4 / release | [task-040-release-v0.6.0.md](task-040-release-v0.6.0.md) |
 | 041 | Change impact, setup, stale nudges, and generated guidance | done | Phase 4 / behavior consistency | [task-041-change-impact-setup-guidance.md](task-041-change-impact-setup-guidance.md) |
+| 042 | Range-aware source anchors | in-progress | Phase 4 / accuracy | [task-042-range-aware-source-anchors.md](task-042-range-aware-source-anchors.md) |
+| 043 | Compact query context | todo | Phase 4 / retrieval | [task-043-compact-query-context.md](task-043-compact-query-context.md) |
+| 044 | Source index engine v2 | todo | Phase 4 / performance | [task-044-source-index-engine-v2.md](task-044-source-index-engine-v2.md) |
+| 045 | AST-aware TS/JS indexing | todo | Phase 4 / accuracy | [task-045-ast-aware-ts-js-indexing.md](task-045-ast-aware-ts-js-indexing.md) |
+| 046 | Agentic MCP surfaces | todo | Phase 4 / agent behavior | [task-046-agentic-mcp-surfaces.md](task-046-agentic-mcp-surfaces.md) |
+| 047 | Repo guidance v2 | todo | Phase 4 / onboarding | [task-047-repo-guidance-v2.md](task-047-repo-guidance-v2.md) |
+| 048 | Hybrid retrieval evaluation | todo | Phase 4 / retrieval | [task-048-hybrid-retrieval-evaluation.md](task-048-hybrid-retrieval-evaluation.md) |
 
 ---
 

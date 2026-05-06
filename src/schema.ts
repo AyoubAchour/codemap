@@ -24,6 +24,7 @@ export const SourceRefSchema = z.object({
       },
     ),
   content_hash: z.string().regex(/^sha256:/),
+  range_hash: z.string().regex(/^sha256:/).optional(),
 });
 
 export const NodeKindSchema = z.enum([

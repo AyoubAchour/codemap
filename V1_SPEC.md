@@ -100,7 +100,8 @@ V1 explicitly addresses pains 1 and 2. Pain 3 is v2.
     {
       "file_path": "src/auth/middleware.ts",
       "line_range": [1, 80],
-      "content_hash": "sha256:..."
+      "content_hash": "sha256:...",
+      "range_hash": "sha256:..."
     }
   ],
   "tags": ["auth", "shared"],
@@ -122,8 +123,9 @@ V1 explicitly addresses pains 1 and 2. Pain 3 is v2.
 - `**aliases**` — alternative IDs that resolve to this node. Server consults during `query_graph` and `get_node`. Reduces ID-drift damage when the agent re-invents a name.
 - `**status**` — `"active"` (default) or `"deprecated"`. Orthogonal to `confidence`: a node can be deprecated and high-confidence (we know it's gone) or active and low-confidence (we're unsure).
 - `**confidence**` — verification certainty, NOT relevance. `0.9+` = directly inspected; `0.5-0.8` = inferred; `<0.5` = do not emit.
-- `**sources[].content_hash**` — SHA-256 of source file contents at last verification. Staleness is detected by hash mismatch. mtime is **not** used — it changes on git checkout / clone / rebase / copy without content changes.
-- `**last_verified_at`** — kept for human readability; the actual staleness check uses `content_hash`.
+- `**sources[].content_hash**` — SHA-256 of source file contents at last verification. It is still validated on write so agents cannot anchor memory to a file they did not inspect.
+- `**sources[].range_hash**` — optional SHA-256 of the cited `line_range`, filled by the server on new writes. If the full file changes but the cited range hash is unchanged, the source anchor remains fresh; if the cited range changes, it is reported as `anchor_changed`. Legacy anchors without `range_hash` keep the older full-file staleness behavior.
+- `**last_verified_at`** — kept for human readability; the actual staleness check uses source hashes.
 
 ### 6.2 Edge
 
@@ -233,7 +235,7 @@ This makes ID-drift recovery a **server guarantee**, not an agent-discipline one
 
 - Extend `tags` with current active topic.
 - Merge `aliases`.
-- Refresh `sources[].content_hash` and `last_verified_at`.
+- Refresh `sources[].content_hash`, `sources[].range_hash`, and `last_verified_at`.
 - Replace `summary` only if incoming `confidence` ≥ existing.
 
 **Per-turn cap.** The server tracks emissions per agent turn (heuristic: per `set_active_topic` call). After 5 successful emissions, further calls return `{ ok: false, capped: true }`. Prevents "let me map the whole repo" runaway.
@@ -303,8 +305,8 @@ you MUST do this first:
    Inspect the real files before relying on source-index results.
 4. If graph memory looks stale or duplicated, call graph_health to see the
    grouped source-anchor and validator issues.
-5. For each returned node: if any source's stored content_hash differs
-   from current file contents, re-read the source and update via
+5. For each returned node: if graph health reports `anchor_changed` or a
+   legacy full-file hash mismatch, re-read the cited range and update via
    emit_node before relying on it.
 
 Skipping this checkpoint will make you re-invent or hallucinate
@@ -371,7 +373,7 @@ CONFIDENCE
 1. **Single graph per repo.** Tasks extend the same graph; never recreate.
 2. **Merge on duplicate `id`.** Shared concepts accumulate tags across topics.
 3. **Server-enforced collision detection.** New IDs that look similar to existing ones must explicitly merge or `force_new` with reason.
-4. **Lazy staleness via content hash.** A node is stale when SHA-256 of any source differs from the stored `content_hash`. mtime is not used. Re-verified on next read, not eagerly.
+4. **Lazy staleness via source hashes.** New nodes store both a full-file `content_hash` and a cited-range `range_hash`. A full-file hash mismatch with the same `range_hash` is treated as fresh because the cited evidence still matches. A range mismatch is stale. Legacy anchors without `range_hash` use the older full-file hash check. mtime is not used. Re-verified on next read, not eagerly.
 5. **Tags drive views.** Every emitted node has at least one tag (the active topic).
 6. **Per-turn emission cap.** Maximum 5 emissions per agent turn, server-enforced. Prevents spam and bounds the per-task token cost.
 7. **No hard deletes.** Use `status: "deprecated"`. `confidence` independently reflects verification certainty.

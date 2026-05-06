@@ -41,11 +41,19 @@ export async function doctor(
 
 function formatDoctorSummary(response: GraphHealthOkResponse): string {
   const { summary, issues, suggestions } = response;
+  const sourceBreakdown = [
+    `${summary.anchor_changed_sources} anchor changed`,
+    `${summary.changed_sources} legacy changed`,
+    `${summary.missing_sources} missing`,
+    `${summary.unsafe_sources} unsafe`,
+    `${summary.read_errors} read errors`,
+    `${summary.range_fresh_sources} range-fresh`,
+  ].join(", ");
   const lines = [
     `Codemap graph health: ${summary.fresh ? "clean" : "issues found"}`,
     "",
     `Nodes: ${summary.active_nodes} active, ${summary.deprecated_nodes} deprecated, ${summary.total_edges} edges`,
-    `Sources: ${summary.checked_sources} checked, ${summary.stale_sources} stale (${summary.changed_sources} changed, ${summary.missing_sources} missing, ${summary.unsafe_sources} unsafe, ${summary.read_errors} read errors)`,
+    `Sources: ${summary.checked_sources} checked, ${summary.stale_sources} stale (${sourceBreakdown})`,
     `Validator: ${summary.duplicate_aliases} duplicate aliases, ${summary.validator_repairs} repairs, ${summary.validator_errors} errors`,
   ];
 

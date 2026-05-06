@@ -22,6 +22,8 @@ export interface GraphHealthOkResponse {
     total_edges: number;
     checked_sources: number;
     stale_sources: number;
+    range_fresh_sources: number;
+    anchor_changed_sources: number;
     changed_sources: number;
     missing_sources: number;
     unsafe_sources: number;
@@ -37,8 +39,11 @@ export interface GraphHealthOkResponse {
   validation: ValidationResult;
   staleness: StalenessReport;
   issues: {
-    duplicate_aliases: Array<Extract<ValidationIssue, { kind: "duplicate_alias" }>>;
+    duplicate_aliases: Array<
+      Extract<ValidationIssue, { kind: "duplicate_alias" }>
+    >;
     stale_sources: StaleSource[];
+    anchor_changed_sources: StaleSource[];
     changed_sources: StaleSource[];
     missing_sources: StaleSource[];
     unsafe_sources: StaleSource[];
@@ -85,6 +90,9 @@ export async function inspectGraphHealth(
       (issue): issue is Extract<ValidationIssue, { kind: "duplicate_alias" }> =>
         issue.kind === "duplicate_alias",
     );
+    const anchorChangedSources = staleSources.filter(
+      (source) => source.reason === "anchor_changed",
+    );
     const changedSources = staleSources.filter(
       (source) => source.reason === "changed",
     );
@@ -98,6 +106,9 @@ export async function inspectGraphHealth(
       (source) => source.reason === "read_error",
     );
     const reportedStaleSources = staleSources.slice(0, issueLimit);
+    const reportedAnchorChangedSources = reportedStaleSources.filter(
+      (source) => source.reason === "anchor_changed",
+    );
     const reportedChangedSources = reportedStaleSources.filter(
       (source) => source.reason === "changed",
     );
@@ -129,6 +140,8 @@ export async function inspectGraphHealth(
         total_edges: Object.keys(graph.edges).length,
         checked_sources: staleness.checked_sources,
         stale_sources: staleSources.length,
+        range_fresh_sources: staleness.range_fresh_sources.length,
+        anchor_changed_sources: anchorChangedSources.length,
         changed_sources: changedSources.length,
         missing_sources: missingSources.length,
         unsafe_sources: unsafeSources.length,
@@ -146,6 +159,7 @@ export async function inspectGraphHealth(
       issues: {
         duplicate_aliases: duplicateAliases,
         stale_sources: reportedStaleSources,
+        anchor_changed_sources: reportedAnchorChangedSources,
         changed_sources: reportedChangedSources,
         missing_sources: reportedMissingSources,
         unsafe_sources: reportedUnsafeSources,
@@ -155,6 +169,7 @@ export async function inspectGraphHealth(
       },
       suggestions: buildSuggestions({
         duplicateAliases,
+        anchorChangedSources,
         changedSources,
         missingSources,
         unsafeSources,
@@ -176,7 +191,10 @@ export async function inspectGraphHealth(
 }
 
 function buildSuggestions(input: {
-  duplicateAliases: Array<Extract<ValidationIssue, { kind: "duplicate_alias" }>>;
+  duplicateAliases: Array<
+    Extract<ValidationIssue, { kind: "duplicate_alias" }>
+  >;
+  anchorChangedSources: StaleSource[];
   changedSources: StaleSource[];
   missingSources: StaleSource[];
   unsafeSources: StaleSource[];
@@ -193,9 +211,14 @@ function buildSuggestions(input: {
       "Resolve duplicate aliases with codemap correct <id> --remove-alias <alias>.",
     );
   }
+  if (input.anchorChangedSources.length > 0) {
+    suggestions.push(
+      "Re-read source ranges whose anchor hashes changed; refresh durable findings with emit_node merge_with when the finding still holds.",
+    );
+  }
   if (input.changedSources.length > 0) {
     suggestions.push(
-      "Re-read changed source files before trusting affected nodes; refresh durable findings with emit_node merge_with when needed.",
+      "Legacy full-file anchors changed; re-read the cited range before trusting affected nodes, then merge to add range-aware anchors when needed.",
     );
   }
   if (input.missingSources.length > 0) {
