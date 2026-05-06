@@ -17,10 +17,10 @@ Three docs are the real source of truth:
 
 | | |
 | --- | --- |
-| Published | `codemap-mcp@0.5.2` on npm (https://www.npmjs.com/package/codemap-mcp); GitHub release `v0.5.2` is live |
+| Published | Preparing `codemap-mcp@0.6.0`; current npm latest is `0.5.2` until this release is published |
 | Releases shipped | 0.1.0 → 0.1.1 → 0.1.2 → 0.2.0 → 0.2.1 → 0.2.2 → 0.3.0 → 0.4.0 → 0.5.0 → 0.5.1 → 0.5.2 |
-| MCP tools | Graph memory: `set_active_topic`, `query_context`, `query_graph`, `get_node`, `graph_health`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index` |
-| CLI subcommands | `init`, `show`, `correct`, `deprecate`, `validate`, `doctor`, `rollup`, `scan`, `context`, `search-source`, `index-status`, `clear-index` |
+| MCP tools | Graph memory: `set_active_topic`, `query_context`, `query_graph`, `get_node`, `graph_health`, `suggest_writeback`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index` |
+| CLI subcommands | `init`, `show`, `correct`, `deprecate`, `validate`, `doctor`, `rollup`, `scan`, `context`, `suggest-writeback`, `search-source`, `index-status`, `clear-index` |
 | M3 trial result | 9 turns on voice2work → 27 nodes / 29 edges across 6 problem domains, 5 of 8 edge kinds + 4 of 9 node kinds exercised. **Codemap thesis validated.** |
 | Test suite | Run `bun test` before shipping; integration tests pin the MCP lifecycle contract |
 | CI | green on every PR; `publish-dryrun` job is the strict gate |
@@ -82,6 +82,11 @@ and `codemap suggest-writeback` can now turn active topic, inspected/modified
 files, work summary, git changed files, and graph staleness signals into
 possible `decision`, `invariant`, `gotcha`, or `link` prompts. They never write
 graph memory automatically.
+
+Task 040 prepares the `0.6.0` release so installed users get the full
+behavior-consistency sequence from tasks 035-038: retrieval explanations,
+source-result diversity, TS/JS impact context, memory quality ranking, and
+read-only workflow writeback suggestions.
 
 ## How to work in this repo (the conventions)
 
