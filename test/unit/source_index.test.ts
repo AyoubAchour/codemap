@@ -687,6 +687,11 @@ describe("source index", () => {
         expect.stringContaining("search snapshot is stale or missing"),
       ]),
     );
+    expect(response.warnings).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("before relying on source hits"),
+      ]),
+    );
   });
 
   test("clear removes the source index cache", async () => {

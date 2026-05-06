@@ -537,7 +537,12 @@ export async function searchSourceIndex(
 
   const warnings: string[] = [];
   const status = await getSourceIndexStatus(repoRoot);
-  if (status.indexed && !status.fresh) {
+  if (
+    status.indexed &&
+    (status.stale_files > 0 ||
+      status.missing_files > 0 ||
+      status.new_files > 0)
+  ) {
     warnings.push(
       "Source index is stale; refresh with codemap scan or index_codebase before relying on source hits.",
     );
