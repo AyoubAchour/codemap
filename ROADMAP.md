@@ -240,6 +240,11 @@ verification age, node kind, and status. `query_context.graph.memory_quality`
 separates high-trust node ids from stale or low-trust ids that should be
 inspected before use.
 
+Task 038 adds read-only workflow auto-capture suggestions. `suggest_writeback`
+and `codemap suggest-writeback` turn active topic, optional inspected/modified
+files, optional work summary, git changed files, and graph staleness signals
+into possible `decision`, `invariant`, `gotcha`, or `link` prompts. Suggestions
+never create graph memory automatically.
 
 ## Cumulative timeline (single dev, half-time)
 

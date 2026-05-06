@@ -75,7 +75,13 @@ graph schema. `query_graph` returns `ranking_score` plus compact quality
 metadata, and `query_context.graph.memory_quality` separates high-trust node ids
 from stale or low-trust ids that need inspection. Do not add hosted embeddings,
 rerankers, or full call-graph precision until local lexical/symbol/quality
-ranking shows real dogfood misses. Task 038 is next.
+ranking shows real dogfood misses.
+
+Task 038 added read-only workflow auto-capture suggestions. `suggest_writeback`
+and `codemap suggest-writeback` can now turn active topic, inspected/modified
+files, work summary, git changed files, and graph staleness signals into
+possible `decision`, `invariant`, `gotcha`, or `link` prompts. They never write
+graph memory automatically.
 
 ## How to work in this repo (the conventions)
 

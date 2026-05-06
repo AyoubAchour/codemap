@@ -255,7 +255,18 @@ deprecated nodes can be included explicitly. Response arrays are capped by
 `issue_limit` while summary totals remain uncapped. It never repairs or writes
 the graph.
 
-### 7.7 Source-index tools
+### 7.7 `suggest_writeback(...) → { suggestions, evidence, warnings, next_steps }`
+
+Read-only end-of-task helper. It proposes possible writeback prompts from the
+active topic, optional inspected/modified files, optional work summary, optional
+git changed files, and graph staleness signals. Suggestions are grouped by
+candidate graph action: `decision`, `invariant`, `gotcha`, and `link`.
+
+This tool never creates graph nodes or links. Every suggestion is only a prompt
+for agent judgment; the agent must inspect the real files and then call
+`emit_node` or `link` explicitly.
+
+### 7.8 Source-index tools
 
 `index_codebase`, `search_source`, `get_index_status`, and `clear_index` manage
 the rebuildable local source index at `.codemap/index/source.json`. They are for
@@ -302,6 +313,10 @@ existing components. It is a failure mode, not a shortcut.
 ═══════════════════════════════════════════════════════════════
 CHECKPOINT 2 — AFTER YOU EXPLORE, BEFORE YOU FINALIZE
 ═══════════════════════════════════════════════════════════════
+Optionally call suggest_writeback with inspected_files, modified_files, or a
+short work_summary. Treat its output as a checklist of possible writeback
+opportunities, not as graph memory.
+
 Emit nodes only for durable repo-local knowledge anchored to real project
 files. The server will cap you at 5 emissions per turn — choose the
 highest-value ones.

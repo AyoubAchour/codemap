@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { promisify } from "node:util";
 
 import { GraphStore } from "../../src/graph.js";
 import { clearIndex } from "../../src/cli/clear_index.js";
@@ -16,6 +17,7 @@ import { rollup } from "../../src/cli/rollup.js";
 import { scan } from "../../src/cli/scan.js";
 import { searchSource } from "../../src/cli/search_source.js";
 import { show } from "../../src/cli/show.js";
+import { suggestWriteback } from "../../src/cli/suggest_writeback.js";
 import { validate } from "../../src/cli/validate.js";
 import {
   GUIDANCE_POLICY_HASH,
@@ -24,6 +26,7 @@ import {
 import type { Node } from "../../src/types.js";
 
 let tmpRoot: string;
+const execFileAsync = promisify(execFile);
 
 beforeEach(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codemap-cli-"));
@@ -98,6 +101,10 @@ async function runCodemapBin(args: string[]): Promise<{
     child.on("close", (code) => resolve(code ?? 1));
   });
   return { exitCode, stdout, stderr };
+}
+
+async function runGit(args: string[]): Promise<void> {
+  await execFileAsync("git", args, { cwd: tmpRoot });
 }
 
 // =============================================================
@@ -830,6 +837,49 @@ describe("CLI: source index", () => {
     expect(result.exitCode).toBe(0);
     const out = JSON.parse(result.stdout!);
     expect(out.source.search.results[0].impact_context).toBeUndefined();
+  });
+
+  test("suggest-writeback reports inspected-file suggestions without writing", async () => {
+    const result = await suggestWriteback(
+      {
+        inspectedFile: ["src/auth.ts"],
+        summary: "Confirmed active user behavior invariant.",
+        git: false,
+      },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.evidence.inspected_files).toEqual(["src/auth.ts"]);
+    expect(out.suggestions.invariants[0].source_candidates[0]).toEqual(
+      expect.objectContaining({ file_path: "src/auth.ts" }),
+    );
+
+    const verify = await GraphStore.load(tmpRoot);
+    expect(Object.keys(verify._data().nodes)).toEqual([]);
+  });
+
+  test("bin suggest-writeback uses git changed files by default", async () => {
+    await runGit(["init"]);
+    await runGit(["config", "user.email", "test@example.com"]);
+    await runGit(["config", "user.name", "Test User"]);
+    await runGit(["add", "."]);
+    await runGit(["commit", "-m", "seed"]);
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      "export function requireActiveUser() { return true; }\n",
+    );
+    const result = await runCodemapBin([
+      "suggest-writeback",
+      "--summary",
+      "Fixed active user review finding.",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout);
+    expect(out.evidence.git_changed_files).toEqual(["src/auth.ts"]);
+    expect(out.total_suggestions).toBeGreaterThan(0);
   });
 
   test("bin scan rejects non-numeric max-file-bytes values", async () => {

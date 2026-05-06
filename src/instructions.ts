@@ -34,10 +34,10 @@ repo memory — query before exploring, WRITE AFTER.
 
 USE CODEMAP ONLY when the task touches this repository's code, docs,
 architecture, roadmap, tests, or build/release behavior. Do not call
-query_context, query_graph, get_node, graph_health, emit_node, link,
-index_codebase, search_source, get_index_status, or clear_index for unrelated
-Q&A, general web research, installs, recommendations, or tasks not anchored to
-this repo.
+query_context, query_graph, get_node, graph_health, suggest_writeback,
+emit_node, link, index_codebase, search_source, get_index_status, or
+clear_index for unrelated Q&A, general web research, installs,
+recommendations, or tasks not anchored to this repo.
 
 Source discovery tools are a rebuildable cache, not memory:
 query_context/index_codebase/search_source/get_index_status/clear_index may
@@ -58,12 +58,14 @@ LIFECYCLE for any task that touches this codebase:
    if the index is missing/stale, use index_codebase or get_index_status. If
    graph memory looks stale or duplicated, use graph_health. Inspect real files
    before relying on search results.
-4. AFTER EXPLORING: emit_node only for durable repo-local knowledge
+4. BEFORE ENDING: call suggest_writeback with inspected/modified files or a
+   short work summary when useful. Treat suggestions as prompts, not memory.
+5. AFTER EXPLORING: emit_node only for durable repo-local knowledge
    anchored to real project files. Cap = 5/turn.
    PRIORITIZE: decision (non-obvious choices), invariant (must-hold
    properties), gotcha (silent failure modes). File / symbol / flow
    only if non-obvious.
-5. CAPTURE RELATIONSHIPS: link(from, to, kind). Kinds: imports, calls,
+6. CAPTURE RELATIONSHIPS: link(from, to, kind). Kinds: imports, calls,
    depends_on (catch-all), implements, replaces, contradicts,
    derived_from, mirrors.
 
@@ -134,7 +136,9 @@ For repo work, follow the lifecycle exactly:
    relying on them.
 4. If graph memory is stale, duplicated, or suspicious, call \`graph_health\`
    before trusting it.
-5. After exploring, write back only durable repo-local decisions, invariants,
+5. Before ending, call \`suggest_writeback\` when useful; it is read-only and
+   never creates graph memory.
+6. After exploring, write back only durable repo-local decisions, invariants,
    gotchas, or confirmed relationships with real source anchors.
 
 ---

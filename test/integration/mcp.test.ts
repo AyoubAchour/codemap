@@ -121,6 +121,7 @@ describe("MCP server — initialize / instructions", () => {
       "query_graph",
       "get_node",
       "graph_health",
+      "suggest_writeback",
       "emit_node",
       "link",
     ]) {
@@ -157,6 +158,7 @@ describe("MCP server — tools/list", () => {
       "query_graph",
       "search_source",
       "set_active_topic",
+      "suggest_writeback",
     ]);
   });
 
@@ -517,6 +519,41 @@ describe("MCP server — source index tools", () => {
     expect(parsed.summary.fresh).toBe(false);
     expect(parsed.summary.changed_sources).toBe(1);
     expect(parsed.issues.changed_sources[0].node_id).toBe("health/stale");
+  });
+
+  test("suggest_writeback returns read-only capture suggestions", async () => {
+    await client.callTool({
+      name: "set_active_topic",
+      arguments: { name: "auth-review" },
+    });
+
+    const result = await client.callTool({
+      name: "suggest_writeback",
+      arguments: {
+        inspected_files: ["src/x.ts"],
+        work_summary: "Confirmed auth behavior invariant.",
+      },
+    });
+    const parsed = parseToolText(result as never);
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.active_topic).toBe("auth-review");
+    expect(parsed.evidence.inspected_files).toEqual(["src/x.ts"]);
+    expect(parsed.suggestions.invariants[0]).toEqual(
+      expect.objectContaining({
+        kind: "invariant",
+        source_candidates: [
+          expect.objectContaining({
+            file_path: "src/x.ts",
+            reasons: expect.arrayContaining(["inspected"]),
+          }),
+        ],
+      }),
+    );
+
+    const { GraphStore } = await import("../../src/graph.js");
+    const verify = await GraphStore.load(tmpRoot);
+    expect(Object.keys(verify._data().nodes)).toEqual([]);
   });
 });
 
