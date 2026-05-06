@@ -1,6 +1,6 @@
 # Task 040: Release v0.6.0
 
-**Status:** in-progress
+**Status:** done
 **Phase:** Phase 4 / release
 **Started:** 2026-05-06
 **Depends on:** task-035, task-036, task-037, task-038
@@ -59,11 +59,11 @@ changing the persisted graph schema.
 - [x] Version is bumped to `0.6.0`.
 - [x] Release docs describe the `0.6.0` minor release.
 - [x] Local release gates pass.
-- [ ] Release PR is opened.
-- [ ] Release PR is merged.
-- [ ] `codemap-mcp@0.6.0` is published to npm.
-- [ ] Global install reports `codemap --version` as `0.6.0`.
-- [ ] GitHub release `v0.6.0` is published.
+- [x] Release PR is opened.
+- [x] Release PR is merged.
+- [x] `codemap-mcp@0.6.0` is published to npm.
+- [x] Global install reports `codemap --version` as `0.6.0`.
+- [x] GitHub release `v0.6.0` is published.
 
 ## Notes
 
@@ -75,3 +75,10 @@ Release-prep verification passed on 2026-05-06: `bun run typecheck`,
 `npx --yes @arethetypeswrong/cli --pack --ignore-rules cjs-resolves-to-esm`,
 `bun run bin/codemap.ts --version`, and
 `bun run bin/codemap.ts init --check`.
+
+Release PR: https://github.com/AyoubAchour/codemap/pull/34
+
+Publish verification passed on 2026-05-06: `npm publish --access public`,
+`npm view codemap-mcp version dist-tags --json --registry=https://registry.npmjs.org/ --prefer-online`,
+global `npm i -g codemap-mcp@0.6.0 --prefer-online --registry=https://registry.npmjs.org/`,
+`codemap --version`, `codemap init --help`, and GitHub release `v0.6.0`.

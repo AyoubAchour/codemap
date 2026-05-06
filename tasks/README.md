@@ -117,7 +117,7 @@ Maintained manually. Update status as tasks land.
 | 037 | Memory quality and ranking | done | Phase 4 / behavior consistency | [task-037-memory-quality-ranking.md](task-037-memory-quality-ranking.md) |
 | 038 | Workflow auto-capture suggestions | done | Phase 4 / behavior consistency | [task-038-workflow-auto-capture.md](task-038-workflow-auto-capture.md) |
 | 039 | Release v0.5.2 | done | Phase 4 / release | [task-039-release-v0.5.2.md](task-039-release-v0.5.2.md) |
-| 040 | Release v0.6.0 | in-progress | Phase 4 / release | [task-040-release-v0.6.0.md](task-040-release-v0.6.0.md) |
+| 040 | Release v0.6.0 | done | Phase 4 / release | [task-040-release-v0.6.0.md](task-040-release-v0.6.0.md) |
 
 ---
 

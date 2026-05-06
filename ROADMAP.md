@@ -246,7 +246,7 @@ files, optional work summary, git changed files, and graph staleness signals
 into possible `decision`, `invariant`, `gotcha`, or `link` prompts. Suggestions
 never create graph memory automatically.
 
-Task 040 prepares the `0.6.0` minor release. It packages the behavior-facing
+Task 040 shipped the `0.6.0` minor release. It packages the behavior-facing
 work from tasks 035-038 for installed users: local-first retrieval
 explanations, source-result diversity, bounded TS/JS impact context, query-time
 memory quality ranking, and read-only workflow writeback suggestions.
