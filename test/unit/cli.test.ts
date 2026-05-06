@@ -945,6 +945,57 @@ describe("CLI: source index", () => {
     expect(out.expansion.source_search.arguments.include_impact).toBe(true);
   });
 
+  test("context full mode expansion covers every returned node and source hit", async () => {
+    const nodes: Node[] = [];
+    for (let i = 0; i < 7; i += 1) {
+      const filePath = `src/expansion-${i}.ts`;
+      const body = `export function expansionTarget${i}() { return "expansion target ${i}"; }\n`;
+      await fs.writeFile(path.join(tmpRoot, filePath), body);
+      nodes.push(
+        makeNode({
+          id: `context/expansion-${i}`,
+          name: `Expansion target ${i}`,
+          summary: "Expansion target graph memory.",
+          sources: [
+            {
+              file_path: filePath,
+              line_range: [1, 1],
+              content_hash: hashBuffer(Buffer.from(body)),
+            },
+          ],
+          tags: ["expansion-target"],
+          last_verified_at: new Date().toISOString(),
+        }),
+      );
+    }
+    await seed(nodes);
+
+    const result = await context(
+      "expansion target",
+      { mode: "full", graphLimit: 7, sourceLimit: 7 },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.graph.nodes).toHaveLength(7);
+    expect(
+      out.expansion.graph_nodes.map((node: { id: string }) => node.id),
+    ).toEqual(out.graph.nodes.map((node: { id: string }) => node.id));
+    expect(out.source.search.results).toHaveLength(7);
+    expect(
+      out.expansion.source_files.map(
+        (entry: { file_path: string }) => entry.file_path,
+      ),
+    ).toEqual(
+      out.source.search.results.map(
+        (result: { file_path: string }) => result.file_path,
+      ),
+    );
+    expect(out.summary.graph_memories).toHaveLength(5);
+    expect(out.summary.source_hits).toHaveLength(5);
+  });
+
   test("context does not auto-include impact for plain underscore words", async () => {
     await fs.writeFile(
       path.join(tmpRoot, "src", "format.ts"),

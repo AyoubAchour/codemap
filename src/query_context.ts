@@ -403,13 +403,13 @@ function buildExpansion(input: {
     input.sourceSearch?.ok === true ? input.sourceSearch.results : [];
 
   return {
-    graph_nodes: input.graphResult.nodes.slice(0, 5).map((node) => ({
+    graph_nodes: input.graphResult.nodes.map((node) => ({
       id: node.id,
       tool: "get_node",
       arguments: { id: node.id },
       reason: "Fetch the full curated memory before relying on it.",
     })),
-    source_files: sourceResults.slice(0, 5).map((result) => ({
+    source_files: sourceResults.map((result) => ({
       file_path: result.file_path,
       line_range: [result.start_line, result.end_line],
       action: "inspect_file",
