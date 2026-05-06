@@ -1086,10 +1086,12 @@ describe("CLI: source index", () => {
       path.join(process.cwd(), "src", "repo_guidance.ts"),
       "utf8",
     );
+    const countCallSites = (pattern: RegExp) =>
+      source.match(pattern)?.length ?? 0;
 
-    expect(source.match(/getSourceIndexStatus\(repoRoot\)/g)?.length ?? 0).toBe(1);
-    expect(source.match(/loadSourceIndex\(repoRoot\)/g)?.length ?? 0).toBe(1);
-    expect(source.match(/GraphStore\.load\(repoRoot\)/g)?.length ?? 0).toBe(1);
+    expect(countCallSites(/\bgetSourceIndexStatus\s*\(/g)).toBe(1);
+    expect(countCallSites(/\bloadSourceIndex\s*\(/g)).toBe(1);
+    expect(countCallSites(/\bGraphStore\.load\s*\(/g)).toBe(1);
   });
 });
 
