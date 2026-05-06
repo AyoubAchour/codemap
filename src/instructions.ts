@@ -52,7 +52,8 @@ LIFECYCLE for any task that touches this codebase:
    Otherwise call query_graph("<task description>"). If graph nodes are
    returned, read via get_node before re-deriving from source.
 3. SOURCE DISCOVERY (optional): query_context includes source-index status and
-   source hits, including nearby imports/importers when available. If using
+   source hits, including nearby imports/importers and bounded impact context
+   when available. If using
    query_graph directly, use search_source for source chunks after query_graph;
    if the index is missing/stale, use index_codebase or get_index_status. If
    graph memory looks stale or duplicated, use graph_health. Inspect real files

@@ -5,6 +5,8 @@ export interface SearchSourceFlags {
   limit?: number;
   maxContentChars?: number;
   dependencyLimit?: number;
+  includeImpact?: boolean;
+  impactLimit?: number;
 }
 
 export async function searchSource(
@@ -16,6 +18,8 @@ export async function searchSource(
     limit: flags.limit,
     maxContentChars: flags.maxContentChars,
     dependencyLimit: flags.dependencyLimit,
+    includeImpact: flags.includeImpact,
+    impactLimit: flags.impactLimit,
   });
 
   if (!response.ok) {

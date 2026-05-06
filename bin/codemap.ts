@@ -231,12 +231,23 @@ program
     "Maximum import/importer context entries per result.",
     parsePositiveInteger,
   )
+  .option(
+    "--include-impact",
+    "Include bounded symbol/file impact context for each result.",
+  )
+  .option(
+    "--impact-limit <n>",
+    "Maximum impact entries per category.",
+    parsePositiveInteger,
+  )
   .action(async (query: string, cmdOpts: Record<string, unknown>) => {
     const opts = program.opts() as { repo: string };
     const flags: SearchSourceFlags = {
       limit: cmdOpts.limit as number | undefined,
       maxContentChars: cmdOpts.maxContentChars as number | undefined,
       dependencyLimit: cmdOpts.dependencyLimit as number | undefined,
+      includeImpact: cmdOpts.includeImpact as boolean | undefined,
+      impactLimit: cmdOpts.impactLimit as number | undefined,
     };
     emit(await searchSource(query, flags, { repoRoot: opts.repo }));
   });
@@ -259,6 +270,15 @@ program
     parsePositiveInteger,
   )
   .option(
+    "--include-impact",
+    "Include bounded symbol/file impact context in source results.",
+  )
+  .option(
+    "--impact-limit <n>",
+    "Maximum impact entries per category.",
+    parsePositiveInteger,
+  )
+  .option(
     "--refresh-index <mode>",
     "Source index refresh mode: never, if_missing, or if_stale.",
     parseRefreshIndex,
@@ -271,6 +291,8 @@ program
       maxContentChars: cmdOpts.maxContentChars as number | undefined,
       dependencyLimit: cmdOpts.dependencyLimit as number | undefined,
       refreshIndex: cmdOpts.refreshIndex as SourceRefreshMode | undefined,
+      includeImpact: cmdOpts.includeImpact as boolean | undefined,
+      impactLimit: cmdOpts.impactLimit as number | undefined,
     };
     emit(await context(question, flags, { repoRoot: opts.repo }));
   });

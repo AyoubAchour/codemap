@@ -17,7 +17,7 @@ export function registerQueryContext(
     {
       title: "Query context",
       description:
-        "Return a fused planning context for repo work: graph-memory matches with match reasons and staleness, source-index status/search with score breakdowns, deduplicated related graph nodes, warnings, and next steps.",
+        "Return a fused planning context for repo work: graph-memory matches with match reasons and staleness, source-index status/search with score breakdowns, optional bounded impact context, deduplicated related graph nodes, warnings, and next steps.",
       inputSchema: {
         question: z
           .string()
@@ -55,6 +55,19 @@ export function registerQueryContext(
           .describe(
             "Max import/importer context entries per source result. Default 3.",
           ),
+        include_impact: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, include bounded symbol/file impact context; when omitted, query_context auto-includes it for clear symbol/file queries.",
+          ),
+        impact_limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .optional()
+          .describe("Maximum impact entries per category. Default 5."),
         refresh_index: z
           .enum(["never", "if_missing", "if_stale"])
           .optional()
@@ -69,6 +82,8 @@ export function registerQueryContext(
       source_limit,
       max_content_chars,
       dependency_limit,
+      include_impact,
+      impact_limit,
       refresh_index,
     }) => {
       const response = await buildQueryContext(options.repoRoot, question, {
@@ -76,6 +91,8 @@ export function registerQueryContext(
         sourceLimit: source_limit,
         maxContentChars: max_content_chars,
         dependencyLimit: dependency_limit,
+        includeImpact: include_impact,
+        impactLimit: impact_limit,
         refreshIndex: refresh_index as SourceRefreshMode | undefined,
       });
       await recordMetric(options.repoRoot, (m) => {

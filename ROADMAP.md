@@ -227,6 +227,12 @@ compact score breakdowns, deterministic source-result diversity, and clearer
 query-time provenance warnings. Embeddings remain a future optional layer only
 after local retrieval misses are observed in dogfood.
 
+Task 036 adds bounded TS/JS impact context without changing Codemap's local-first
+posture: source hits can include indexed definitions, exact direct imports,
+exact direct importers, exported symbols, likely affected files, and approximate
+lexical references. This is planning context for edits, not proof of every
+runtime effect.
+
 
 ## Cumulative timeline (single dev, half-time)
 

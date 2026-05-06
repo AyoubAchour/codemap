@@ -182,8 +182,11 @@ source staleness checks, source-index status, source search, and related graph
 nodes into one response. It never writes graph memory and never auto-generates
 nodes from the source index; source hits are still a rebuildable discovery cache
 that must be inspected in real files before `emit_node`. Source search results
-may include bounded dependency context (`imports` / `imported_by`) to help the
-agent inspect nearby files before forming a durable finding.
+may include bounded dependency context (`imports` / `imported_by`) and bounded
+symbol/file impact context to help the agent inspect nearby files before
+forming a durable finding. Impact context distinguishes exact indexed
+definitions/import relationships from approximate lexical references; it is
+planning context, not proof of every runtime effect.
 
 ### 7.1 `query_graph(question: string) → { nodes, edges }`
 
@@ -276,8 +279,8 @@ you MUST do this first:
 1. Call set_active_topic(<short-slug>) — e.g. "payment", "auth-bugfix".
 2. Call query_context(<task description>) when available; otherwise call
    query_graph(<task description>) to find existing context.
-3. Treat source dependency context as a navigation hint, not proof. Inspect
-   the real files before relying on source-index results.
+3. Treat source dependency/impact context as a navigation hint, not proof.
+   Inspect the real files before relying on source-index results.
 4. If graph memory looks stale or duplicated, call graph_health to see the
    grouped source-anchor and validator issues.
 5. For each returned node: if any source's stored content_hash differs

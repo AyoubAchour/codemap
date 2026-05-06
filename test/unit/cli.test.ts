@@ -774,11 +774,13 @@ describe("CLI: source index", () => {
 
     const searchResult = await searchSource(
       "active user",
-      { limit: 1, dependencyLimit: 1 },
+      { limit: 1, dependencyLimit: 1, includeImpact: true },
       { repoRoot: tmpRoot },
     );
     expect(searchResult.exitCode).toBe(0);
-    expect(JSON.parse(searchResult.stdout!).results[0].file_path).toBe(
+    const searched = JSON.parse(searchResult.stdout!);
+    expect(searched.results[0].file_path).toBe("src/auth.ts");
+    expect(searched.results[0].impact_context.target.file_path).toBe(
       "src/auth.ts",
     );
 
@@ -811,6 +813,23 @@ describe("CLI: source index", () => {
     expect(out.source.refreshed).toBe(true);
     expect(out.source.status.indexed).toBe(true);
     expect(out.source.search.results[0].file_path).toBe("src/auth.ts");
+  });
+
+  test("context does not auto-include impact for plain underscore words", async () => {
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "format.ts"),
+      "export const note = 'file_path format';",
+    );
+
+    const result = await context(
+      "file_path format",
+      { sourceLimit: 1 },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.source.search.results[0].impact_context).toBeUndefined();
   });
 
   test("bin scan rejects non-numeric max-file-bytes values", async () => {

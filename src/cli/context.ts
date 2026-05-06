@@ -10,6 +10,8 @@ export interface ContextFlags {
   maxContentChars?: number;
   dependencyLimit?: number;
   refreshIndex?: SourceRefreshMode;
+  includeImpact?: boolean;
+  impactLimit?: number;
 }
 
 export async function context(
@@ -24,6 +26,8 @@ export async function context(
       maxContentChars: flags.maxContentChars,
       dependencyLimit: flags.dependencyLimit,
       refreshIndex: flags.refreshIndex,
+      includeImpact: flags.includeImpact,
+      impactLimit: flags.impactLimit,
     });
 
     return {
