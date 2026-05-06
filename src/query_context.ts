@@ -17,6 +17,8 @@ export interface QueryContextOptions {
   maxContentChars?: number;
   dependencyLimit?: number;
   refreshIndex?: SourceRefreshMode;
+  includeImpact?: boolean;
+  impactLimit?: number;
 }
 
 export interface QueryContextResponse {
@@ -52,6 +54,9 @@ export async function buildQueryContext(
   const sourceLimit = options.sourceLimit ?? DEFAULT_SOURCE_LIMIT;
   const dependencyLimit = options.dependencyLimit ?? DEFAULT_DEPENDENCY_LIMIT;
   const refreshIndex = options.refreshIndex ?? DEFAULT_REFRESH_INDEX;
+  const includeImpact =
+    options.includeImpact ?? shouldIncludeImpact(trimmedQuestion);
+  const impactLimit = options.impactLimit ?? 5;
   const warnings: string[] = [];
 
   const store = await GraphStore.load(repoRoot);
@@ -91,6 +96,8 @@ export async function buildQueryContext(
       limit: sourceLimit,
       maxContentChars: options.maxContentChars,
       dependencyLimit,
+      includeImpact,
+      impactLimit,
     });
     if (!sourceSearch.ok && sourceSearch.error) {
       warnings.push(`Source search failed: ${sourceSearch.error.message}`);
@@ -98,6 +105,11 @@ export async function buildQueryContext(
       warnings.push(
         "Source hits come from the rebuildable local index; treat them as discovery hints until you inspect the files.",
       );
+      if (sourceSearch.results.some((result) => result.impact_context)) {
+        warnings.push(
+          "Impact context is bounded planning context; exact imports/importers are stronger than approximate text references.",
+        );
+      }
     }
   } else if (!sourceStatus.indexed) {
     warnings.push(
@@ -129,6 +141,17 @@ export async function buildQueryContext(
       staleGraphSources: staleness.stale_sources.length,
     }),
   };
+}
+
+function shouldIncludeImpact(question: string): boolean {
+  return question
+    .split(/\s+/)
+    .some((token) =>
+      /[./\\]/.test(token) ||
+      /[a-z0-9_$][A-Z][A-Za-z0-9_$]*/.test(token) ||
+      /[$_]/.test(token) ||
+      /\(\)$/.test(token),
+    );
 }
 
 function dedupeRelatedNodes(

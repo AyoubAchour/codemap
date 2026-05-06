@@ -258,13 +258,24 @@ describe("MCP server — source index tools", () => {
 
     const searchResult = await client.callTool({
       name: "search_source",
-      arguments: { query: "active user auth", limit: 2 },
+      arguments: {
+        query: "requireActiveUser auth",
+        limit: 2,
+        include_impact: true,
+      },
     });
     const searched = parseToolText(searchResult as never);
     expect(searched.ok).toBe(true);
     expect(searched.results[0].file_path).toBe("src/auth/distinct.ts");
     expect(searched.results[0].symbols.map((s: { name: string }) => s.name)).toContain(
       "requireActiveUser",
+    );
+    expect(searched.results[0].impact_context.target).toEqual(
+      expect.objectContaining({
+        type: "symbol",
+        value: "requireActiveUser",
+        file_path: "src/auth/distinct.ts",
+      }),
     );
   });
 
@@ -378,7 +389,11 @@ describe("MCP server — source index tools", () => {
 
     const result = await client.callTool({
       name: "query_context",
-      arguments: { question: "active user auth", source_limit: 2 },
+      arguments: {
+        question: "requireActiveUser auth",
+        source_limit: 2,
+        include_impact: true,
+      },
     });
     const parsed = parseToolText(result as never);
 
@@ -406,6 +421,9 @@ describe("MCP server — source index tools", () => {
     expect(parsed.source.search.results[0].score_breakdown.symbol).toBeGreaterThan(
       0,
     );
+    expect(parsed.source.search.results[0].impact_context.target.value).toBe(
+      "requireActiveUser",
+    );
     expect(parsed.related_nodes.map((n: { id: string }) => n.id)).toEqual([
       "auth/active-user",
     ]);
@@ -413,6 +431,7 @@ describe("MCP server — source index tools", () => {
       expect.arrayContaining([
         expect.stringContaining("Graph matches are curated repo memory"),
         expect.stringContaining("Source hits come from the rebuildable local index"),
+        expect.stringContaining("Impact context is bounded planning context"),
       ]),
     );
   });

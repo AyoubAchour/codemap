@@ -395,6 +395,162 @@ describe("source index", () => {
     );
   });
 
+  test("search can include symbol impact context", async () => {
+    await write(
+      "src/db.ts",
+      [
+        "export function createClient() {",
+        "  return { id: 'db' };",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/consumer.ts",
+      [
+        "import { requireActiveUser } from './auth';",
+        "",
+        "export function consumeAuth(token: string) {",
+        "  return requireActiveUser(token);",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/auth-index.ts",
+      "export { requireActiveUser } from './auth';",
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(tmpRoot, "requireActiveUser", {
+      limit: 5,
+      includeImpact: true,
+      impactLimit: 4,
+    });
+    const authResult = response.results.find(
+      (result) => result.file_path === "src/auth.ts",
+    );
+
+    expect(authResult?.impact_context?.target).toEqual(
+      expect.objectContaining({
+        type: "symbol",
+        value: "requireActiveUser",
+        file_path: "src/auth.ts",
+        ambiguous: false,
+      }),
+    );
+    expect(authResult?.impact_context?.definitions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "definition",
+          precision: "exact",
+          file_path: "src/auth.ts",
+          symbol: expect.objectContaining({ name: "requireActiveUser" }),
+        }),
+      ]),
+    );
+    expect(authResult?.impact_context?.imports).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "import",
+          precision: "exact",
+          file_path: "src/db.ts",
+          module: "./db",
+        }),
+      ]),
+    );
+    expect(authResult?.impact_context?.imported_by).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "imported_by",
+          precision: "exact",
+          file_path: "src/auth-index.ts",
+          module: "./auth",
+        }),
+        expect.objectContaining({
+          kind: "imported_by",
+          precision: "exact",
+          file_path: "src/consumer.ts",
+          module: "./auth",
+        }),
+      ]),
+    );
+    expect(authResult?.impact_context?.likely_affected_files).toContain(
+      "src/consumer.ts",
+    );
+    expect(authResult?.impact_context?.approximate_references).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "text_reference",
+          precision: "approximate",
+          file_path: "src/consumer.ts",
+        }),
+      ]),
+    );
+  });
+
+  test("impact context supports file targets", async () => {
+    await write(
+      "src/db.ts",
+      "export function createClient() { return { id: 'db' }; }",
+    );
+    await write(
+      "src/consumer.ts",
+      [
+        "import { requireActiveUser } from './auth';",
+        "export const consume = requireActiveUser;",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(tmpRoot, "src/auth.ts", {
+      limit: 1,
+      includeImpact: true,
+      impactLimit: 3,
+    });
+
+    expect(response.results[0]?.impact_context?.target).toEqual(
+      expect.objectContaining({
+        type: "file",
+        value: "src/auth.ts",
+        file_path: "src/auth.ts",
+      }),
+    );
+    expect(response.results[0]?.impact_context?.imports[0]?.file_path).toBe(
+      "src/db.ts",
+    );
+    expect(response.results[0]?.impact_context?.imported_by[0]?.file_path).toBe(
+      "src/consumer.ts",
+    );
+  });
+
+  test("impact context marks ambiguous symbol names", async () => {
+    await write(
+      "src/admin.ts",
+      [
+        "export function requireActiveUser(token: string) {",
+        "  return { id: token, role: 'admin' };",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(tmpRoot, "requireActiveUser", {
+      limit: 5,
+      includeImpact: true,
+      impactLimit: 5,
+    });
+    const authResult = response.results.find(
+      (result) => result.file_path === "src/auth.ts",
+    );
+
+    expect(authResult?.impact_context?.target.ambiguous).toBe(true);
+    expect(
+      authResult?.impact_context?.definitions.map((entry) => entry.file_path),
+    ).toEqual(["src/admin.ts", "src/auth.ts"]);
+    expect(authResult?.impact_context?.warnings[0]).toContain(
+      "multiple indexed definitions",
+    );
+  });
+
   test("scan keeps preamble content before the first detected symbol searchable", async () => {
     await write(
       "src/preamble.ts",

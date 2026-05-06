@@ -774,11 +774,13 @@ describe("CLI: source index", () => {
 
     const searchResult = await searchSource(
       "active user",
-      { limit: 1, dependencyLimit: 1 },
+      { limit: 1, dependencyLimit: 1, includeImpact: true },
       { repoRoot: tmpRoot },
     );
     expect(searchResult.exitCode).toBe(0);
-    expect(JSON.parse(searchResult.stdout!).results[0].file_path).toBe(
+    const searched = JSON.parse(searchResult.stdout!);
+    expect(searched.results[0].file_path).toBe("src/auth.ts");
+    expect(searched.results[0].impact_context.target.file_path).toBe(
       "src/auth.ts",
     );
 

@@ -74,6 +74,46 @@ export interface SourceDependencyContext {
   content_preview: string;
 }
 
+export type SourceImpactPrecision = "approximate" | "exact";
+
+export type SourceImpactReferenceKind =
+  | "definition"
+  | "import"
+  | "imported_by"
+  | "text_reference";
+
+export interface SourceImpactReference {
+  kind: SourceImpactReferenceKind;
+  precision: SourceImpactPrecision;
+  file_path: string;
+  start_line: number;
+  end_line: number;
+  reason: string;
+  content_preview: string;
+  symbol?: SourceSymbol;
+  module?: string;
+  import_line?: number;
+}
+
+export interface SourceImpactTarget {
+  type: "file" | "symbol";
+  value: string;
+  file_path: string;
+  ambiguous: boolean;
+  matched_symbol?: SourceSymbol;
+}
+
+export interface SourceImpactContext {
+  target: SourceImpactTarget;
+  definitions: SourceImpactReference[];
+  imports: SourceImpactReference[];
+  imported_by: SourceImpactReference[];
+  exported_symbols: SourceSymbol[];
+  likely_affected_files: string[];
+  approximate_references: SourceImpactReference[];
+  warnings: string[];
+}
+
 export type SourceMatchField =
   | "bm25"
   | "content"
@@ -170,6 +210,7 @@ export interface SourceSearchResult {
   exports: string[];
   related_nodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
   dependency_context: SourceDependencyContext[];
+  impact_context?: SourceImpactContext;
 }
 
 export interface SourceSearchResponse {
@@ -187,6 +228,9 @@ export interface SourceSearchOptions {
   maxContentChars?: number;
   dependencyLimit?: number;
   dependencyContentChars?: number;
+  includeImpact?: boolean;
+  impactLimit?: number;
+  impactContentChars?: number;
 }
 
 interface CandidateFile {
@@ -398,6 +442,9 @@ export async function searchSourceIndex(
   const maxContentChars = options.maxContentChars ?? 2400;
   const dependencyLimit = options.dependencyLimit ?? 0;
   const dependencyContentChars = options.dependencyContentChars ?? 600;
+  const includeImpact = options.includeImpact ?? false;
+  const impactLimit = options.impactLimit ?? 5;
+  const impactContentChars = options.impactContentChars ?? 600;
 
   if (!trimmedQuery) {
     return {
@@ -441,7 +488,9 @@ export async function searchSourceIndex(
   const chunks = Object.values(index.files).flatMap((file) => file.chunks);
   const relatedNodesByFile = await loadRelatedNodesByFile(repoRoot);
   const reverseImportIndex =
-    dependencyLimit > 0 ? buildReverseImportIndex(index) : new Map();
+    dependencyLimit > 0 || includeImpact
+      ? buildReverseImportIndex(index)
+      : new Map();
   const allRanked = rankChunks(trimmedQuery, chunks, relatedNodesByFile).filter(
     ({ score }) => score > 0,
   );
@@ -470,6 +519,16 @@ export async function searchSourceIndex(
         dependencyContentChars,
         reverseImportIndex,
       ),
+      impact_context: includeImpact
+        ? buildImpactContext(
+            index,
+            chunk,
+            trimmedQuery,
+            impactLimit,
+            impactContentChars,
+            reverseImportIndex,
+          )
+        : undefined,
     }));
 
   return {
@@ -1161,6 +1220,310 @@ function buildDependencyContext(
   return dependencies;
 }
 
+function buildImpactContext(
+  index: SourceIndex,
+  chunk: SourceChunk,
+  query: string,
+  limit: number,
+  maxContentChars: number,
+  reverseImportIndex: ReverseImportIndex,
+): SourceImpactContext {
+  const targetFile = index.files[chunk.file_path];
+  if (!targetFile) {
+    return emptyImpactContext(chunk.file_path, query);
+  }
+
+  const queryTokens = tokenize(query);
+  const matchedSymbol = chooseTargetSymbol(chunk, targetFile, query, queryTokens);
+  const definitions = matchedSymbol
+    ? findSymbolDefinitions(index, matchedSymbol.name, limit, maxContentChars)
+    : [];
+  const imports = buildImportImpactReferences(
+    index,
+    targetFile,
+    limit,
+    maxContentChars,
+  );
+  const importedBy = buildImporterImpactReferences(
+    targetFile.file_path,
+    reverseImportIndex,
+    limit,
+    maxContentChars,
+  );
+  const approximateReferences = matchedSymbol
+    ? buildApproximateReferences(
+        index,
+        matchedSymbol.name,
+        targetFile.file_path,
+        limit,
+        maxContentChars,
+      )
+    : [];
+  const likelyAffectedFiles = [
+    ...new Set([
+      ...importedBy.map((entry) => entry.file_path),
+      ...approximateReferences.map((entry) => entry.file_path),
+    ]),
+  ]
+    .filter((filePath) => filePath !== targetFile.file_path)
+    .slice(0, limit);
+  const ambiguous = definitions.length > 1;
+  const warnings: string[] = [];
+  if (ambiguous && matchedSymbol) {
+    warnings.push(
+      `Symbol "${matchedSymbol.name}" has multiple indexed definitions; inspect each definition before editing.`,
+    );
+  }
+  if (approximateReferences.length > 0) {
+    warnings.push(
+      "Approximate references are lexical matches from the source index, not a full call graph.",
+    );
+  }
+
+  return {
+    target: {
+      type: matchedSymbol ? "symbol" : "file",
+      value: matchedSymbol?.name ?? targetFile.file_path,
+      file_path: targetFile.file_path,
+      ambiguous,
+      matched_symbol: matchedSymbol,
+    },
+    definitions,
+    imports,
+    imported_by: importedBy,
+    exported_symbols: exportedSymbols(targetFile, limit),
+    likely_affected_files: likelyAffectedFiles,
+    approximate_references: approximateReferences,
+    warnings,
+  };
+}
+
+function emptyImpactContext(
+  filePath: string,
+  query: string,
+): SourceImpactContext {
+  return {
+    target: {
+      type: "file",
+      value: query,
+      file_path: filePath,
+      ambiguous: false,
+    },
+    definitions: [],
+    imports: [],
+    imported_by: [],
+    exported_symbols: [],
+    likely_affected_files: [],
+    approximate_references: [],
+    warnings: [],
+  };
+}
+
+function chooseTargetSymbol(
+  chunk: SourceChunk,
+  file: IndexedSourceFile,
+  query: string,
+  queryTokens: string[],
+): SourceSymbol | undefined {
+  const queryLower = query.toLowerCase();
+  const candidates = [...chunk.symbols, ...file.symbols].filter(
+    (symbol, index, symbols) =>
+      symbols.findIndex((entry) => entry.name === symbol.name) === index,
+  );
+
+  return candidates
+    .map((symbol) => ({
+      symbol,
+      score: symbolQueryScore(symbol.name, queryLower, queryTokens),
+    }))
+    .filter(({ score }) => score > 0)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.symbol.line - b.symbol.line ||
+        a.symbol.name.localeCompare(b.symbol.name),
+    )[0]?.symbol;
+}
+
+function symbolQueryScore(
+  symbolName: string,
+  queryLower: string,
+  queryTokens: string[],
+): number {
+  const symbolLower = symbolName.toLowerCase();
+  if (symbolLower === queryLower) return 100;
+  if (queryLower.includes(symbolLower)) return 90;
+  if (symbolLower.includes(queryLower)) return 80;
+
+  let score = 0;
+  for (const token of queryTokens) {
+    if (symbolLower === token) score += 50;
+    else if (symbolLower.includes(token)) score += 10;
+  }
+  return score;
+}
+
+function findSymbolDefinitions(
+  index: SourceIndex,
+  symbolName: string,
+  limit: number,
+  maxContentChars: number,
+): SourceImpactReference[] {
+  const definitions: SourceImpactReference[] = [];
+  const files = Object.values(index.files).sort((a, b) =>
+    a.file_path.localeCompare(b.file_path),
+  );
+
+  for (const file of files) {
+    for (const symbol of file.symbols) {
+      if (symbol.name !== symbolName) continue;
+      const chunk = chunkForSymbol(file, symbol);
+      definitions.push({
+        kind: "definition",
+        precision: "exact",
+        file_path: file.file_path,
+        start_line: chunk?.start_line ?? symbol.line,
+        end_line: chunk?.end_line ?? symbol.line,
+        symbol,
+        reason: `indexed ${symbol.kind} definition for ${symbol.name}`,
+        content_preview: boundedPreview(
+          chunk?.content ?? "",
+          maxContentChars,
+        ),
+      });
+      if (definitions.length >= limit) return definitions;
+    }
+  }
+
+  return definitions;
+}
+
+function buildImportImpactReferences(
+  index: SourceIndex,
+  file: IndexedSourceFile,
+  limit: number,
+  maxContentChars: number,
+): SourceImpactReference[] {
+  const references: SourceImpactReference[] = [];
+  const seen = new Set<string>();
+
+  for (const sourceImport of file.imports) {
+    const resolved = resolveImportPath(
+      index,
+      file.file_path,
+      sourceImport.module,
+    );
+    if (!resolved || seen.has(resolved)) continue;
+    const importedFile = index.files[resolved];
+    if (!importedFile) continue;
+    seen.add(resolved);
+    references.push({
+      kind: "import",
+      precision: "exact",
+      file_path: importedFile.file_path,
+      start_line: sourceImport.line,
+      end_line: sourceImport.line,
+      module: sourceImport.module,
+      import_line: sourceImport.line,
+      reason: `${file.file_path} imports ${importedFile.file_path}`,
+      content_preview: filePreview(importedFile, maxContentChars),
+    });
+    if (references.length >= limit) return references;
+  }
+
+  return references;
+}
+
+function buildImporterImpactReferences(
+  filePath: string,
+  reverseImportIndex: ReverseImportIndex,
+  limit: number,
+  maxContentChars: number,
+): SourceImpactReference[] {
+  const references: SourceImpactReference[] = [];
+  const seen = new Set<string>();
+  const importers = reverseImportIndex.get(filePath) ?? [];
+
+  for (const { importer, importEntry } of importers) {
+    if (importer.file_path === filePath || seen.has(importer.file_path)) {
+      continue;
+    }
+    seen.add(importer.file_path);
+    references.push({
+      kind: "imported_by",
+      precision: "exact",
+      file_path: importer.file_path,
+      start_line: importEntry.line,
+      end_line: importEntry.line,
+      module: importEntry.module,
+      import_line: importEntry.line,
+      reason: `${importer.file_path} imports ${filePath}`,
+      content_preview: filePreview(importer, maxContentChars),
+    });
+    if (references.length >= limit) return references;
+  }
+
+  return references;
+}
+
+function buildApproximateReferences(
+  index: SourceIndex,
+  symbolName: string,
+  definingFilePath: string,
+  limit: number,
+  maxContentChars: number,
+): SourceImpactReference[] {
+  const references: SourceImpactReference[] = [];
+  const symbolLower = symbolName.toLowerCase();
+  const files = Object.values(index.files).sort((a, b) =>
+    a.file_path.localeCompare(b.file_path),
+  );
+
+  for (const file of files) {
+    for (const chunk of file.chunks) {
+      if (!chunk.content.toLowerCase().includes(symbolLower)) continue;
+      if (
+        file.file_path === definingFilePath &&
+        chunk.symbols.some((symbol) => symbol.name === symbolName)
+      ) {
+        continue;
+      }
+      references.push({
+        kind: "text_reference",
+        precision: "approximate",
+        file_path: file.file_path,
+        start_line: chunk.start_line,
+        end_line: chunk.end_line,
+        reason: `chunk text mentions ${symbolName}`,
+        content_preview: boundedPreview(chunk.content, maxContentChars),
+      });
+      if (references.length >= limit) return references;
+    }
+  }
+
+  return references;
+}
+
+function exportedSymbols(
+  file: IndexedSourceFile,
+  limit: number,
+): SourceSymbol[] {
+  return file.symbols
+    .filter((symbol) => symbol.exported || file.exports.includes(symbol.name))
+    .slice(0, limit);
+}
+
+function chunkForSymbol(
+  file: IndexedSourceFile,
+  symbol: SourceSymbol,
+): SourceChunk | undefined {
+  return file.chunks.find(
+    (chunk) =>
+      chunk.start_line <= symbol.line &&
+      chunk.end_line >= symbol.line,
+  );
+}
+
 function buildReverseImportIndex(index: SourceIndex): ReverseImportIndex {
   const reverseIndex: ReverseImportIndex = new Map();
   const files = Object.values(index.files).sort((a, b) =>
@@ -1231,6 +1594,10 @@ function resolveImportPath(
 function filePreview(file: IndexedSourceFile, maxContentChars: number): string {
   const content = file.chunks.find((chunk) => chunk.content.trim().length > 0)
     ?.content ?? "";
+  return boundedPreview(content, maxContentChars);
+}
+
+function boundedPreview(content: string, maxContentChars: number): string {
   if (content.length <= maxContentChars) return content;
   return `${content.slice(0, maxContentChars)}\n// ... truncated`;
 }

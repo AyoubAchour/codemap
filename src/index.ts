@@ -22,8 +22,8 @@ export interface RegisterToolsOptions {
  *
  * Source discovery:
  *  - index_codebase
- *  - query_context
- *  - search_source
+ *  - query_context   (fused graph/source/dependency/impact planning context)
+ *  - search_source   (chunk search with optional dependency + impact context)
  *  - get_index_status
  *  - clear_index
  *

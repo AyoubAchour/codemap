@@ -1,6 +1,6 @@
 # Task 036: TS/JS Symbol And Impact Context
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 4 / behavior consistency
 **Estimate:** 3-5 days
 **Depends on:** task-035
@@ -24,17 +24,33 @@ planning context, not a full IDE or static analyzer.
 
 ## Deliverables
 
-- A TS/JS symbol context model built from the existing source index.
-- Direct impact context for a file or symbol:
+- [x] A TS/JS symbol context model built from the existing source index.
+- [x] Direct impact context for a file or symbol:
   - definition chunk
   - exported symbols
   - direct imports
   - direct importers
   - likely affected symbols/files
-- `query_context` can include bounded impact context when a query clearly
+- [x] `query_context` can include bounded impact context when a query clearly
   targets a symbol or file.
-- CLI and/or MCP access for targeted impact inspection.
-- Tests on small TS fixtures with imports, re-exports, and call sites.
+- [x] CLI and MCP access for targeted impact inspection.
+- [x] Tests on small TS fixtures with imports, re-exports, and call sites.
+
+## Outcome
+
+Implemented as a bounded `impact_context` on source-search results. The model
+reuses the existing local source index and reverse-import map rather than adding
+a new analyzer:
+
+- `search_source` / `codemap search-source --include-impact` include impact
+  context on demand.
+- `query_context` auto-includes impact context for clear symbol/file-shaped
+  queries, and can be forced with `include_impact`.
+- Exact relationships are limited to indexed definitions, direct imports, and
+  direct importers.
+- Lexical references are included separately as approximate text references
+  with an explicit warning.
+- Ambiguous symbol names are flagged when multiple indexed definitions exist.
 
 ## Proposed Shape
 
@@ -55,14 +71,14 @@ planning context, not a full IDE or static analyzer.
 
 ## Exit Criteria
 
-- [ ] For a TS symbol query, Codemap can identify its defining file/chunk.
-- [ ] For a file query, Codemap returns direct imports and importers.
-- [ ] Impact context distinguishes exact import/export relationships from
+- [x] For a TS symbol query, Codemap can identify its defining file/chunk.
+- [x] For a file query, Codemap returns direct imports and importers.
+- [x] Impact context distinguishes exact import/export relationships from
       approximate text references.
-- [ ] Output is bounded so large repos do not flood agent context.
-- [ ] Tests cover direct import impact, reverse importer impact, and ambiguous
+- [x] Output is bounded so large repos do not flood agent context.
+- [x] Tests cover direct import impact, reverse importer impact, and ambiguous
       symbol names.
-- [ ] Docs describe this as planning context, not proof of all runtime effects.
+- [x] Docs describe this as planning context, not proof of all runtime effects.
 
 ## Notes
 
