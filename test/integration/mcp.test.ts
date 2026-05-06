@@ -402,11 +402,19 @@ describe("MCP server — source index tools", () => {
     expect(parsed.graph.matches[0]).toEqual(
       expect.objectContaining({
         node_id: "auth/active-user",
+        quality: expect.objectContaining({
+          freshness: "fresh",
+          trust: "high",
+        }),
         match_reasons: expect.arrayContaining([
           expect.objectContaining({ field: "tag", value: "auth" }),
         ]),
       }),
     );
+    expect(parsed.graph.memory_quality.high_trust_node_ids).toEqual([
+      "auth/active-user",
+    ]);
+    expect(parsed.graph.memory_quality.review_node_ids).toEqual([]);
     expect(parsed.source.refreshed).toBe(true);
     expect(parsed.source.status.indexed).toBe(true);
     expect(parsed.source.search.ok).toBe(true);
@@ -434,6 +442,46 @@ describe("MCP server — source index tools", () => {
         expect.stringContaining("Impact context is bounded planning context"),
       ]),
     );
+  });
+
+  test("query_context does not warn on ordinary medium-trust graph memory", async () => {
+    const { GraphStore } = await import("../../src/graph.js");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode({
+      id: "auth/medium-user",
+      kind: "invariant",
+      name: "Medium trust auth memory",
+      summary: "Auth memory can be fresh and useful without being high trust.",
+      sources: [
+        {
+          file_path: "src/x.ts",
+          line_range: [1, 1],
+          content_hash: await repoFileHash("src/x.ts"),
+        },
+      ],
+      tags: ["auth"],
+      aliases: [],
+      status: "active",
+      confidence: 0.62,
+      last_verified_at: new Date().toISOString(),
+    });
+    await store.save();
+
+    const result = await client.callTool({
+      name: "query_context",
+      arguments: {
+        question: "auth medium memory",
+        source_limit: 1,
+      },
+    });
+    const parsed = parseToolText(result as never);
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.graph.memory_quality.review_node_ids).toEqual([
+      "auth/medium-user",
+    ]);
+    expect(parsed.graph.memory_quality.low_trust_node_ids).toEqual([]);
+    expect(parsed.warnings.join("\n")).not.toContain("low-trust");
   });
 
   test("graph_health reports stale active source anchors", async () => {
@@ -520,6 +568,13 @@ describe("MCP server — read tools", () => {
     });
     const parsed = parseToolText(r as never);
     expect(parsed.staleness.checked_sources).toBe(1);
+    expect(parsed.matches[0].quality).toEqual(
+      expect.objectContaining({
+        freshness: "stale",
+        trust: "low",
+        stale_sources: 1,
+      }),
+    );
     expect(parsed.staleness.stale_sources).toEqual([
       expect.objectContaining({
         node_id: "stale/source",
@@ -559,6 +614,13 @@ describe("MCP server — read tools", () => {
       arguments: { question: "fresh" },
     });
     const parsed = parseToolText(r as never);
+    expect(parsed.matches[0].quality).toEqual(
+      expect.objectContaining({
+        freshness: "fresh",
+        trust: "high",
+        stale_sources: 0,
+      }),
+    );
     expect(parsed.staleness).toEqual({
       checked_sources: 1,
       stale_sources: [],

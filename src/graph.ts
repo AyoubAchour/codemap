@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { lock } from "proper-lockfile";
 
 import { edgeKey, GraphFileSchema, parseEdgeKey } from "./schema.js";
+import type { GraphMemoryQuality } from "./graph_quality.js";
 import type { Edge, EdgeKind, GraphFile, Node, StoredNode } from "./types.js";
 import { ensureSeedFile } from "./util/lock.js";
 import { applyRepairs, type ValidationResult, validate } from "./validator.js";
@@ -39,8 +40,10 @@ export type GraphScoreBreakdown = Record<GraphMatchField, number>;
 export interface GraphNodeMatch {
   node_id: string;
   score: number;
+  ranking_score?: number;
   score_breakdown: GraphScoreBreakdown;
   match_reasons: GraphMatchReason[];
+  quality?: GraphMemoryQuality;
 }
 
 export interface UpsertOptions {

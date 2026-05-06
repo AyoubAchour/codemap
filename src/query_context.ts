@@ -1,4 +1,10 @@
 import { GraphStore, type QueryResult } from "./graph.js";
+import {
+  filterStalenessReportForNodes,
+  rankGraphResultByQuality,
+  summarizeGraphMemoryQuality,
+  type GraphMemoryQualitySummary,
+} from "./graph_quality.js";
 import { checkSourceStaleness, type StalenessReport } from "./staleness.js";
 import {
   getSourceIndexStatus,
@@ -24,7 +30,10 @@ export interface QueryContextOptions {
 export interface QueryContextResponse {
   ok: true;
   question: string;
-  graph: QueryResult & { staleness: StalenessReport };
+  graph: QueryResult & {
+    staleness: StalenessReport;
+    memory_quality: GraphMemoryQualitySummary;
+  };
   source: {
     status: SourceIndexStatus;
     refreshed: boolean;
@@ -60,16 +69,42 @@ export async function buildQueryContext(
   const warnings: string[] = [];
 
   const store = await GraphStore.load(repoRoot);
-  const graphResult = store.query(trimmedQuestion, graphLimit);
+  const graphCandidateLimit = Math.min(
+    50,
+    Math.max(graphLimit * 3, graphLimit + 10),
+  );
+  const graphCandidates = store.query(trimmedQuestion, graphCandidateLimit);
+  const candidateStaleness = await checkSourceStaleness(
+    repoRoot,
+    graphCandidates.nodes,
+  );
+  const graphResult = rankGraphResultByQuality(
+    graphCandidates,
+    candidateStaleness,
+    {
+      limit: graphLimit,
+      sourceChecksEnabled: true,
+    },
+  );
+  const staleness = filterStalenessReportForNodes(
+    candidateStaleness,
+    graphResult.nodes,
+    true,
+  );
+  const memoryQuality = summarizeGraphMemoryQuality(graphResult);
   if (graphResult.nodes.length > 0) {
     warnings.push(
       "Graph matches are curated repo memory; prefer fresh graph decisions/invariants/gotchas over re-deriving them.",
     );
   }
-  const staleness = await checkSourceStaleness(repoRoot, graphResult.nodes);
   if (staleness.stale_sources.length > 0) {
     warnings.push(
       "Some returned graph nodes have stale source anchors; re-read those files before relying on them.",
+    );
+  }
+  if (memoryQuality.low_trust_node_ids.length > 0) {
+    warnings.push(
+      "Some graph nodes are low-trust; inspect their source anchors before relying on them.",
     );
   }
 
@@ -126,7 +161,7 @@ export async function buildQueryContext(
   return {
     ok: true,
     question: trimmedQuestion,
-    graph: { ...graphResult, staleness },
+    graph: { ...graphResult, staleness, memory_quality: memoryQuality },
     source: {
       status: sourceStatus,
       refreshed,

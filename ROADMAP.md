@@ -233,6 +233,13 @@ exact direct importers, exported symbols, likely affected files, and approximate
 lexical references. This is planning context for edits, not proof of every
 runtime effect.
 
+Task 037 adds query-time memory quality ranking without changing the persisted
+graph schema. Graph results now include `ranking_score` plus compact quality
+metadata derived from lexical match, confidence, source-anchor freshness,
+verification age, node kind, and status. `query_context.graph.memory_quality`
+separates high-trust node ids from stale or low-trust ids that should be
+inspected before use.
+
 
 ## Cumulative timeline (single dev, half-time)
 

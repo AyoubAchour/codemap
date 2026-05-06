@@ -179,10 +179,14 @@ V1 explicitly addresses pains 1 and 2. Pain 3 is v2.
 
 Preferred pre-planning read path for codebase tasks. It composes `query_graph`,
 source staleness checks, source-index status, source search, and related graph
-nodes into one response. It never writes graph memory and never auto-generates
-nodes from the source index; source hits are still a rebuildable discovery cache
-that must be inspected in real files before `emit_node`. Source search results
-may include bounded dependency context (`imports` / `imported_by`) and bounded
+nodes into one response. Graph matches are quality-ranked at query time using
+lexical score, confidence, node kind, verification age, deprecated status, and
+source-anchor freshness; `graph.memory_quality` separates high-trust ids,
+medium-trust review ids, and diagnostic stale/low-trust ids that need
+inspection. It never writes graph memory and never auto-generates nodes from
+the source index; source hits are still a rebuildable discovery cache that must
+be inspected in real files before `emit_node`. Source search results may
+include bounded dependency context (`imports` / `imported_by`) and bounded
 symbol/file impact context to help the agent inspect nearby files before
 forming a durable finding. Impact context distinguishes exact indexed
 definitions/import relationships from approximate lexical references; it is
@@ -190,7 +194,12 @@ planning context, not proof of every runtime effect.
 
 ### 7.1 `query_graph(question: string) → { nodes, edges }`
 
-Called by the agent **before planning** any task involving code understanding. Returns top-N relevant nodes (by tag overlap + text match in `name` / `summary` / `tags` / `aliases`) plus connecting edges. Resolves through aliases.
+Called by the agent **before planning** any task involving code understanding.
+Returns top-N relevant nodes plus connecting edges. Matching starts with tag
+overlap and text match in `name` / `summary` / `tags` / `aliases`, then
+query-time quality ranking adjusts order using confidence, freshness, age, kind,
+and status. Results include match reasons and compact trust metadata. Resolves
+through aliases.
 
 ### 7.2 `get_node(id: string) → Node`
 

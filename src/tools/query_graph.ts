@@ -2,6 +2,10 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { GraphStore } from "../graph.js";
+import {
+  filterStalenessReportForNodes,
+  rankGraphResultByQuality,
+} from "../graph_quality.js";
 import { recordMetric } from "../metrics.js";
 import { checkSourceStaleness } from "../staleness.js";
 
@@ -18,7 +22,7 @@ export function registerQueryGraph(
     {
       title: "Query graph",
       description:
-        "Find nodes relevant to a task description. Call before planning any task that involves understanding this codebase. Returns the top matching nodes plus the edges connecting them.",
+        "Find nodes relevant to a task description. Call before planning any task that involves understanding this codebase. Returns quality-ranked nodes, match reasons, quality metadata, and connecting edges.",
       inputSchema: {
         question: z
           .string()
@@ -42,12 +46,27 @@ export function registerQueryGraph(
       },
     },
     async ({ question, limit, check_staleness }) => {
+      const resultLimit = limit ?? 10;
+      const candidateLimit = Math.min(
+        50,
+        Math.max(resultLimit * 3, resultLimit + 10),
+      );
+      const sourceChecksEnabled = check_staleness !== false;
       const store = await GraphStore.load(options.repoRoot);
-      const result = store.query(question, limit);
-      const staleness =
-        check_staleness === false
+      const candidates = store.query(question, candidateLimit);
+      const candidateStaleness =
+        sourceChecksEnabled === false
           ? { checked_sources: 0, stale_sources: [] }
-          : await checkSourceStaleness(options.repoRoot, result.nodes);
+          : await checkSourceStaleness(options.repoRoot, candidates.nodes);
+      const result = rankGraphResultByQuality(candidates, candidateStaleness, {
+        limit: resultLimit,
+        sourceChecksEnabled,
+      });
+      const staleness = filterStalenessReportForNodes(
+        candidateStaleness,
+        result.nodes,
+        sourceChecksEnabled,
+      );
       await recordMetric(options.repoRoot, (m) => {
         m.recordQuery(result.nodes.length);
         if (staleness.stale_sources.length > 0) {

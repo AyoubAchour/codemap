@@ -1,6 +1,6 @@
 # Task 037: Memory Quality And Ranking
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 4 / behavior consistency
 **Estimate:** 2-4 days
 **Depends on:** task-035
@@ -56,12 +56,25 @@ old knowledge is wrong just because it is old.
 
 ## Exit Criteria
 
-- [ ] `query_graph` / `query_context` can expose quality metadata.
-- [ ] Stale source anchors reduce trust ranking without hiding the node.
-- [ ] Fresh high-confidence decision/invariant/gotcha nodes rank strongly.
-- [ ] Deprecated nodes remain excluded by default.
-- [ ] Tests cover freshness, confidence, staleness, and kind weighting.
-- [ ] Docs explain how to interpret quality and stale warnings.
+- [x] `query_graph` / `query_context` can expose quality metadata.
+- [x] Stale source anchors reduce trust ranking without hiding the node.
+- [x] Fresh high-confidence decision/invariant/gotcha nodes rank strongly.
+- [x] Deprecated nodes remain excluded by default.
+- [x] Tests cover freshness, confidence, staleness, and kind weighting.
+- [x] Docs explain how to interpret quality and stale warnings.
+
+## Outcome
+
+Implemented a query-time graph memory quality layer without changing the
+persisted graph schema. `query_graph` now ranks a bounded candidate pool by
+lexical match plus quality, then returns `ranking_score` and compact
+`quality` metadata on each match. Quality is computed from confidence,
+source-anchor freshness, verification age, node kind, and status.
+
+`query_context` includes `graph.memory_quality` buckets so agents can
+distinguish high-trust graph memory from stale, unchecked, or low-confidence
+memory before planning. Low-trust memory remains visible; it is demoted and
+marked for inspection rather than discarded.
 
 ## Notes
 

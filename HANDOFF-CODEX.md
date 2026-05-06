@@ -66,11 +66,16 @@ stricter generated Agent Contract wording, explicit `--check --force`
 rejection, and policy-hash mismatch coverage. Task 035 is now unblocked.
 
 Task 035 added retrieval explanations and source-result diversity. Task 036
-adds bounded TS/JS impact context on top of the source index: definitions,
+added bounded TS/JS impact context on top of the source index: definitions,
 direct imports, direct importers, exported symbols, likely affected files, and
-lexical references clearly marked as approximate. Do not add hosted embeddings,
-rerankers, or full call-graph precision until local lexical/symbol impact
-context shows real dogfood misses.
+lexical references clearly marked as approximate.
+
+Task 037 added query-time memory quality ranking without changing the persisted
+graph schema. `query_graph` returns `ranking_score` plus compact quality
+metadata, and `query_context.graph.memory_quality` separates high-trust node ids
+from stale or low-trust ids that need inspection. Do not add hosted embeddings,
+rerankers, or full call-graph precision until local lexical/symbol/quality
+ranking shows real dogfood misses. Task 038 is next.
 
 ## How to work in this repo (the conventions)
 
