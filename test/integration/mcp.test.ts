@@ -402,11 +402,19 @@ describe("MCP server — source index tools", () => {
     expect(parsed.graph.matches[0]).toEqual(
       expect.objectContaining({
         node_id: "auth/active-user",
+        quality: expect.objectContaining({
+          freshness: "fresh",
+          trust: "high",
+        }),
         match_reasons: expect.arrayContaining([
           expect.objectContaining({ field: "tag", value: "auth" }),
         ]),
       }),
     );
+    expect(parsed.graph.memory_quality.high_trust_node_ids).toEqual([
+      "auth/active-user",
+    ]);
+    expect(parsed.graph.memory_quality.review_node_ids).toEqual([]);
     expect(parsed.source.refreshed).toBe(true);
     expect(parsed.source.status.indexed).toBe(true);
     expect(parsed.source.search.ok).toBe(true);
@@ -520,6 +528,13 @@ describe("MCP server — read tools", () => {
     });
     const parsed = parseToolText(r as never);
     expect(parsed.staleness.checked_sources).toBe(1);
+    expect(parsed.matches[0].quality).toEqual(
+      expect.objectContaining({
+        freshness: "stale",
+        trust: "low",
+        stale_sources: 1,
+      }),
+    );
     expect(parsed.staleness.stale_sources).toEqual([
       expect.objectContaining({
         node_id: "stale/source",
@@ -559,6 +574,13 @@ describe("MCP server — read tools", () => {
       arguments: { question: "fresh" },
     });
     const parsed = parseToolText(r as never);
+    expect(parsed.matches[0].quality).toEqual(
+      expect.objectContaining({
+        freshness: "fresh",
+        trust: "high",
+        stale_sources: 0,
+      }),
+    );
     expect(parsed.staleness).toEqual({
       checked_sources: 1,
       stale_sources: [],

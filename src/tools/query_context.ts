@@ -17,7 +17,7 @@ export function registerQueryContext(
     {
       title: "Query context",
       description:
-        "Return a fused planning context for repo work: graph-memory matches with match reasons and staleness, source-index status/search with score breakdowns, optional bounded impact context, deduplicated related graph nodes, warnings, and next steps.",
+        "Return a fused planning context for repo work: quality-ranked graph-memory matches with trust metadata, source-index status/search with score breakdowns, optional bounded impact context, deduplicated related graph nodes, warnings, and next steps.",
       inputSchema: {
         question: z
           .string()

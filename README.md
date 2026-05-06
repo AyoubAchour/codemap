@@ -118,8 +118,8 @@ missing guidance, regenerate with `codemap init --force`.
 For repository tasks, agents should follow this loop:
 
 1. `set_active_topic` to name the task and reset per-turn write limits.
-2. `query_context` before planning. This combines graph memory, source-index
-   status, source search, dependency/impact context, match reasons,
+2. `query_context` before planning. This combines quality-ranked graph memory,
+   source-index status, source search, dependency/impact context, match reasons,
    stale-anchor warnings, and next steps.
 3. Inspect real project files before relying on search results.
 4. `emit_node` only for durable repo-local knowledge, anchored to real source
@@ -137,8 +137,8 @@ per turn to prevent graph spam.
 | Tool | Purpose |
 | --- | --- |
 | `set_active_topic` | Mark the current task and reset the per-turn emit budget. |
-| `query_context` | Preferred planning tool. Combines graph, source search, staleness, match reasons, dependencies, impact context, and next steps. |
-| `query_graph` | Search curated graph memory for relevant nodes, edges, and match reasons. |
+| `query_context` | Preferred planning tool. Combines quality-ranked graph memory, source search, staleness, match reasons, dependencies, impact context, and next steps. |
+| `query_graph` | Search curated graph memory for relevant nodes, edges, match reasons, and trust metadata. |
 | `get_node` | Fetch one node by id or alias. |
 | `graph_health` | Read-only graph health report: validator warnings and source-anchor staleness. |
 | `emit_node` | Create or merge a durable repo-local finding. |
@@ -192,6 +192,25 @@ It reports:
 
 The default output is readable in a terminal. Use `--json` when piping to other
 tools.
+
+## Memory Quality
+
+Graph search results include query-time trust metadata. Codemap keeps the graph
+schema stable and computes quality from existing fields: lexical match score,
+confidence, node kind, verification age, deprecated status, and source-anchor
+freshness.
+
+Each graph match can include:
+
+- `ranking_score` — match score adjusted by memory quality
+- `quality.trust` — `high`, `medium`, or `low`
+- `quality.freshness` — `fresh`, `stale`, `unchecked`, or `no_sources`
+- `quality.reasons` — short hints explaining why the memory ranked that way
+
+`query_context.graph.memory_quality` groups returned node ids into
+`high_trust_node_ids`, `review_node_ids`, `stale_node_ids`, and
+`low_trust_node_ids`. Low-trust memories are not hidden; agents should inspect
+their source anchors before relying on them.
 
 ## Local Metrics
 
