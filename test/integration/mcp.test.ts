@@ -444,6 +444,46 @@ describe("MCP server — source index tools", () => {
     );
   });
 
+  test("query_context does not warn on ordinary medium-trust graph memory", async () => {
+    const { GraphStore } = await import("../../src/graph.js");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode({
+      id: "auth/medium-user",
+      kind: "invariant",
+      name: "Medium trust auth memory",
+      summary: "Auth memory can be fresh and useful without being high trust.",
+      sources: [
+        {
+          file_path: "src/x.ts",
+          line_range: [1, 1],
+          content_hash: await repoFileHash("src/x.ts"),
+        },
+      ],
+      tags: ["auth"],
+      aliases: [],
+      status: "active",
+      confidence: 0.62,
+      last_verified_at: new Date().toISOString(),
+    });
+    await store.save();
+
+    const result = await client.callTool({
+      name: "query_context",
+      arguments: {
+        question: "auth medium memory",
+        source_limit: 1,
+      },
+    });
+    const parsed = parseToolText(result as never);
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.graph.memory_quality.review_node_ids).toEqual([
+      "auth/medium-user",
+    ]);
+    expect(parsed.graph.memory_quality.low_trust_node_ids).toEqual([]);
+    expect(parsed.warnings.join("\n")).not.toContain("low-trust");
+  });
+
   test("graph_health reports stale active source anchors", async () => {
     const { GraphStore } = await import("../../src/graph.js");
     const store = await GraphStore.load(tmpRoot);

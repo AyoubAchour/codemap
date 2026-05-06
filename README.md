@@ -209,8 +209,10 @@ Each graph match can include:
 
 `query_context.graph.memory_quality` groups returned node ids into
 `high_trust_node_ids`, `review_node_ids`, `stale_node_ids`, and
-`low_trust_node_ids`. Low-trust memories are not hidden; agents should inspect
-their source anchors before relying on them.
+`low_trust_node_ids`. `review_node_ids` is medium-trust memory. `stale_node_ids`
+and `low_trust_node_ids` are diagnostic lists and may overlap. Low-trust
+memories are not hidden; agents should inspect their source anchors before
+relying on them.
 
 ## Local Metrics
 

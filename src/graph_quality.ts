@@ -129,7 +129,7 @@ export function summarizeGraphMemoryQuality(
 		if (!quality) continue;
 		if (quality.trust === "high") {
 			high_trust_node_ids.push(node.id);
-		} else {
+		} else if (quality.trust === "medium") {
 			review_node_ids.push(node.id);
 		}
 		if (quality.freshness === "stale") {
@@ -236,7 +236,7 @@ function sourceFreshnessFactor(
 	if (freshness === "fresh") return 1;
 	if (freshness === "unchecked") return 0.78;
 	if (freshness === "no_sources") return 0.62;
-	const staleRatio = checkedSources === 0 ? 1 : staleSources / checkedSources;
+	const staleRatio = staleSources / checkedSources;
 	return clamp(1 - staleRatio * 0.7, 0.3, 0.75);
 }
 

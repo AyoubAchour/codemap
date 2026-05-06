@@ -102,9 +102,9 @@ export async function buildQueryContext(
       "Some returned graph nodes have stale source anchors; re-read those files before relying on them.",
     );
   }
-  if (memoryQuality.review_node_ids.length > 0) {
+  if (memoryQuality.low_trust_node_ids.length > 0) {
     warnings.push(
-      "Graph memory quality separates high-trust nodes from stale, unchecked, or low-confidence nodes.",
+      "Some graph nodes are low-trust; inspect their source anchors before relying on them.",
     );
   }
 

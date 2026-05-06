@@ -189,8 +189,9 @@ describe("graph memory quality", () => {
 		);
 	});
 
-	test("summarizes high-trust and review-needed memory ids", async () => {
+	test("summarizes medium-trust separately from stale and low-trust ids", async () => {
 		await write("src/fresh.ts", "export const fresh = true;\n");
+		await write("src/medium.ts", "export const medium = true;\n");
 		await write("src/stale.ts", "export const stale = true;\n");
 		const store = await GraphStore.load(tmpRoot);
 		store.upsertNode(
@@ -203,6 +204,19 @@ describe("graph memory quality", () => {
 						content_hash: await fileHash("src/fresh.ts"),
 					},
 				],
+			}),
+		);
+		store.upsertNode(
+			node({
+				id: "auth/medium",
+				sources: [
+					{
+						file_path: "src/medium.ts",
+						line_range: [1, 1],
+						content_hash: await fileHash("src/medium.ts"),
+					},
+				],
+				confidence: 0.62,
 			}),
 		);
 		store.upsertNode(
@@ -227,7 +241,7 @@ describe("graph memory quality", () => {
 
 		expect(summarizeGraphMemoryQuality(ranked)).toEqual({
 			high_trust_node_ids: ["auth/fresh"],
-			review_node_ids: ["auth/stale"],
+			review_node_ids: ["auth/medium"],
 			stale_node_ids: ["auth/stale"],
 			low_trust_node_ids: ["auth/stale"],
 		});
