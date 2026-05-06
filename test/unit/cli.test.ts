@@ -983,6 +983,87 @@ describe("CLI: source index", () => {
     expect(out.writeback.total_suggestions).toBeGreaterThan(0);
   });
 
+  test("changes-context does not invent changed symbols for deletion-only hunks", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "delete_only.ts"),
+      [
+        "export function first() {",
+        "  return 1;",
+        "}",
+        "export const marker = 1;",
+        "const removed = 1;",
+        "export function second() {",
+        "  return 2;",
+        "}",
+      ].join("\n"),
+    );
+    await scan({}, { repoRoot: tmpRoot });
+    await runGit(["init"]);
+    await runGit(["config", "user.email", "test@example.com"]);
+    await runGit(["config", "user.name", "Test User"]);
+    await runGit(["add", "."]);
+    await runGit(["commit", "-m", "seed"]);
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "delete_only.ts"),
+      [
+        "export function first() {",
+        "  return 1;",
+        "}",
+        "export const marker = 1;",
+        "export function second() {",
+        "  return 2;",
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await changesContext(
+      { fileLimit: 5 },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    if (result.stdout === undefined) throw new Error("expected stdout");
+    const out = JSON.parse(result.stdout);
+    const file = out.files.find(
+      (entry: { file_path?: string }) => entry.file_path === "src/delete_only.ts",
+    );
+    if (file === undefined) throw new Error("expected delete_only.ts result");
+    expect(file.changed_ranges).toEqual([]);
+    expect(file.changed_symbols).toEqual([]);
+  });
+
+  test("changes-context treats a single simple deletion as medium risk", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "deleted_fixture.ts"),
+      "export const deletedFixture = 1;\n",
+    );
+    await scan({}, { repoRoot: tmpRoot });
+    await runGit(["init"]);
+    await runGit(["config", "user.email", "test@example.com"]);
+    await runGit(["config", "user.name", "Test User"]);
+    await runGit(["add", "."]);
+    await runGit(["commit", "-m", "seed"]);
+    await fs.rm(path.join(tmpRoot, "src", "deleted_fixture.ts"));
+
+    const result = await changesContext(
+      { fileLimit: 5 },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    if (result.stdout === undefined) throw new Error("expected stdout");
+    const out = JSON.parse(result.stdout);
+    expect(out.summary.risk).toBe("medium");
+    expect(out.files[0]).toEqual(
+      expect.objectContaining({
+        file_path: "src/deleted_fixture.ts",
+        deleted: true,
+      }),
+    );
+  });
+
   test("generate-skills writes generated repo guidance and --check detects current", async () => {
     await scan({}, { repoRoot: tmpRoot });
     const generated = await generateSkills({}, { repoRoot: tmpRoot });

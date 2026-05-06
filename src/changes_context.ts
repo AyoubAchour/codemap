@@ -119,6 +119,7 @@ interface ChangedFileAccumulator {
   unstaged: boolean;
   untracked: boolean;
   deleted: boolean;
+  sawDiffHunk: boolean;
   ranges: ChangedRange[];
 }
 
@@ -178,7 +179,8 @@ export async function buildChangesContext(
   }
 
   const index = await loadSourceIndex(resolvedRoot);
-  const graphNodesByFile = await graphNodesBySourceFile(resolvedRoot);
+  const graphStore = await GraphStore.load(resolvedRoot);
+  const graphNodesByFile = graphNodesBySourceFile(graphStore);
   const files: ChangedFileContext[] = [];
   const likelyAffectedFiles = new Set<string>();
 
@@ -192,7 +194,9 @@ export async function buildChangesContext(
         })
       : null;
     const changedSymbols = indexedFile
-      ? symbolsInChangedRanges(indexedFile.symbols, changed.ranges)
+      ? symbolsInChangedRanges(indexedFile.symbols, changed.ranges, {
+          sawDiffHunk: changed.sawDiffHunk,
+        })
       : [];
     const impact = sourceHit?.impact_context;
     for (const filePath of impact?.likely_affected_files ?? []) {
@@ -224,6 +228,7 @@ export async function buildChangesContext(
   const changedFilePaths = limitedChangedFiles.map((file) => file.file_path);
   const staleGraphNodes = await staleGraphNodesForFiles(
     resolvedRoot,
+    graphStore,
     graphNodesByFile,
     changedFilePaths,
   );
@@ -394,9 +399,11 @@ async function addRanges(
       continue;
     }
     if (!currentPath || !line.startsWith("@@")) continue;
+    const entry = ensureChangedFile(byPath, currentPath);
+    entry.sawDiffHunk = true;
     const range = parseUnifiedRange(line);
     if (!range) continue;
-    ensureChangedFile(byPath, currentPath).ranges.push({
+    entry.ranges.push({
       ...range,
       source,
     });
@@ -448,6 +455,7 @@ function ensureChangedFile(
       unstaged: false,
       untracked: false,
       deleted: false,
+      sawDiffHunk: false,
       ranges: [],
     };
     byPath.set(filePath, entry);
@@ -493,10 +501,11 @@ function parseUnifiedRange(line: string): Omit<ChangedRange, "source"> | null {
   const match = line.match(/\+(\d+)(?:,(\d+))?/);
   if (!match?.[1]) return null;
   const start = Math.max(1, Number(match[1]));
-  const count = match[2] ? Number(match[2]) : 1;
+  const count = match[2] !== undefined ? Number(match[2]) : 1;
+  if (count === 0) return null;
   return {
     start_line: start,
-    end_line: Math.max(start, start + Math.max(1, count) - 1),
+    end_line: Math.max(start, start + count - 1),
   };
 }
 
@@ -541,8 +550,10 @@ async function sourceImpactForFile(
 function symbolsInChangedRanges(
   symbols: SourceSymbol[],
   ranges: ChangedRange[],
+  options: { sawDiffHunk?: boolean } = {},
 ): SourceSymbol[] {
   if (ranges.length === 0) {
+    if (options.sawDiffHunk) return [];
     return symbols.filter((symbol) => symbol.exported).slice(0, 8);
   }
   return symbols
@@ -573,10 +584,9 @@ function fileWarnings(
   return warnings;
 }
 
-async function graphNodesBySourceFile(
-  repoRoot: string,
-): Promise<Map<string, Array<Pick<Node, "id" | "kind" | "name" | "summary">>>> {
-  const store = await GraphStore.load(repoRoot);
+function graphNodesBySourceFile(
+  store: GraphStore,
+): Map<string, Array<Pick<Node, "id" | "kind" | "name" | "summary">>> {
   const byFile = new Map<
     string,
     Array<Pick<Node, "id" | "kind" | "name" | "summary">>
@@ -598,6 +608,7 @@ async function graphNodesBySourceFile(
 
 async function staleGraphNodesForFiles(
   repoRoot: string,
+  store: GraphStore,
   graphNodesByFile: Map<
     string,
     Array<Pick<Node, "id" | "kind" | "name" | "summary">>
@@ -608,7 +619,6 @@ async function staleGraphNodesForFiles(
     stale_sources: StaleSource[];
   }>
 > {
-  const store = await GraphStore.load(repoRoot);
   const nodeIds = new Set<string>();
   for (const filePath of filePaths) {
     for (const node of graphNodesByFile.get(filePath) ?? []) {
@@ -716,7 +726,11 @@ function riskLevel(input: {
   deletedFiles: number;
 }): ChangeRisk {
   if (
-    input.deletedFiles > 0 ||
+    input.deletedFiles > 1 ||
+    (input.deletedFiles > 0 &&
+      (input.staleGraphNodes > 0 ||
+        input.likelyAffectedFiles > 0 ||
+        input.changedFiles > 3)) ||
     input.staleGraphNodes > 2 ||
     input.likelyAffectedFiles > 8 ||
     input.changedFiles > 10
@@ -724,6 +738,7 @@ function riskLevel(input: {
     return "high";
   }
   if (
+    input.deletedFiles > 0 ||
     input.staleGraphNodes > 0 ||
     input.likelyAffectedFiles > 0 ||
     input.changedFiles > 3

@@ -195,9 +195,8 @@ async function setupCursorClient(
 }
 
 function setupClaudeClient(
-  options: Required<Pick<SetupOptions, "command" | "homeDir">>,
+  options: Required<Pick<SetupOptions, "command">>,
 ): SetupClientResult {
-  void options.homeDir;
   return {
     client: "claude",
     status: "manual",
