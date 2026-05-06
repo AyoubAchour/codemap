@@ -47,13 +47,12 @@ function formatDoctorSummary(response: GraphHealthOkResponse): string {
     `${summary.missing_sources} missing`,
     `${summary.unsafe_sources} unsafe`,
     `${summary.read_errors} read errors`,
-    `${summary.range_fresh_sources} range-fresh`,
   ].join(", ");
   const lines = [
     `Codemap graph health: ${summary.fresh ? "clean" : "issues found"}`,
     "",
     `Nodes: ${summary.active_nodes} active, ${summary.deprecated_nodes} deprecated, ${summary.total_edges} edges`,
-    `Sources: ${summary.checked_sources} checked, ${summary.stale_sources} stale (${sourceBreakdown})`,
+    `Sources: ${summary.checked_sources} checked, ${summary.stale_sources} stale (${sourceBreakdown}), ${summary.range_fresh_sources} range-fresh`,
     `Validator: ${summary.duplicate_aliases} duplicate aliases, ${summary.validator_repairs} repairs, ${summary.validator_errors} errors`,
   ];
 
