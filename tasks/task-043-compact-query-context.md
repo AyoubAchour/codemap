@@ -1,6 +1,6 @@
 # Task 043 — Compact query context
 
-Status: todo
+Status: done
 
 Phase: Phase 4 / retrieval
 
@@ -27,7 +27,6 @@ paths.
 
 ## Exit Criteria
 
-- [ ] Compact mode substantially reduces response size on this repo.
-- [ ] Standard/full modes preserve existing planning detail.
-- [ ] Tests cover response shape, defaults, and expansion guidance.
-
+- [x] Compact mode substantially reduces response size on this repo.
+- [x] Standard/full modes preserve existing planning detail.
+- [x] Tests cover response shape, defaults, and expansion guidance.

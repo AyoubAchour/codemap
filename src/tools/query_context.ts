@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   buildQueryContext,
+  type QueryContextMode,
   type SourceRefreshMode,
 } from "../query_context.js";
 import { recordMetric } from "../metrics.js";
@@ -24,6 +25,12 @@ export function registerQueryContext(
           .min(1)
           .describe(
             "Natural-language description of the codebase task or area you're investigating.",
+          ),
+        mode: z
+          .enum(["compact", "standard", "full"])
+          .optional()
+          .describe(
+            "Response detail mode. compact keeps high-signal summaries and smaller source previews; standard preserves the existing planning detail; full expands defaults for deeper source/dependency/impact context. Default standard.",
           ),
         graph_limit: z
           .number()
@@ -78,6 +85,7 @@ export function registerQueryContext(
     },
     async ({
       question,
+      mode,
       graph_limit,
       source_limit,
       max_content_chars,
@@ -87,6 +95,7 @@ export function registerQueryContext(
       refresh_index,
     }) => {
       const response = await buildQueryContext(options.repoRoot, question, {
+        mode: mode as QueryContextMode | undefined,
         graphLimit: graph_limit,
         sourceLimit: source_limit,
         maxContentChars: max_content_chars,

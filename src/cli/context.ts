@@ -1,10 +1,12 @@
 import {
   buildQueryContext,
+  type QueryContextMode,
   type SourceRefreshMode,
 } from "../query_context.js";
 import type { CommandResult, GlobalOptions } from "./_types.js";
 
 export interface ContextFlags {
+  mode?: QueryContextMode;
   graphLimit?: number;
   sourceLimit?: number;
   maxContentChars?: number;
@@ -21,6 +23,7 @@ export async function context(
 ): Promise<CommandResult> {
   try {
     const response = await buildQueryContext(options.repoRoot, question, {
+      mode: flags.mode,
       graphLimit: flags.graphLimit,
       sourceLimit: flags.sourceLimit,
       maxContentChars: flags.maxContentChars,

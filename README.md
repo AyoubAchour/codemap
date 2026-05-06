@@ -157,7 +157,7 @@ per turn to prevent graph spam.
 | Tool | Purpose |
 | --- | --- |
 | `set_active_topic` | Mark the current task and reset the per-turn emit budget. |
-| `query_context` | Preferred planning tool. Combines quality-ranked graph memory, source search, staleness, match reasons, dependencies, impact context, and next steps. |
+| `query_context` | Preferred planning tool. Combines quality-ranked graph memory, source search, staleness, match reasons, dependencies, impact context, and next steps. Supports `compact`, `standard`, and `full` response modes. |
 | `changes_context` | Diff-aware planning tool. Maps git changes to source impact context, stale graph anchors, likely tests/docs, and read-only writeback prompts. |
 | `query_graph` | Search curated graph memory for relevant nodes, edges, match reasons, and trust metadata. |
 | `get_node` | Fetch one node by id or alias. |
@@ -192,6 +192,7 @@ codemap doctor                        # Compact graph health summary
 codemap doctor --json                 # Full structured health report
 codemap scan                          # Build the local source index
 codemap context "auth guard"          # Graph + source context for planning
+codemap context "auth guard" --mode compact
 codemap changes-context               # Diff impact, stale graph anchors, tests/docs
 codemap suggest-writeback --summary "what changed"
 codemap generate-skills               # Generate repo-local orientation guidance

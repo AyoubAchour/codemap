@@ -177,7 +177,7 @@ V1 explicitly addresses pains 1 and 2. Pain 3 is v2.
 
 ## 7. MCP tools
 
-### 7.0 `query_context(question: string) → { graph, source, related_nodes, warnings, next_steps }`
+### 7.0 `query_context(question: string, mode?: "compact" | "standard" | "full") → { summary, expansion, graph, source, related_nodes, warnings, next_steps }`
 
 Preferred pre-planning read path for codebase tasks. It composes `query_graph`,
 source staleness checks, source-index status, source search, and related graph
@@ -193,6 +193,16 @@ symbol/file impact context to help the agent inspect nearby files before
 forming a durable finding. Impact context distinguishes exact indexed
 definitions/import relationships from approximate lexical references; it is
 planning context, not proof of every runtime effect.
+
+The response is tiered. `summary` comes first with the best graph memories,
+best source hits, source-index state, and totals. `expansion` tells agents how
+to fetch full graph nodes (`get_node`), which file ranges to inspect directly,
+and how to expand source hits with `search_source` without re-running the full
+fused context query. `standard` is the backward-compatible default. `compact`
+uses smaller source previews and disables dependency/impact defaults to reduce
+token cost while preserving summaries and expansion hints. `full` raises
+defaults for deeper source, dependency, and impact context when the agent is
+already in a broad investigation.
 
 ### 7.1 `query_graph(question: string) → { nodes, edges }`
 
