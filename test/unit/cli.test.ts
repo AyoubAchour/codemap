@@ -852,9 +852,148 @@ describe("CLI: source index", () => {
     expect(result.exitCode).toBe(0);
     const out = JSON.parse(result.stdout!);
     expect(out.ok).toBe(true);
+    expect(out.mode).toBe("standard");
+    expect(out.summary.source_hits[0].file_path).toBe("src/auth.ts");
+    expect(out.expansion.source_files[0].file_path).toBe("src/auth.ts");
     expect(out.source.refreshed).toBe(true);
     expect(out.source.status.indexed).toBe(true);
     expect(out.source.search.results[0].file_path).toBe("src/auth.ts");
+  });
+
+  test("context compact mode keeps summaries and expansion hints while trimming source detail", async () => {
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      [
+        "export interface SessionUser { id: string }",
+        "export function requireActiveUser(token: string): SessionUser {",
+        "  const auditTrail = [",
+        ...Array.from(
+          { length: 80 },
+          (_value, index) =>
+            `    "auth audit marker ${index} requireActiveUser active user context",`,
+        ),
+        "  ];",
+        "  return { id: auditTrail.includes(token) ? token : token };",
+        "}",
+      ].join("\n"),
+    );
+
+    const standardResult = await context(
+      "requireActiveUser active user",
+      {
+        sourceLimit: 1,
+        maxContentChars: 2500,
+        dependencyLimit: 1,
+        includeImpact: true,
+      },
+      { repoRoot: tmpRoot },
+    );
+    const compactResult = await context(
+      "requireActiveUser active user",
+      { mode: "compact", sourceLimit: 1 },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(standardResult.exitCode).toBe(0);
+    expect(compactResult.exitCode).toBe(0);
+    expect(compactResult.stdout!.length).toBeLessThan(
+      standardResult.stdout!.length * 0.7,
+    );
+
+    const compact = JSON.parse(compactResult.stdout!);
+    expect(compact.mode).toBe("compact");
+    expect(compact.summary.source_hits[0]).toEqual(
+      expect.objectContaining({
+        file_path: "src/auth.ts",
+        has_dependency_context: false,
+        has_impact_context: false,
+      }),
+    );
+    expect(compact.expansion.source_files[0]).toEqual(
+      expect.objectContaining({
+        file_path: "src/auth.ts",
+        action: "inspect_file",
+      }),
+    );
+    expect(compact.expansion.source_search.arguments).toEqual(
+      expect.objectContaining({
+        query: "requireActiveUser active user",
+        include_impact: true,
+        max_content_chars: 6000,
+      }),
+    );
+    expect(compact.source.search.results[0].content.length).toBeLessThan(350);
+    expect(compact.source.search.results[0].dependency_context).toEqual([]);
+    expect(compact.source.search.results[0].impact_context).toBeUndefined();
+  });
+
+  test("context full mode preserves rich planning detail by default", async () => {
+    const result = await context(
+      "requireActiveUser",
+      { mode: "full", sourceLimit: 1 },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.mode).toBe("full");
+    expect(out.source.search.results[0].file_path).toBe("src/auth.ts");
+    expect(out.source.search.results[0].content).toContain(
+      "requireActiveUser",
+    );
+    expect(out.source.search.results[0].impact_context).toBeDefined();
+    expect(out.expansion.source_search.arguments.include_impact).toBe(true);
+  });
+
+  test("context full mode expansion covers every returned node and source hit", async () => {
+    const nodes: Node[] = [];
+    for (let i = 0; i < 7; i += 1) {
+      const filePath = `src/expansion-${i}.ts`;
+      const body = `export function expansionTarget${i}() { return "expansion target ${i}"; }\n`;
+      await fs.writeFile(path.join(tmpRoot, filePath), body);
+      nodes.push(
+        makeNode({
+          id: `context/expansion-${i}`,
+          name: `Expansion target ${i}`,
+          summary: "Expansion target graph memory.",
+          sources: [
+            {
+              file_path: filePath,
+              line_range: [1, 1],
+              content_hash: hashBuffer(Buffer.from(body)),
+            },
+          ],
+          tags: ["expansion-target"],
+          last_verified_at: new Date().toISOString(),
+        }),
+      );
+    }
+    await seed(nodes);
+
+    const result = await context(
+      "expansion target",
+      { mode: "full", graphLimit: 7, sourceLimit: 7 },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.graph.nodes).toHaveLength(7);
+    expect(
+      out.expansion.graph_nodes.map((node: { id: string }) => node.id),
+    ).toEqual(out.graph.nodes.map((node: { id: string }) => node.id));
+    expect(out.source.search.results).toHaveLength(7);
+    expect(
+      out.expansion.source_files.map(
+        (entry: { file_path: string }) => entry.file_path,
+      ),
+    ).toEqual(
+      out.source.search.results.map(
+        (result: { file_path: string }) => result.file_path,
+      ),
+    );
+    expect(out.summary.graph_memories).toHaveLength(5);
+    expect(out.summary.source_hits).toHaveLength(5);
   });
 
   test("context does not auto-include impact for plain underscore words", async () => {
@@ -938,6 +1077,18 @@ describe("CLI: source index", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("expected one of never, if_missing, if_stale");
+  });
+
+  test("bin context rejects invalid response modes", async () => {
+    const result = await runCodemapBin([
+      "context",
+      "active user",
+      "--mode",
+      "tiny",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("expected one of compact, standard, full");
   });
 
   test("changes-context maps a dirty file to stale graph memory and likely tests", async () => {

@@ -44,7 +44,10 @@ import {
 import { validate } from "../src/cli/validate.js";
 import type { CommandResult, GlobalOptions } from "../src/cli/_types.js";
 import type { ChangesRefreshMode } from "../src/changes_context.js";
-import type { SourceRefreshMode } from "../src/query_context.js";
+import type {
+  QueryContextMode,
+  SourceRefreshMode,
+} from "../src/query_context.js";
 import type { SetupClient } from "../src/setup.js";
 
 class CommandCompleted extends Error {
@@ -85,6 +88,13 @@ function parseRefreshIndex(value: string): SourceRefreshMode {
     throw new InvalidArgumentError(
       "expected one of never, if_missing, if_stale",
     );
+  }
+  return value;
+}
+
+function parseQueryContextMode(value: string): QueryContextMode {
+  if (value !== "compact" && value !== "standard" && value !== "full") {
+    throw new InvalidArgumentError("expected one of compact, standard, full");
   }
   return value;
 }
@@ -326,6 +336,11 @@ program
   .description(
     "Return fused repo context: graph/source matches, match reasons, staleness, warnings, and next steps.",
   )
+  .option(
+    "--mode <mode>",
+    "Response detail mode: compact, standard, or full.",
+    parseQueryContextMode,
+  )
   .option("--graph-limit <n>", "Maximum graph nodes to return.", parsePositiveInteger)
   .option("--source-limit <n>", "Maximum source chunks to return.", parsePositiveInteger)
   .option(
@@ -355,6 +370,7 @@ program
   .action(async (question: string, cmdOpts: Record<string, unknown>) => {
     const opts = program.opts() as { repo: string };
     const flags: ContextFlags = {
+      mode: cmdOpts.mode as QueryContextMode | undefined,
       graphLimit: cmdOpts.graphLimit as number | undefined,
       sourceLimit: cmdOpts.sourceLimit as number | undefined,
       maxContentChars: cmdOpts.maxContentChars as number | undefined,

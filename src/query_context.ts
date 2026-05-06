@@ -16,8 +16,10 @@ import {
 import type { Node } from "./types.js";
 
 export type SourceRefreshMode = "never" | "if_missing" | "if_stale";
+export type QueryContextMode = "compact" | "standard" | "full";
 
 export interface QueryContextOptions {
+  mode?: QueryContextMode;
   graphLimit?: number;
   sourceLimit?: number;
   maxContentChars?: number;
@@ -27,9 +29,92 @@ export interface QueryContextOptions {
   impactLimit?: number;
 }
 
+export interface QueryContextGraphMemorySummary {
+  id: string;
+  kind: Node["kind"];
+  name: string;
+  trust?: string;
+  freshness?: string;
+  score?: number;
+  ranking_score?: number;
+  match_reasons: string[];
+}
+
+export interface QueryContextSourceHitSummary {
+  file_path: string;
+  start_line: number;
+  end_line: number;
+  chunk_type: string;
+  score: number;
+  matched_symbols: string[];
+  match_reasons: string[];
+  has_dependency_context: boolean;
+  has_impact_context: boolean;
+}
+
+export interface QueryContextSummary {
+  graph_memories: QueryContextGraphMemorySummary[];
+  source_hits: QueryContextSourceHitSummary[];
+  source_index: Pick<
+    SourceIndexStatus,
+    | "chunks_indexed"
+    | "files_indexed"
+    | "fresh"
+    | "indexed"
+    | "missing_files"
+    | "new_files"
+    | "stale_files"
+    | "symbols_indexed"
+  > & { refreshed: boolean };
+  totals: {
+    graph_nodes: number;
+    related_nodes: number;
+    source_results: number;
+    stale_graph_sources: number;
+    warnings: number;
+  };
+}
+
+export interface QueryContextExpansion {
+  graph_nodes: Array<{
+    id: string;
+    tool: "get_node";
+    arguments: { id: string };
+    reason: string;
+  }>;
+  source_files: Array<{
+    file_path: string;
+    line_range: [number, number];
+    action: "inspect_file";
+    reason: string;
+  }>;
+  source_search: {
+    tool: "search_source";
+    arguments: {
+      query: string;
+      limit: number;
+      max_content_chars: number;
+      dependency_limit: number;
+      include_impact: boolean;
+      impact_limit: number;
+    };
+    reason: string;
+  } | null;
+  graph_health: {
+    tool: "graph_health";
+    arguments: Record<string, never>;
+    reason: string;
+  } | null;
+}
+
 export interface QueryContextResponse {
   ok: true;
+  mode: QueryContextMode;
   question: string;
+  summary: QueryContextSummary;
+  warnings: string[];
+  next_steps: string[];
+  expansion: QueryContextExpansion;
   graph: QueryResult & {
     staleness: StalenessReport;
     memory_quality: GraphMemoryQualitySummary;
@@ -40,14 +125,48 @@ export interface QueryContextResponse {
     search: SourceSearchResponse | null;
   };
   related_nodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
-  warnings: string[];
-  next_steps: string[];
 }
 
 const DEFAULT_GRAPH_LIMIT = 10;
 const DEFAULT_SOURCE_LIMIT = 5;
 const DEFAULT_DEPENDENCY_LIMIT = 3;
 const DEFAULT_REFRESH_INDEX: SourceRefreshMode = "if_missing";
+const DEFAULT_MODE: QueryContextMode = "standard";
+
+const MODE_DEFAULTS: Record<
+  QueryContextMode,
+  {
+    graphLimit: number;
+    sourceLimit: number;
+    maxContentChars?: number;
+    dependencyLimit: number;
+    includeImpact?: boolean;
+    impactLimit: number;
+  }
+> = {
+  compact: {
+    graphLimit: 5,
+    sourceLimit: 3,
+    maxContentChars: 300,
+    dependencyLimit: 0,
+    includeImpact: false,
+    impactLimit: 3,
+  },
+  standard: {
+    graphLimit: DEFAULT_GRAPH_LIMIT,
+    sourceLimit: DEFAULT_SOURCE_LIMIT,
+    dependencyLimit: DEFAULT_DEPENDENCY_LIMIT,
+    impactLimit: 5,
+  },
+  full: {
+    graphLimit: 20,
+    sourceLimit: 10,
+    maxContentChars: 6000,
+    dependencyLimit: 5,
+    includeImpact: true,
+    impactLimit: 8,
+  },
+};
 
 export async function buildQueryContext(
   repoRoot: string,
@@ -59,13 +178,18 @@ export async function buildQueryContext(
     throw new Error("question must not be empty");
   }
 
-  const graphLimit = options.graphLimit ?? DEFAULT_GRAPH_LIMIT;
-  const sourceLimit = options.sourceLimit ?? DEFAULT_SOURCE_LIMIT;
-  const dependencyLimit = options.dependencyLimit ?? DEFAULT_DEPENDENCY_LIMIT;
+  const mode = options.mode ?? DEFAULT_MODE;
+  const defaults = MODE_DEFAULTS[mode];
+  const graphLimit = options.graphLimit ?? defaults.graphLimit;
+  const sourceLimit = options.sourceLimit ?? defaults.sourceLimit;
+  const dependencyLimit = options.dependencyLimit ?? defaults.dependencyLimit;
   const refreshIndex = options.refreshIndex ?? DEFAULT_REFRESH_INDEX;
   const includeImpact =
-    options.includeImpact ?? shouldIncludeImpact(trimmedQuestion);
-  const impactLimit = options.impactLimit ?? 5;
+    options.includeImpact ??
+    defaults.includeImpact ??
+    shouldIncludeImpact(trimmedQuestion);
+  const impactLimit = options.impactLimit ?? defaults.impactLimit;
+  const maxContentChars = options.maxContentChars ?? defaults.maxContentChars;
   const warnings: string[] = [];
 
   const store = await GraphStore.load(repoRoot);
@@ -129,7 +253,7 @@ export async function buildQueryContext(
   if (sourceStatus.indexed && sourceStatus.fresh) {
     sourceSearch = await searchSourceIndex(repoRoot, trimmedQuestion, {
       limit: sourceLimit,
-      maxContentChars: options.maxContentChars,
+      maxContentChars,
       dependencyLimit,
       includeImpact,
       impactLimit,
@@ -158,10 +282,39 @@ export async function buildQueryContext(
   }
 
   const relatedNodes = dedupeRelatedNodes(sourceSearch);
+  const next_steps = nextSteps({
+    graphNodeCount: graphResult.nodes.length,
+    sourceSearch,
+    sourceStatus,
+    staleGraphSources: staleness.stale_sources.length,
+  });
+  const summary = buildSummary({
+    graphResult,
+    relatedNodes,
+    sourceSearch,
+    sourceStatus,
+    refreshed,
+    staleness,
+    warnings,
+  });
+  const expansion = buildExpansion({
+    dependencyLimit,
+    graphResult,
+    impactLimit,
+    question: trimmedQuestion,
+    sourceLimit,
+    sourceSearch,
+    staleness,
+  });
 
   return {
     ok: true,
+    mode,
     question: trimmedQuestion,
+    summary,
+    warnings,
+    next_steps,
+    expansion,
     graph: { ...graphResult, staleness, memory_quality: memoryQuality },
     source: {
       status: sourceStatus,
@@ -169,13 +322,125 @@ export async function buildQueryContext(
       search: sourceSearch,
     },
     related_nodes: relatedNodes,
-    warnings,
-    next_steps: nextSteps({
-      graphNodeCount: graphResult.nodes.length,
-      sourceSearch,
-      sourceStatus,
-      staleGraphSources: staleness.stale_sources.length,
+  };
+}
+
+function buildSummary(input: {
+  graphResult: QueryResult;
+  relatedNodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
+  sourceSearch: SourceSearchResponse | null;
+  sourceStatus: SourceIndexStatus;
+  refreshed: boolean;
+  staleness: StalenessReport;
+  warnings: string[];
+}): QueryContextSummary {
+  const matchesById = new Map(
+    input.graphResult.matches.map((match) => [match.node_id, match]),
+  );
+  const sourceResults =
+    input.sourceSearch?.ok === true ? input.sourceSearch.results : [];
+
+  return {
+    graph_memories: input.graphResult.nodes.slice(0, 5).map((node) => {
+      const match = matchesById.get(node.id);
+      return {
+        id: node.id,
+        kind: node.kind,
+        name: node.name,
+        trust: match?.quality?.trust,
+        freshness: match?.quality?.freshness,
+        score: match?.score,
+        ranking_score: match?.ranking_score,
+        match_reasons: (match?.match_reasons ?? []).slice(0, 3).map(
+          (reason) => `${reason.field}:${reason.value}`,
+        ),
+      };
     }),
+    source_hits: sourceResults.slice(0, 5).map((result) => ({
+      file_path: result.file_path,
+      start_line: result.start_line,
+      end_line: result.end_line,
+      chunk_type: result.chunk_type,
+      score: result.score,
+      matched_symbols: result.symbols.slice(0, 3).map((symbol) => symbol.name),
+      match_reasons: result.match_reasons
+        .slice(0, 3)
+        .map((reason) => `${reason.field}:${reason.value}`),
+      has_dependency_context: result.dependency_context.length > 0,
+      has_impact_context: result.impact_context !== undefined,
+    })),
+    source_index: {
+      indexed: input.sourceStatus.indexed,
+      fresh: input.sourceStatus.fresh,
+      refreshed: input.refreshed,
+      files_indexed: input.sourceStatus.files_indexed,
+      chunks_indexed: input.sourceStatus.chunks_indexed,
+      symbols_indexed: input.sourceStatus.symbols_indexed,
+      stale_files: input.sourceStatus.stale_files,
+      missing_files: input.sourceStatus.missing_files,
+      new_files: input.sourceStatus.new_files,
+    },
+    totals: {
+      graph_nodes: input.graphResult.nodes.length,
+      related_nodes: input.relatedNodes.length,
+      source_results: sourceResults.length,
+      stale_graph_sources: input.staleness.stale_sources.length,
+      warnings: input.warnings.length,
+    },
+  };
+}
+
+function buildExpansion(input: {
+  dependencyLimit: number;
+  graphResult: QueryResult;
+  impactLimit: number;
+  question: string;
+  sourceLimit: number;
+  sourceSearch: SourceSearchResponse | null;
+  staleness: StalenessReport;
+}): QueryContextExpansion {
+  const sourceResults =
+    input.sourceSearch?.ok === true ? input.sourceSearch.results : [];
+
+  return {
+    graph_nodes: input.graphResult.nodes.map((node) => ({
+      id: node.id,
+      tool: "get_node",
+      arguments: { id: node.id },
+      reason: "Fetch the full curated memory before relying on it.",
+    })),
+    source_files: sourceResults.map((result) => ({
+      file_path: result.file_path,
+      line_range: [result.start_line, result.end_line],
+      action: "inspect_file",
+      reason:
+        "Inspect the real file range before treating the indexed hit as evidence.",
+    })),
+    source_search:
+      sourceResults.length > 0
+        ? {
+            tool: "search_source",
+            arguments: {
+              query: input.question,
+              limit: Math.max(input.sourceLimit, 10),
+              max_content_chars: 6000,
+              dependency_limit: Math.max(input.dependencyLimit, 3),
+              include_impact: true,
+              impact_limit: Math.max(input.impactLimit, 5),
+            },
+            reason:
+              "Expand source results with larger previews, dependency context, and impact context if the compact/standard hit is insufficient.",
+          }
+        : null,
+    graph_health:
+      input.staleness.stale_sources.length > 0
+        ? {
+            tool: "graph_health",
+            arguments: {},
+            reason:
+              "Inspect graph health before relying on stale or suspicious graph memory.",
+          }
+        : null,
   };
 }
 

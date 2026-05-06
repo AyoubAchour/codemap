@@ -409,6 +409,14 @@ describe("MCP server — source index tools", () => {
     const parsed = parseToolText(result as never);
 
     expect(parsed.ok).toBe(true);
+    expect(parsed.mode).toBe("standard");
+    expect(parsed.summary.graph_memories[0].id).toBe("auth/active-user");
+    expect(parsed.summary.source_hits[0].file_path).toBe(
+      "src/auth/distinct.ts",
+    );
+    expect(parsed.expansion.graph_nodes[0].arguments.id).toBe(
+      "auth/active-user",
+    );
     expect(parsed.graph.nodes[0].id).toBe("auth/active-user");
     expect(parsed.graph.matches[0]).toEqual(
       expect.objectContaining({
