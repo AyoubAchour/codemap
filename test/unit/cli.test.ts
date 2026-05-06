@@ -27,6 +27,7 @@ import {
   SERVER_INSTRUCTIONS,
 } from "../../src/instructions.js";
 import { setupCodemap } from "../../src/setup.js";
+import { hashBuffer, hashSourceRange } from "../../src/staleness.js";
 import type { Node } from "../../src/types.js";
 
 let tmpRoot: string;
@@ -458,6 +459,36 @@ describe("CLI: doctor", () => {
     expect(r.stdout).toContain("Sources: 1 checked, 1 stale");
     expect(r.stdout).toContain("Stale source anchors:");
     expect(r.stdout).toContain("a/stale -> src/x.ts");
+  });
+
+  test("range-fresh anchors are reported outside the stale breakdown", async () => {
+    const original = Buffer.from("const preamble = 1;\nexport const x = 1;\n");
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(path.join(tmpRoot, "src/x.ts"), original);
+    await seed([
+      makeNode({
+        id: "a/range-fresh",
+        sources: [
+          {
+            file_path: "src/x.ts",
+            line_range: [2, 2],
+            content_hash: hashBuffer(original),
+            range_hash: hashSourceRange(original, [2, 2]),
+          },
+        ],
+      }),
+    ]);
+    await fs.writeFile(
+      path.join(tmpRoot, "src/x.ts"),
+      "const preamble = 2;\nexport const x = 1;\n",
+    );
+
+    const r = await doctor({}, { repoRoot: tmpRoot });
+
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain(
+      "Sources: 1 checked, 0 stale (0 anchor changed, 0 legacy changed, 0 missing, 0 unsafe, 0 read errors), 1 range-fresh",
+    );
   });
 
   test("--json preserves the full structured health report", async () => {

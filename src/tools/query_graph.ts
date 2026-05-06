@@ -56,7 +56,7 @@ export function registerQueryGraph(
       const candidates = store.query(question, candidateLimit);
       const candidateStaleness =
         sourceChecksEnabled === false
-          ? { checked_sources: 0, stale_sources: [] }
+          ? { checked_sources: 0, stale_sources: [], range_fresh_sources: [] }
           : await checkSourceStaleness(options.repoRoot, candidates.nodes);
       const result = rankGraphResultByQuality(candidates, candidateStaleness, {
         limit: resultLimit,

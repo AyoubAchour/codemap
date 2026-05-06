@@ -6,6 +6,7 @@ import * as path from "node:path";
 
 import { GraphStore } from "../../src/graph.js";
 import { inspectGraphHealth } from "../../src/graph_health.js";
+import { hashSourceRange } from "../../src/staleness.js";
 import type { Node } from "../../src/types.js";
 
 let tmpRoot: string;
@@ -27,6 +28,14 @@ async function write(filePath: string, content: string): Promise<void> {
 async function fileHash(filePath: string): Promise<string> {
   const content = await fs.readFile(path.join(tmpRoot, filePath));
   return `sha256:${createHash("sha256").update(content).digest("hex")}`;
+}
+
+async function rangeHash(
+  filePath: string,
+  lineRange: readonly number[],
+): Promise<string> {
+  const content = await fs.readFile(path.join(tmpRoot, filePath));
+  return hashSourceRange(content, lineRange);
 }
 
 function node(overrides: Partial<Node> & { id: string }): Node {
@@ -111,6 +120,8 @@ describe("graph health", () => {
     expect(health.summary.fresh).toBe(false);
     expect(health.summary.duplicate_aliases).toBe(1);
     expect(health.summary.changed_sources).toBe(1);
+    expect(health.summary.anchor_changed_sources).toBe(0);
+    expect(health.summary.range_fresh_sources).toBe(0);
     expect(health.summary.missing_sources).toBe(1);
     expect(health.issues.duplicate_aliases[0]?.alias).toBe("same-alias");
     expect(health.suggestions.join(" ")).toContain("duplicate aliases");
@@ -165,6 +176,127 @@ describe("graph health", () => {
       ...health.issues.unsafe_sources,
       ...health.issues.read_errors,
     ]).toEqual(health.issues.stale_sources);
+  });
+
+  test("treats full-file drift outside the anchored range as fresh", async () => {
+    await write(
+      "src/x.ts",
+      ["const preamble = 1;", "export const x = 1;", "const tail = 1;", ""].join(
+        "\n",
+      ),
+    );
+    const originalFileHash = await fileHash("src/x.ts");
+    const originalRangeHash = await rangeHash("src/x.ts", [2, 2]);
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode(
+      node({
+        id: "x/range-fresh",
+        sources: [
+          {
+            file_path: "src/x.ts",
+            line_range: [2, 2],
+            content_hash: originalFileHash,
+            range_hash: originalRangeHash,
+          },
+        ],
+      }),
+    );
+    await store.save();
+    await write(
+      "src/x.ts",
+      ["const preamble = 2;", "export const x = 1;", "const tail = 1;", ""].join(
+        "\n",
+      ),
+    );
+
+    const health = await inspectGraphHealth(tmpRoot);
+
+    expect(health.ok).toBe(true);
+    if (!health.ok) throw new Error("expected ok");
+    expect(health.summary.fresh).toBe(true);
+    expect(health.summary.stale_sources).toBe(0);
+    expect(health.summary.range_fresh_sources).toBe(1);
+    expect(health.staleness.range_fresh_sources).toEqual([
+      expect.objectContaining({
+        node_id: "x/range-fresh",
+        file_path: "src/x.ts",
+        stale: false,
+        reason: "range_unchanged",
+      }),
+    ]);
+  });
+
+  test("reports anchor_changed when the cited range changes", async () => {
+    await write(
+      "src/x.ts",
+      ["const preamble = 1;", "export const x = 1;", ""].join("\n"),
+    );
+    const originalFileHash = await fileHash("src/x.ts");
+    const originalRangeHash = await rangeHash("src/x.ts", [2, 2]);
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode(
+      node({
+        id: "x/range-stale",
+        sources: [
+          {
+            file_path: "src/x.ts",
+            line_range: [2, 2],
+            content_hash: originalFileHash,
+            range_hash: originalRangeHash,
+          },
+        ],
+      }),
+    );
+    await store.save();
+    await write(
+      "src/x.ts",
+      ["const preamble = 1;", "export const x = 2;", ""].join("\n"),
+    );
+
+    const health = await inspectGraphHealth(tmpRoot);
+
+    expect(health.ok).toBe(true);
+    if (!health.ok) throw new Error("expected ok");
+    expect(health.summary.fresh).toBe(false);
+    expect(health.summary.anchor_changed_sources).toBe(1);
+    expect(health.summary.changed_sources).toBe(0);
+    expect(health.issues.anchor_changed_sources[0]).toEqual(
+      expect.objectContaining({
+        node_id: "x/range-stale",
+        file_path: "src/x.ts",
+        stale: true,
+        reason: "anchor_changed",
+        stored_range_hash: originalRangeHash,
+      }),
+    );
+  });
+
+  test("reports anchor_changed when a stored range_hash is inconsistent", async () => {
+    await write("src/x.ts", "export const x = 1;\n");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode(
+      node({
+        id: "x/bad-range-hash",
+        sources: [
+          {
+            file_path: "src/x.ts",
+            line_range: [1, 1],
+            content_hash: await fileHash("src/x.ts"),
+            range_hash: "sha256:wrong",
+          },
+        ],
+      }),
+    );
+    await store.save();
+
+    const health = await inspectGraphHealth(tmpRoot);
+
+    expect(health.ok).toBe(true);
+    if (!health.ok) throw new Error("expected ok");
+    expect(health.summary.anchor_changed_sources).toBe(1);
+    expect(health.issues.anchor_changed_sources[0]?.node_id).toBe(
+      "x/bad-range-hash",
+    );
   });
 
   test("skips deprecated nodes by default and includes them on request", async () => {

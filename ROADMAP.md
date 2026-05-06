@@ -251,6 +251,26 @@ work from tasks 035-038 for installed users: local-first retrieval
 explanations, source-result diversity, bounded TS/JS impact context, query-time
 memory quality ranking, and read-only workflow writeback suggestions.
 
+Task 041 adds the next workflow layer: diff impact analysis, global setup,
+stale-index nudges, and generated repo guidance. It keeps all capture read-only
+until the agent deliberately emits durable graph memory.
+
+The next incremental sequence is intentionally one task per PR:
+
+- Task 042: range-aware source anchors so full-file drift does not falsely
+  demote still-valid memories.
+- Task 043: compact/tiered `query_context` output so the preferred planning
+  tool stays cheap and scannable.
+- Task 044: source-index engine v2 with persisted search-ready structures for
+  repeated-query speed.
+- Task 045: AST-aware TS/JS indexing for better definitions, references, and
+  navigable source ranges.
+- Task 046: agentic MCP resources, prompts, and setup checks so compliance does
+  not rely on chat reminders.
+- Task 047: repo guidance v2 with compact area slices and explicit provenance.
+- Task 048: retrieval benchmark and optional hybrid-reranking evaluation, only
+  after local lexical/symbol misses are measured.
+
 ## Cumulative timeline (single dev, half-time)
 
 

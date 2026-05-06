@@ -5,6 +5,7 @@ import * as path from "node:path";
 import type { Node } from "./types.js";
 
 export type StaleSourceReason =
+	| "anchor_changed"
 	| "changed"
 	| "missing"
 	| "unsafe_path"
@@ -15,13 +16,26 @@ export interface StaleSource {
 	file_path: string;
 	stored_hash: string;
 	current_hash?: string;
+	stored_range_hash?: string;
+	current_range_hash?: string;
 	stale: true;
 	reason: StaleSourceReason;
+}
+
+export interface RangeFreshSource {
+	node_id: string;
+	file_path: string;
+	stored_hash: string;
+	current_hash: string;
+	range_hash: string;
+	stale: false;
+	reason: "range_unchanged";
 }
 
 export interface StalenessReport {
 	checked_sources: number;
 	stale_sources: StaleSource[];
+	range_fresh_sources: RangeFreshSource[];
 }
 
 function safeRepoPath(
@@ -48,8 +62,19 @@ function safeRepoPath(
 	return { ok: true, absolutePath };
 }
 
-function sha256(buffer: Buffer): string {
+export function hashBuffer(buffer: Buffer): string {
 	return `sha256:${createHash("sha256").update(buffer).digest("hex")}`;
+}
+
+export function hashSourceRange(
+	content: Buffer | string,
+	lineRange: readonly number[],
+): string {
+	const text = Buffer.isBuffer(content) ? content.toString("utf8") : content;
+	const [startLine = 1, endLine = startLine] = lineRange;
+	const lines = text.split(/\r?\n/);
+	const selected = lines.slice(startLine - 1, endLine).join("\n");
+	return hashBuffer(Buffer.from(selected, "utf8"));
 }
 
 /**
@@ -62,6 +87,7 @@ export async function checkSourceStaleness(
 	nodes: Node[],
 ): Promise<StalenessReport> {
 	const stale_sources: StaleSource[] = [];
+	const range_fresh_sources: RangeFreshSource[] = [];
 	let checked_sources = 0;
 
 	for (const node of nodes) {
@@ -97,8 +123,43 @@ export async function checkSourceStaleness(
 				continue;
 			}
 
-			const current_hash = sha256(content);
+			const current_hash = hashBuffer(content);
+			const current_range_hash =
+				source.range_hash === undefined
+					? undefined
+					: hashSourceRange(content, source.line_range);
+
+			if (
+				source.range_hash !== undefined &&
+				current_range_hash !== source.range_hash
+			) {
+				stale_sources.push({
+					node_id: node.id,
+					file_path: source.file_path,
+					stored_hash: source.content_hash,
+					current_hash,
+					stored_range_hash: source.range_hash,
+					current_range_hash,
+					stale: true,
+					reason: "anchor_changed",
+				});
+				continue;
+			}
+
 			if (current_hash !== source.content_hash) {
+				if (source.range_hash !== undefined) {
+					range_fresh_sources.push({
+						node_id: node.id,
+						file_path: source.file_path,
+						stored_hash: source.content_hash,
+						current_hash,
+						range_hash: source.range_hash,
+						stale: false,
+						reason: "range_unchanged",
+					});
+					continue;
+				}
+
 				stale_sources.push({
 					node_id: node.id,
 					file_path: source.file_path,
@@ -111,5 +172,5 @@ export async function checkSourceStaleness(
 		}
 	}
 
-	return { checked_sources, stale_sources };
+	return { checked_sources, stale_sources, range_fresh_sources };
 }

@@ -21,7 +21,7 @@ Codemap helps by giving them a shared, repo-scoped memory:
 - preserve decisions and constraints that are not obvious from one file
 - reduce repeated rediscovery across sessions and tools
 - keep findings anchored to real source files
-- inspect stale or missing source anchors before trusting old knowledge
+- inspect changed or missing source anchors before trusting old knowledge
 - search local source chunks when the graph is empty or incomplete
 - correct or deprecate graph knowledge from the CLI when humans know better
 
@@ -234,6 +234,10 @@ Each graph match can include:
 - `quality.trust` — `high`, `medium`, or `low`
 - `quality.freshness` — `fresh`, `stale`, `unchecked`, or `no_sources`
 - `quality.reasons` — short hints explaining why the memory ranked that way
+
+New graph writes store both a full-file hash and a cited-line-range hash. That
+lets Codemap keep a memory fresh when unrelated code in the same file changes,
+while still flagging the memory when the cited range itself changes.
 
 `query_context.graph.memory_quality` groups returned node ids into
 `high_trust_node_ids`, `review_node_ids`, `stale_node_ids`, and
