@@ -220,6 +220,7 @@ export interface SourceSearchResponse {
   search_time_ms: number;
   total_results: number;
   results: SourceSearchResult[];
+  warnings?: string[];
   error?: { code: string; message: string };
 }
 
@@ -485,6 +486,14 @@ export async function searchSourceIndex(
     };
   }
 
+  const warnings: string[] = [];
+  const status = await getSourceIndexStatus(repoRoot);
+  if (status.indexed && !status.fresh) {
+    warnings.push(
+      "Source index is stale; refresh with codemap scan or index_codebase before relying on source hits.",
+    );
+  }
+
   const chunks = Object.values(index.files).flatMap((file) => file.chunks);
   const relatedNodesByFile = await loadRelatedNodesByFile(repoRoot);
   const reverseImportIndex =
@@ -538,6 +547,7 @@ export async function searchSourceIndex(
     search_time_ms: Date.now() - startedAt,
     total_results: allRanked.length,
     results: ranked,
+    warnings: warnings.length > 0 ? warnings : undefined,
   };
 }
 

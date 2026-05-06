@@ -6,16 +6,19 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 
 import { GraphStore } from "../../src/graph.js";
+import { changesContext } from "../../src/cli/changes_context.js";
 import { clearIndex } from "../../src/cli/clear_index.js";
 import { context } from "../../src/cli/context.js";
 import { correct } from "../../src/cli/correct.js";
 import { deprecate } from "../../src/cli/deprecate.js";
 import { doctor } from "../../src/cli/doctor.js";
+import { generateSkills } from "../../src/cli/generate_skills.js";
 import { indexStatus } from "../../src/cli/index_status.js";
 import { init } from "../../src/cli/init.js";
 import { rollup } from "../../src/cli/rollup.js";
 import { scan } from "../../src/cli/scan.js";
 import { searchSource } from "../../src/cli/search_source.js";
+import { setup } from "../../src/cli/setup.js";
 import { show } from "../../src/cli/show.js";
 import { suggestWriteback } from "../../src/cli/suggest_writeback.js";
 import { validate } from "../../src/cli/validate.js";
@@ -23,6 +26,7 @@ import {
   GUIDANCE_POLICY_HASH,
   SERVER_INSTRUCTIONS,
 } from "../../src/instructions.js";
+import { setupCodemap } from "../../src/setup.js";
 import type { Node } from "../../src/types.js";
 
 let tmpRoot: string;
@@ -903,5 +907,232 @@ describe("CLI: source index", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("expected one of never, if_missing, if_stale");
+  });
+
+  test("changes-context maps a dirty file to stale graph memory and likely tests", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.mkdir(path.join(tmpRoot, "test"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      [
+        "export function requireActiveUser(token: string) {",
+        "  return { id: token };",
+        "}",
+      ].join("\n"),
+    );
+    await fs.writeFile(
+      path.join(tmpRoot, "test", "auth.test.ts"),
+      "import { requireActiveUser } from '../src/auth';\nrequireActiveUser('x');\n",
+    );
+    await scan({}, { repoRoot: tmpRoot });
+    await seed([
+      makeNode({
+        id: "auth/active-user",
+        name: "Active user invariant",
+        sources: [
+          {
+            file_path: "src/auth.ts",
+            line_range: [1, 3],
+            content_hash: "sha256:old",
+          },
+        ],
+      }),
+    ]);
+    await runGit(["init"]);
+    await runGit(["config", "user.email", "test@example.com"]);
+    await runGit(["config", "user.name", "Test User"]);
+    await runGit(["add", "."]);
+    await runGit(["commit", "-m", "seed"]);
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      [
+        "export function requireActiveUser(token: string) {",
+        "  if (!token) throw new Error('missing token');",
+        "  return { id: token };",
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await changesContext(
+      { fileLimit: 5 },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.git.has_changes).toBe(true);
+    expect(out.files[0]).toEqual(
+      expect.objectContaining({
+        file_path: "src/auth.ts",
+        status: "modified",
+        indexed: true,
+      }),
+    );
+    expect(out.files[0].related_graph_nodes[0].id).toBe("auth/active-user");
+    expect(out.stale_graph_nodes[0].id).toBe("auth/active-user");
+    expect(out.likely_tests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ file_path: "test/auth.test.ts" }),
+      ]),
+    );
+    expect(out.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Source index is stale"),
+      ]),
+    );
+    expect(out.writeback.total_suggestions).toBeGreaterThan(0);
+  });
+
+  test("changes-context does not invent changed symbols for deletion-only hunks", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "delete_only.ts"),
+      [
+        "export function first() {",
+        "  return 1;",
+        "}",
+        "export const marker = 1;",
+        "const removed = 1;",
+        "export function second() {",
+        "  return 2;",
+        "}",
+      ].join("\n"),
+    );
+    await scan({}, { repoRoot: tmpRoot });
+    await runGit(["init"]);
+    await runGit(["config", "user.email", "test@example.com"]);
+    await runGit(["config", "user.name", "Test User"]);
+    await runGit(["add", "."]);
+    await runGit(["commit", "-m", "seed"]);
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "delete_only.ts"),
+      [
+        "export function first() {",
+        "  return 1;",
+        "}",
+        "export const marker = 1;",
+        "export function second() {",
+        "  return 2;",
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await changesContext(
+      { fileLimit: 5 },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    if (result.stdout === undefined) throw new Error("expected stdout");
+    const out = JSON.parse(result.stdout);
+    const file = out.files.find(
+      (entry: { file_path?: string }) => entry.file_path === "src/delete_only.ts",
+    );
+    if (file === undefined) throw new Error("expected delete_only.ts result");
+    expect(file.changed_ranges).toEqual([]);
+    expect(file.changed_symbols).toEqual([]);
+  });
+
+  test("changes-context treats a single simple deletion as medium risk", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "deleted_fixture.ts"),
+      "export const deletedFixture = 1;\n",
+    );
+    await scan({}, { repoRoot: tmpRoot });
+    await runGit(["init"]);
+    await runGit(["config", "user.email", "test@example.com"]);
+    await runGit(["config", "user.name", "Test User"]);
+    await runGit(["add", "."]);
+    await runGit(["commit", "-m", "seed"]);
+    await fs.rm(path.join(tmpRoot, "src", "deleted_fixture.ts"));
+
+    const result = await changesContext(
+      { fileLimit: 5 },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    if (result.stdout === undefined) throw new Error("expected stdout");
+    const out = JSON.parse(result.stdout);
+    expect(out.summary.risk).toBe("medium");
+    expect(out.files[0]).toEqual(
+      expect.objectContaining({
+        file_path: "src/deleted_fixture.ts",
+        deleted: true,
+      }),
+    );
+  });
+
+  test("generate-skills writes generated repo guidance and --check detects current", async () => {
+    await scan({}, { repoRoot: tmpRoot });
+    const generated = await generateSkills({}, { repoRoot: tmpRoot });
+
+    expect(generated.exitCode).toBe(0);
+    const out = JSON.parse(generated.stdout!);
+    expect(out.wrote).toBe(true);
+    const skillPath = path.join(tmpRoot, out.target_path);
+    const body = await fs.readFile(skillPath, "utf8");
+    expect(body).toContain("Generated Codemap repo context");
+    expect(body).toContain("changes_context");
+
+    const check = await generateSkills({ check: true }, { repoRoot: tmpRoot });
+    expect(check.exitCode).toBe(0);
+    expect(JSON.parse(check.stdout!).current).toBe(true);
+  });
+});
+
+// =============================================================
+// global setup
+// =============================================================
+
+describe("CLI: setup", () => {
+  test("setup core writes supported client configs into a supplied home dir", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    const response = await setupCodemap({
+      clients: ["codex", "cursor", "opencode", "claude"],
+      homeDir,
+      command: process.execPath,
+    });
+
+    expect(response.health.server_command_found).toBe(true);
+    expect(response.clients.find((client) => client.client === "codex")).toEqual(
+      expect.objectContaining({ status: "installed", changed: true }),
+    );
+    expect(
+      await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8"),
+    ).toContain("[mcp_servers.codemap]");
+    expect(
+      JSON.parse(await fs.readFile(path.join(homeDir, ".cursor", "mcp.json"), "utf8"))
+        .mcpServers.codemap.command,
+    ).toBe(process.execPath);
+    expect(
+      JSON.parse(
+        await fs.readFile(
+          path.join(homeDir, ".config", "opencode", "config.json"),
+          "utf8",
+        ),
+      ).mcp.codemap.command,
+    ).toEqual([process.execPath]);
+    expect(response.clients.find((client) => client.client === "claude")).toEqual(
+      expect.objectContaining({
+        status: "manual",
+        manual_command: expect.stringContaining("claude mcp add codemap"),
+      }),
+    );
+
+    const check = await setupCodemap({
+      clients: ["codex", "cursor", "opencode"],
+      homeDir,
+      command: process.execPath,
+      check: true,
+    });
+    expect(check.clients.every((client) => client.status === "current")).toBe(true);
+  });
+
+  test("setup --check --force is rejected before touching real client config", async () => {
+    const result = await setup({ check: true, force: true });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("--check is read-only");
   });
 });

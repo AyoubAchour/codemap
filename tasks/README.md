@@ -118,6 +118,7 @@ Maintained manually. Update status as tasks land.
 | 038 | Workflow auto-capture suggestions | done | Phase 4 / behavior consistency | [task-038-workflow-auto-capture.md](task-038-workflow-auto-capture.md) |
 | 039 | Release v0.5.2 | done | Phase 4 / release | [task-039-release-v0.5.2.md](task-039-release-v0.5.2.md) |
 | 040 | Release v0.6.0 | done | Phase 4 / release | [task-040-release-v0.6.0.md](task-040-release-v0.6.0.md) |
+| 041 | Change impact, setup, stale nudges, and generated guidance | done | Phase 4 / behavior consistency | [task-041-change-impact-setup-guidance.md](task-041-change-impact-setup-guidance.md) |
 
 ---
 

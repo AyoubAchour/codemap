@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { promisify } from "node:util";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -11,6 +13,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerTools } from "../../src/index.js";
 import { SERVER_INSTRUCTIONS } from "../../src/instructions.js";
 import { _resetActiveTopic } from "../../src/tools/_active_topic.js";
+
+const execFileAsync = promisify(execFile);
 
 // =============================================================
 // Integration test: drive the MCP server via the in-memory transport.
@@ -87,6 +91,10 @@ async function repoFileHash(filePath: string): Promise<string> {
   return `sha256:${createHash("sha256").update(content).digest("hex")}`;
 }
 
+async function runGit(args: string[]): Promise<void> {
+  await execFileAsync("git", args, { cwd: tmpRoot });
+}
+
 function seededFileHash(filePath: string): string {
   return `sha256:${createHash("sha256")
     .update(`// test source: ${filePath}\n`)
@@ -147,6 +155,7 @@ describe("MCP server — tools/list", () => {
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      "changes_context",
       "clear_index",
       "emit_node",
       "get_index_status",
@@ -444,6 +453,50 @@ describe("MCP server — source index tools", () => {
         expect.stringContaining("Impact context is bounded planning context"),
       ]),
     );
+  });
+
+  test("changes_context reports dirty git impact with structured content", async () => {
+    await fs.writeFile(
+      path.join(tmpRoot, "src/auth/distinct.ts"),
+      [
+        "export function requireActiveUser(token: string) {",
+        "  return { id: token };",
+        "}",
+      ].join("\n"),
+    );
+    await client.callTool({ name: "index_codebase", arguments: {} });
+    await runGit(["init"]);
+    await runGit(["config", "user.email", "test@example.com"]);
+    await runGit(["config", "user.name", "Test User"]);
+    await runGit(["add", "."]);
+    await runGit(["commit", "-m", "seed"]);
+    await fs.writeFile(
+      path.join(tmpRoot, "src/auth/distinct.ts"),
+      [
+        "export function requireActiveUser(token: string) {",
+        "  if (!token) throw new Error('missing token');",
+        "  return { id: token };",
+        "}",
+      ].join("\n"),
+    );
+
+    const result = (await client.callTool({
+      name: "changes_context",
+      arguments: { file_limit: 3, include_writeback: false },
+    })) as {
+      structuredContent?: {
+        ok?: boolean;
+        git?: { has_changes?: boolean };
+        files?: Array<{ file_path?: string }>;
+      };
+      content: { type: string; text?: string }[];
+    };
+    const parsed = parseToolText(result);
+
+    expect(result.structuredContent?.ok).toBe(true);
+    expect(result.structuredContent?.git?.has_changes).toBe(true);
+    expect(parsed.files[0].file_path).toBe("src/auth/distinct.ts");
+    expect(parsed.writeback).toBeNull();
   });
 
   test("query_context does not warn on ordinary medium-trust graph memory", async () => {

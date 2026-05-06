@@ -137,6 +137,7 @@ export async function buildQueryContext(
     if (!sourceSearch.ok && sourceSearch.error) {
       warnings.push(`Source search failed: ${sourceSearch.error.message}`);
     } else if (sourceSearch.ok && sourceSearch.results.length > 0) {
+      warnings.push(...(sourceSearch.warnings ?? []));
       warnings.push(
         "Source hits come from the rebuildable local index; treat them as discovery hints until you inspect the files.",
       );

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * `codemap` CLI entry. Subcommands: init, show, correct, deprecate,
- * validate, doctor, rollup, scan, context, search-source, index-status,
- * clear-index.
+ * validate, doctor, rollup, setup, scan, context, changes-context,
+ * generate-skills, search-source, index-status, clear-index.
  *
  * Each subcommand's logic lives in src/cli/<name>.ts as a pure function
  * returning { exitCode, stdout?, stderr? }; this entry file is the thin
@@ -11,15 +11,27 @@
 import { Command, InvalidArgumentError } from "commander";
 
 import packageJson from "../package.json" with { type: "json" };
+import {
+  changesContext,
+  type ChangesContextFlags,
+} from "../src/cli/changes_context.js";
 import { clearIndex } from "../src/cli/clear_index.js";
 import { context, type ContextFlags } from "../src/cli/context.js";
 import { correct, type CorrectFlags } from "../src/cli/correct.js";
 import { deprecate, type DeprecateFlags } from "../src/cli/deprecate.js";
 import { doctor, type DoctorFlags } from "../src/cli/doctor.js";
+import {
+  generateSkills,
+  type GenerateSkillsFlags,
+} from "../src/cli/generate_skills.js";
 import { indexStatus } from "../src/cli/index_status.js";
 import { init, type InitFlags } from "../src/cli/init.js";
 import { rollup } from "../src/cli/rollup.js";
 import { scan, type ScanFlags } from "../src/cli/scan.js";
+import {
+  setup,
+  type SetupFlags,
+} from "../src/cli/setup.js";
 import {
   searchSource,
   type SearchSourceFlags,
@@ -31,7 +43,9 @@ import {
 } from "../src/cli/suggest_writeback.js";
 import { validate } from "../src/cli/validate.js";
 import type { CommandResult, GlobalOptions } from "../src/cli/_types.js";
+import type { ChangesRefreshMode } from "../src/changes_context.js";
 import type { SourceRefreshMode } from "../src/query_context.js";
+import type { SetupClient } from "../src/setup.js";
 
 class CommandCompleted extends Error {
   constructor(readonly exitCode: number) {
@@ -75,6 +89,24 @@ function parseRefreshIndex(value: string): SourceRefreshMode {
   return value;
 }
 
+function parseChangesRefreshIndex(value: string): ChangesRefreshMode {
+  return parseRefreshIndex(value) as ChangesRefreshMode;
+}
+
+function parseSetupClient(value: string): SetupClient {
+  if (
+    value !== "claude" &&
+    value !== "codex" &&
+    value !== "cursor" &&
+    value !== "opencode"
+  ) {
+    throw new InvalidArgumentError(
+      "expected one of claude, codex, cursor, opencode",
+    );
+  }
+  return value;
+}
+
 const program = new Command();
 
 program
@@ -110,6 +142,39 @@ program
       all: cmdOpts.all as boolean | undefined,
     };
     emit(await init(flags, { repoRoot: opts.repo }));
+  });
+
+program
+  .command("setup")
+  .description(
+    "Configure global MCP clients for Codemap and validate basic install health.",
+  )
+  .option(
+    "--client <name>",
+    "Client to configure: codex, opencode, cursor, or claude. Repeatable. Defaults to all supported clients.",
+    (value, previous: SetupClient[] | undefined) =>
+      previous === undefined
+        ? [parseSetupClient(value)]
+        : [...previous, parseSetupClient(value)],
+  )
+  .option(
+    "--check",
+    "Check global client configuration without writing files; cannot be combined with --force.",
+  )
+  .option("-f, --force", "Rewrite existing Codemap MCP entries.")
+  .option(
+    "--command <cmd>",
+    "MCP server command to write into client config.",
+    "codemap-mcp",
+  )
+  .action(async (cmdOpts: Record<string, unknown>) => {
+    const flags: SetupFlags = {
+      client: cmdOpts.client as SetupClient[] | undefined,
+      check: cmdOpts.check as boolean | undefined,
+      force: cmdOpts.force as boolean | undefined,
+      command: cmdOpts.command as string | undefined,
+    };
+    emit(await setup(flags));
   });
 
 program
@@ -299,6 +364,82 @@ program
       impactLimit: cmdOpts.impactLimit as number | undefined,
     };
     emit(await context(question, flags, { repoRoot: opts.repo }));
+  });
+
+program
+  .command("changes-context")
+  .description(
+    "Inspect git changes and return source-impact context, stale graph anchors, likely tests/docs, and writeback suggestions.",
+  )
+  .option(
+    "--base-ref <ref>",
+    "Compare this git base ref against HEAD instead of the working tree.",
+  )
+  .option(
+    "--no-untracked",
+    "Ignore untracked files when inspecting the working tree.",
+  )
+  .option(
+    "--refresh-index <mode>",
+    "Source index refresh mode: never, if_missing, or if_stale.",
+    parseChangesRefreshIndex,
+  )
+  .option(
+    "--file-limit <n>",
+    "Maximum changed files to analyze in detail.",
+    parsePositiveInteger,
+  )
+  .option(
+    "--dependency-limit <n>",
+    "Maximum import/importer context entries per changed file.",
+    parsePositiveInteger,
+  )
+  .option(
+    "--impact-limit <n>",
+    "Maximum impact entries per category.",
+    parsePositiveInteger,
+  )
+  .option(
+    "--max-content-chars <n>",
+    "Maximum preview characters per impact/dependency entry.",
+    parsePositiveInteger,
+  )
+  .option("--no-writeback", "Do not include read-only writeback suggestions.")
+  .action(async (cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: ChangesContextFlags = {
+      baseRef: cmdOpts.baseRef as string | undefined,
+      includeUntracked: cmdOpts.untracked as boolean | undefined,
+      refreshIndex: cmdOpts.refreshIndex as ChangesRefreshMode | undefined,
+      fileLimit: cmdOpts.fileLimit as number | undefined,
+      dependencyLimit: cmdOpts.dependencyLimit as number | undefined,
+      impactLimit: cmdOpts.impactLimit as number | undefined,
+      maxContentChars: cmdOpts.maxContentChars as number | undefined,
+      noWriteback: cmdOpts.writeback === false,
+    };
+    emit(await changesContext(flags, { repoRoot: opts.repo }));
+  });
+
+program
+  .command("generate-skills")
+  .description(
+    "Generate compact repo-local Codemap guidance from the source index and curated graph. This never writes graph memory.",
+  )
+  .option(
+    "--output <path>",
+    "Repo-relative output path.",
+    ".codemap/skills/codemap-repo/SKILL.md",
+  )
+  .option("--check", "Check whether generated guidance is current without writing.")
+  .option("--stdout", "Print generated guidance instead of writing it.")
+  .action(async (cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: GenerateSkillsFlags = {
+      output: cmdOpts.output as string | undefined,
+      check: cmdOpts.check as boolean | undefined,
+      stdout: cmdOpts.stdout as boolean | undefined,
+    };
+    emit(await generateSkills(flags, { repoRoot: opts.repo }));
   });
 
 program
