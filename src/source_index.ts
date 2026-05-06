@@ -8,6 +8,7 @@ import type { Node } from "./types.js";
 import { ensureSeedFile } from "./util/lock.js";
 
 const INDEX_VERSION = 1 as const;
+const SEARCH_INDEX_VERSION = 1 as const;
 const INDEX_DIR = ".codemap/index";
 const INDEX_FILE = "source.json";
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
@@ -146,6 +147,26 @@ export interface SourceChunk {
   content_hash: string;
 }
 
+export interface SourceSearchDocumentStats {
+  chunk_id: string;
+  content_hash: string;
+  length: number;
+}
+
+export interface SourceSearchPosting {
+  chunk_id: string;
+  term_frequency: number;
+}
+
+export interface SourceSearchIndex {
+  version: typeof SEARCH_INDEX_VERSION;
+  document_count: number;
+  average_document_length: number;
+  document_frequencies: Record<string, number>;
+  documents: Record<string, SourceSearchDocumentStats>;
+  postings: Record<string, SourceSearchPosting[]>;
+}
+
 export interface IndexedSourceFile {
   file_path: string;
   language: string;
@@ -174,6 +195,7 @@ export interface SourceIndex {
   updated_at: string;
   max_file_bytes: number;
   stats: SourceIndexStats;
+  search: SourceSearchIndex;
   files: Record<string, IndexedSourceFile>;
 }
 
@@ -191,6 +213,8 @@ export interface SourceIndexStatus {
   stale_files: number;
   missing_files: number;
   new_files: number;
+  search_indexed: boolean;
+  search_index_stale: boolean;
   fresh: boolean;
   error?: { code: string; message: string };
 }
@@ -262,7 +286,18 @@ interface RankedChunk {
   related_nodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
 }
 
+interface SearchReadySnapshot {
+  chunks: SourceChunk[];
+  document_frequencies: Map<string, number>;
+  documents: Map<string, SourceSearchDocumentStats>;
+  document_count: number;
+  average_document_length: number;
+  postings: Map<string, SourceSearchPosting[]>;
+}
+
 const MAX_MATCH_REASONS = 8;
+const SEARCH_READY_CACHE_LIMIT = 8;
+const searchReadyCache = new Map<string, SearchReadySnapshot>();
 
 export function sourceIndexPath(repoRoot: string): string {
   return path.join(repoRoot, INDEX_DIR, INDEX_FILE);
@@ -326,6 +361,7 @@ export async function scanSourceIndex(
       symbols_indexed: symbolsIndexed,
       bytes_indexed: bytesIndexed,
     },
+    search: buildSearchIndex(Object.values(files).flatMap((file) => file.chunks)),
     files,
   };
 
@@ -360,6 +396,8 @@ export async function getSourceIndexStatus(
       stale_files: 0,
       missing_files: 0,
       new_files: 0,
+      search_indexed: false,
+      search_index_stale: false,
       fresh: false,
       error: { code: "INDEX_INVALID", message: String(err) },
     };
@@ -375,6 +413,8 @@ export async function getSourceIndexStatus(
       stale_files: 0,
       missing_files: 0,
       new_files: 0,
+      search_indexed: false,
+      search_index_stale: false,
       fresh: false,
     };
   }
@@ -385,6 +425,9 @@ export async function getSourceIndexStatus(
   const currentByPath = new Map(
     currentFiles.map((file) => [file.file_path, file] as const),
   );
+  const chunks = sourceChunks(index);
+  const searchIndexed = Boolean(index.search);
+  const searchIndexStale = !isSearchIndexCompatible(index, chunks);
   let staleFiles = 0;
   let missingFiles = 0;
   let newFiles = 0;
@@ -428,7 +471,13 @@ export async function getSourceIndexStatus(
     stale_files: staleFiles,
     missing_files: missingFiles,
     new_files: newFiles,
-    fresh: staleFiles === 0 && missingFiles === 0 && newFiles === 0,
+    search_indexed: searchIndexed,
+    search_index_stale: searchIndexStale,
+    fresh:
+      staleFiles === 0 &&
+      missingFiles === 0 &&
+      newFiles === 0 &&
+      !searchIndexStale,
   };
 }
 
@@ -493,16 +542,23 @@ export async function searchSourceIndex(
       "Source index is stale; refresh with codemap scan or index_codebase before relying on source hits.",
     );
   }
+  if (status.search_index_stale) {
+    warnings.push(
+      "Source index search snapshot is stale or missing; refresh with codemap scan or index_codebase for faster repeated searches.",
+    );
+  }
 
-  const chunks = Object.values(index.files).flatMap((file) => file.chunks);
+  const searchReady = getSearchReadySnapshot(repoRoot, index);
   const relatedNodesByFile = await loadRelatedNodesByFile(repoRoot);
   const reverseImportIndex =
     dependencyLimit > 0 || includeImpact
       ? buildReverseImportIndex(index)
       : new Map();
-  const allRanked = rankChunks(trimmedQuery, chunks, relatedNodesByFile).filter(
-    ({ score }) => score > 0,
-  );
+  const allRanked = rankChunks(
+    trimmedQuery,
+    searchReady,
+    relatedNodesByFile,
+  ).filter(({ score }) => score > 0);
   const ranked = diversifyRankedChunks(allRanked, limit)
     .map(({ chunk, score, score_breakdown, match_reasons, related_nodes }) => ({
       file_path: chunk.file_path,
@@ -568,6 +624,7 @@ async function saveSourceIndex(
       symbols_indexed: 0,
       bytes_indexed: 0,
     },
+    search: buildSearchIndex([]),
     files: {},
   });
 
@@ -861,39 +918,174 @@ function buildChunk(
   };
 }
 
+function sourceChunks(index: SourceIndex): SourceChunk[] {
+  return Object.values(index.files)
+    .sort((a, b) => a.file_path.localeCompare(b.file_path))
+    .flatMap((file) =>
+      file.chunks
+        .slice()
+        .sort(
+          (a, b) =>
+            a.start_line - b.start_line ||
+            a.end_line - b.end_line ||
+            a.id.localeCompare(b.id),
+        ),
+    );
+}
+
+function buildSearchIndex(chunks: SourceChunk[]): SourceSearchIndex {
+  const documents: Record<string, SourceSearchDocumentStats> = {};
+  const documentFrequencies = new Map<string, number>();
+  const postingsByToken = new Map<string, SourceSearchPosting[]>();
+  let totalLength = 0;
+
+  for (const chunk of chunks) {
+    const termFrequencies = new Map<string, number>();
+    for (const token of tokenize(chunkDocument(chunk))) {
+      termFrequencies.set(token, (termFrequencies.get(token) ?? 0) + 1);
+    }
+
+    const length = Array.from(termFrequencies.values()).reduce(
+      (sum, frequency) => sum + frequency,
+      0,
+    );
+    totalLength += length;
+    documents[chunk.id] = {
+      chunk_id: chunk.id,
+      content_hash: chunk.content_hash,
+      length,
+    };
+
+    for (const [token, termFrequency] of Array.from(
+      termFrequencies.entries(),
+    ).sort(([a], [b]) => a.localeCompare(b))) {
+      documentFrequencies.set(token, (documentFrequencies.get(token) ?? 0) + 1);
+      const postings = postingsByToken.get(token) ?? [];
+      postings.push({
+        chunk_id: chunk.id,
+        term_frequency: termFrequency,
+      });
+      postingsByToken.set(token, postings);
+    }
+  }
+
+  return {
+    version: SEARCH_INDEX_VERSION,
+    document_count: chunks.length,
+    average_document_length: totalLength / Math.max(1, chunks.length),
+    document_frequencies: Object.fromEntries(
+      Array.from(documentFrequencies.entries()).sort(([a], [b]) =>
+        a.localeCompare(b),
+      ),
+    ),
+    documents: Object.fromEntries(
+      Object.entries(documents).sort(([a], [b]) => a.localeCompare(b)),
+    ),
+    postings: Object.fromEntries(
+      Array.from(postingsByToken.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([token, postings]) => [
+          token,
+          postings.sort((a, b) => a.chunk_id.localeCompare(b.chunk_id)),
+        ]),
+    ),
+  };
+}
+
+function isSearchIndexCompatible(
+  index: SourceIndex,
+  chunks: SourceChunk[],
+): boolean {
+  const search = index.search;
+  if (!search || search.version !== SEARCH_INDEX_VERSION) return false;
+  if (search.document_count !== chunks.length) return false;
+  if (!search.documents || !search.document_frequencies || !search.postings) {
+    return false;
+  }
+
+  const documentIds = Object.keys(search.documents);
+  if (documentIds.length !== chunks.length) return false;
+
+  for (const chunk of chunks) {
+    const document = search.documents[chunk.id];
+    if (!document) return false;
+    if (document.chunk_id !== chunk.id) return false;
+    if (document.content_hash !== chunk.content_hash) return false;
+    if (!Number.isFinite(document.length) || document.length < 0) return false;
+  }
+
+  return true;
+}
+
+function getSearchReadySnapshot(
+  repoRoot: string,
+  index: SourceIndex,
+): SearchReadySnapshot {
+  const chunks = sourceChunks(index);
+  const cacheKey = searchReadyCacheKey(repoRoot, index, chunks);
+  const cached = searchReadyCache.get(cacheKey);
+  if (cached) return cached;
+
+  const search = isSearchIndexCompatible(index, chunks)
+    ? index.search
+    : buildSearchIndex(chunks);
+  const snapshot: SearchReadySnapshot = {
+    chunks,
+    document_frequencies: new Map(
+      Object.entries(search.document_frequencies ?? {}),
+    ),
+    documents: new Map(Object.entries(search.documents ?? {})),
+    document_count: search.document_count,
+    average_document_length: search.average_document_length,
+    postings: new Map(Object.entries(search.postings ?? {})),
+  };
+
+  searchReadyCache.set(cacheKey, snapshot);
+  while (searchReadyCache.size > SEARCH_READY_CACHE_LIMIT) {
+    const oldestKey = searchReadyCache.keys().next().value;
+    if (!oldestKey) break;
+    searchReadyCache.delete(oldestKey);
+  }
+
+  return snapshot;
+}
+
+function searchReadyCacheKey(
+  repoRoot: string,
+  index: SourceIndex,
+  chunks: SourceChunk[],
+): string {
+  const signature = createHash("sha256")
+    .update(
+      chunks
+        .map((chunk) => `${chunk.id}:${chunk.content_hash}:${chunk.start_line}`)
+        .join("\n"),
+    )
+    .digest("hex");
+  return [
+    path.resolve(repoRoot),
+    index.updated_at,
+    index.stats.chunks_indexed,
+    index.stats.bytes_indexed,
+    signature,
+  ].join("|");
+}
+
 function rankChunks(
   query: string,
-  chunks: SourceChunk[],
+  searchReady: SearchReadySnapshot,
   relatedNodesByFile: Map<
     string,
     Array<Pick<Node, "id" | "kind" | "name" | "summary">>
   >,
 ): RankedChunk[] {
   const queryTokens = tokenize(query);
-  const documents = chunks.map((chunk) => ({
-    chunk,
-    tokens: tokenize(chunkDocument(chunk)),
-  }));
-  const avgLength =
-    documents.reduce((sum, doc) => sum + doc.tokens.length, 0) /
-    Math.max(1, documents.length);
-  const df = new Map<string, number>();
-  for (const doc of documents) {
-    for (const token of new Set(doc.tokens)) {
-      df.set(token, (df.get(token) ?? 0) + 1);
-    }
-  }
+  const bm25Scores = bm25ScoresForQuery(queryTokens, searchReady);
 
-  return documents
-    .map(({ chunk, tokens }) => {
+  return searchReady.chunks
+    .map((chunk) => {
       const relatedNodes = relatedNodesByFile.get(chunk.file_path) ?? [];
-      const bm25Score = bm25(
-        queryTokens,
-        tokens,
-        df,
-        documents.length,
-        avgLength,
-      );
+      const bm25Score = bm25Scores.get(chunk.id) ?? 0;
       const fieldScore = scoreSourceFields(
         query,
         queryTokens,
@@ -926,37 +1118,41 @@ function rankChunks(
     );
 }
 
-function bm25(
+function bm25ScoresForQuery(
   queryTokens: string[],
-  documentTokens: string[],
-  df: Map<string, number>,
-  documentCount: number,
-  avgDocumentLength: number,
-): number {
+  searchReady: SearchReadySnapshot,
+): Map<string, number> {
   const k1 = 1.2;
   const b = 0.75;
-  const frequencies = new Map<string, number>();
-  for (const token of documentTokens) {
-    frequencies.set(token, (frequencies.get(token) ?? 0) + 1);
+  const scores = new Map<string, number>();
+
+  for (const token of new Set(queryTokens)) {
+    const postings = searchReady.postings.get(token);
+    if (!postings || postings.length === 0) continue;
+    const documentFrequency =
+      searchReady.document_frequencies.get(token) ?? postings.length;
+    const idf = Math.log(
+      1 +
+        (searchReady.document_count - documentFrequency + 0.5) /
+          (documentFrequency + 0.5),
+    );
+    for (const posting of postings) {
+      const document = searchReady.documents.get(posting.chunk_id);
+      if (!document) continue;
+      const denominator =
+        posting.term_frequency +
+        k1 *
+          (1 -
+            b +
+            b *
+              (document.length /
+                Math.max(1, searchReady.average_document_length)));
+      const score = idf * ((posting.term_frequency * (k1 + 1)) / denominator);
+      scores.set(posting.chunk_id, (scores.get(posting.chunk_id) ?? 0) + score);
+    }
   }
 
-  let score = 0;
-  for (const token of new Set(queryTokens)) {
-    const termFrequency = frequencies.get(token) ?? 0;
-    if (termFrequency === 0) continue;
-    const documentFrequency = df.get(token) ?? 0;
-    const idf = Math.log(
-      1 + (documentCount - documentFrequency + 0.5) / (documentFrequency + 0.5),
-    );
-    const denominator =
-      termFrequency +
-      k1 *
-        (1 -
-          b +
-          b * (documentTokens.length / Math.max(1, avgDocumentLength)));
-    score += idf * ((termFrequency * (k1 + 1)) / denominator);
-  }
-  return score;
+  return scores;
 }
 
 function scoreSourceFields(

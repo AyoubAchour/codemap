@@ -1,6 +1,6 @@
 # Task 044 — Source index engine v2
 
-Status: todo
+Status: done
 
 Phase: Phase 4 / performance
 
@@ -24,7 +24,6 @@ will become wasteful on larger codebases and repeated agent turns.
 
 ## Exit Criteria
 
-- [ ] Repeated source searches avoid re-tokenizing every chunk.
-- [ ] `get_index_status` remains lightweight.
-- [ ] Search results stay deterministic and backward-compatible.
-
+- [x] Repeated source searches avoid re-tokenizing every chunk.
+- [x] `get_index_status` remains lightweight.
+- [x] Search results stay deterministic and backward-compatible.
