@@ -195,7 +195,7 @@ export interface SourceIndex {
   updated_at: string;
   max_file_bytes: number;
   stats: SourceIndexStats;
-  search: SourceSearchIndex;
+  search?: SourceSearchIndex;
   files: Record<string, IndexedSourceFile>;
 }
 
@@ -1031,9 +1031,10 @@ function getSearchReadySnapshot(
   const cached = searchReadyCache.get(cacheKey);
   if (cached) return cached;
 
-  const search = isSearchIndexCompatible(index, chunks)
-    ? index.search
-    : buildSearchIndex(chunks);
+  const search =
+    index.search && isSearchIndexCompatible(index, chunks)
+      ? index.search
+      : buildSearchIndex(chunks);
   const snapshot: SearchReadySnapshot = {
     chunks,
     document_frequencies: new Map(

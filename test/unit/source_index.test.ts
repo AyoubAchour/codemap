@@ -74,8 +74,9 @@ describe("source index", () => {
 
     const reloaded = await loadSourceIndex(tmpRoot);
     expect(reloaded?.stats.chunks_indexed).toBe(4);
-    expect(reloaded?.search.document_count).toBe(4);
-    expect(reloaded?.search.postings.require).toEqual(
+    expect(reloaded?.search).toBeDefined();
+    expect(reloaded?.search?.document_count).toBe(4);
+    expect(reloaded?.search?.postings.require).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           chunk_id: "src/auth.ts:7-9",
