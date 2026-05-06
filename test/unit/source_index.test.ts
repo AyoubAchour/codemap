@@ -397,6 +397,21 @@ describe("source index", () => {
 
   test("search can include symbol impact context", async () => {
     await write(
+      "src/auth.ts",
+      [
+        "// auth module preamble",
+        "import { createClient } from './db';",
+        "",
+        "export interface SessionUser {",
+        "  id: string;",
+        "}",
+        "",
+        "export function requireActiveUser(token: string): SessionUser {",
+        "  return { id: token };",
+        "}",
+      ].join("\n"),
+    );
+    await write(
       "src/db.ts",
       [
         "export function createClient() {",
@@ -453,6 +468,9 @@ describe("source index", () => {
           kind: "import",
           precision: "exact",
           file_path: "src/db.ts",
+          start_line: 1,
+          end_line: 1,
+          import_line: 2,
           module: "./db",
         }),
       ]),

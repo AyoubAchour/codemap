@@ -1230,7 +1230,7 @@ function buildImpactContext(
 ): SourceImpactContext {
   const targetFile = index.files[chunk.file_path];
   if (!targetFile) {
-    return emptyImpactContext(chunk.file_path, query);
+    return emptyImpactContext(chunk.file_path);
   }
 
   const queryTokens = tokenize(query);
@@ -1300,12 +1300,11 @@ function buildImpactContext(
 
 function emptyImpactContext(
   filePath: string,
-  query: string,
 ): SourceImpactContext {
   return {
     target: {
       type: "file",
-      value: query,
+      value: filePath,
       file_path: filePath,
       ambiguous: false,
     },
@@ -1421,8 +1420,8 @@ function buildImportImpactReferences(
       kind: "import",
       precision: "exact",
       file_path: importedFile.file_path,
-      start_line: sourceImport.line,
-      end_line: sourceImport.line,
+      start_line: 1,
+      end_line: 1,
       module: sourceImport.module,
       import_line: sourceImport.line,
       reason: `${file.file_path} imports ${importedFile.file_path}`,

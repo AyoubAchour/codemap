@@ -149,7 +149,8 @@ function shouldIncludeImpact(question: string): boolean {
     .some((token) =>
       /[./\\]/.test(token) ||
       /[a-z0-9_$][A-Z][A-Za-z0-9_$]*/.test(token) ||
-      /[$_]/.test(token) ||
+      /[$]/.test(token) ||
+      /^[A-Za-z_$][A-Za-z0-9$]*(?:_[A-Za-z0-9$]+){2,}$/.test(token) ||
       /\(\)$/.test(token),
     );
 }
