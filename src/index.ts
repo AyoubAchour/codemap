@@ -11,6 +11,7 @@ import { registerQueryContext } from "./tools/query_context.js";
 import { registerQueryGraph } from "./tools/query_graph.js";
 import { registerSearchSource } from "./tools/search_source.js";
 import { registerSetActiveTopic } from "./tools/set_active_topic.js";
+import { registerSuggestWriteback } from "./tools/suggest_writeback.js";
 
 export interface RegisterToolsOptions {
   /** Path to the repo root; `<repoRoot>/.codemap/graph.json` is the store. */
@@ -31,6 +32,7 @@ export interface RegisterToolsOptions {
  *  - graph_health
  *  - query_graph
  *  - get_node
+ *  - suggest_writeback (read-only end-of-task writeback prompts)
  *  - emit_node       (collision-aware; per-turn cap)
  *  - link
  *  - set_active_topic
@@ -47,6 +49,7 @@ export function registerTools(
   registerGraphHealth(server, options);
   registerQueryGraph(server, options);
   registerGetNode(server, options);
+  registerSuggestWriteback(server, options);
   registerEmitNode(server, options);
   registerLink(server, options);
   registerSetActiveTopic(server, options);

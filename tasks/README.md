@@ -115,7 +115,7 @@ Maintained manually. Update status as tasks land.
 | 035 | `query_context` v2 retrieval | done | Phase 4 / behavior consistency | [task-035-query-context-v2-retrieval.md](task-035-query-context-v2-retrieval.md) |
 | 036 | TS/JS symbol and impact context | done | Phase 4 / behavior consistency | [task-036-symbol-impact-context.md](task-036-symbol-impact-context.md) |
 | 037 | Memory quality and ranking | done | Phase 4 / behavior consistency | [task-037-memory-quality-ranking.md](task-037-memory-quality-ranking.md) |
-| 038 | Workflow auto-capture suggestions | todo | Phase 4 / behavior consistency | [task-038-workflow-auto-capture.md](task-038-workflow-auto-capture.md) |
+| 038 | Workflow auto-capture suggestions | done | Phase 4 / behavior consistency | [task-038-workflow-auto-capture.md](task-038-workflow-auto-capture.md) |
 | 039 | Release v0.5.2 | done | Phase 4 / release | [task-039-release-v0.5.2.md](task-039-release-v0.5.2.md) |
 
 ---

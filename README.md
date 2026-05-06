@@ -122,9 +122,12 @@ For repository tasks, agents should follow this loop:
    source-index status, source search, dependency/impact context, match reasons,
    stale-anchor warnings, and next steps.
 3. Inspect real project files before relying on search results.
-4. `emit_node` only for durable repo-local knowledge, anchored to real source
+4. Run `suggest_writeback` near the end when useful. It is read-only and turns
+   inspected files, changed files, and a work summary into possible writeback
+   prompts.
+5. `emit_node` only for durable repo-local knowledge, anchored to real source
    files.
-5. `link` related nodes when one decision, invariant, or gotcha depends on
+6. `link` related nodes when one decision, invariant, or gotcha depends on
    another.
 
 Codemap intentionally rejects low-quality graph writes. `emit_node` requires
@@ -141,6 +144,7 @@ per turn to prevent graph spam.
 | `query_graph` | Search curated graph memory for relevant nodes, edges, match reasons, and trust metadata. |
 | `get_node` | Fetch one node by id or alias. |
 | `graph_health` | Read-only graph health report: validator warnings and source-anchor staleness. |
+| `suggest_writeback` | Read-only end-of-task prompts for possible durable writeback. Never creates nodes or links. |
 | `emit_node` | Create or merge a durable repo-local finding. |
 | `link` | Create or update a typed relationship between two nodes. |
 | `index_codebase` | Build the rebuildable local source index. |
@@ -168,6 +172,7 @@ codemap doctor                        # Compact graph health summary
 codemap doctor --json                 # Full structured health report
 codemap scan                          # Build the local source index
 codemap context "auth guard"          # Graph + source context for planning
+codemap suggest-writeback --summary "what changed"
 codemap search-source "auth guard"    # Search indexed source chunks
 codemap search-source "requireActiveUser" --include-impact
 codemap index-status                  # Report source-index freshness
@@ -213,6 +218,17 @@ Each graph match can include:
 and `low_trust_node_ids` are diagnostic lists and may overlap. Low-trust
 memories are not hidden; agents should inspect their source anchors before
 relying on them.
+
+## Writeback Suggestions
+
+`suggest_writeback` is an end-of-task nudge, not an automatic memory writer. It
+looks at explicit inspected or modified files, an optional work summary, the
+active topic, and, on the CLI by default, git changed files. It returns possible
+`decision`, `invariant`, `gotcha`, or `link` prompts with source-anchor
+candidates.
+
+Suggestions are intentionally not durable memory. Agents must still inspect the
+real files and call `emit_node` or `link` themselves.
 
 ## Local Metrics
 

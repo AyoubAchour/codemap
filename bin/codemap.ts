@@ -25,6 +25,10 @@ import {
   type SearchSourceFlags,
 } from "../src/cli/search_source.js";
 import { show } from "../src/cli/show.js";
+import {
+  suggestWriteback,
+  type SuggestWritebackFlags,
+} from "../src/cli/suggest_writeback.js";
 import { validate } from "../src/cli/validate.js";
 import type { CommandResult, GlobalOptions } from "../src/cli/_types.js";
 import type { SourceRefreshMode } from "../src/query_context.js";
@@ -295,6 +299,36 @@ program
       impactLimit: cmdOpts.impactLimit as number | undefined,
     };
     emit(await context(question, flags, { repoRoot: opts.repo }));
+  });
+
+program
+  .command("suggest-writeback")
+  .description(
+    "Suggest end-of-task graph writeback opportunities without creating nodes or links.",
+  )
+  .option(
+    "--inspected-file <path>",
+    "Repo-relative file inspected during the task. Repeatable.",
+    repeatable,
+  )
+  .option(
+    "--modified-file <path>",
+    "Repo-relative file modified during the task. Repeatable.",
+    repeatable,
+  )
+  .option("--summary <text>", "Short summary of what changed or was learned.")
+  .option("--no-git", "Do not inspect git changed/untracked files.")
+  .option("--limit <n>", "Maximum suggestions to return.", parsePositiveInteger)
+  .action(async (cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: SuggestWritebackFlags = {
+      inspectedFile: cmdOpts.inspectedFile as string[] | undefined,
+      modifiedFile: cmdOpts.modifiedFile as string[] | undefined,
+      summary: cmdOpts.summary as string | undefined,
+      git: cmdOpts.git as boolean | undefined,
+      limit: cmdOpts.limit as number | undefined,
+    };
+    emit(await suggestWriteback(flags, { repoRoot: opts.repo }));
   });
 
 program

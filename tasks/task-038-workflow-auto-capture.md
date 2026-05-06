@@ -1,6 +1,6 @@
 # Task 038: Workflow Auto-Capture Suggestions
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 4 / behavior consistency
 **Estimate:** 3-5 days
 **Depends on:** task-034, task-036, task-037
@@ -59,14 +59,31 @@ suggestions.
 
 ## Exit Criteria
 
-- [ ] Capture suggestions are read-only and never write graph nodes.
-- [ ] Suggestions include source-anchor candidates and suggested node kinds.
-- [ ] The tool refuses or warns on unrelated/non-repo input.
-- [ ] Generated guidance includes an end-of-task writeback suggestion step.
-- [ ] Tests cover changed-file suggestions, inspected-file suggestions, and
+- [x] Capture suggestions are read-only and never write graph nodes.
+- [x] Suggestions include source-anchor candidates and suggested node kinds.
+- [x] The tool refuses or warns on unrelated/non-repo input.
+- [x] Generated guidance includes an end-of-task writeback suggestion step.
+- [x] Tests cover changed-file suggestions, inspected-file suggestions, and
       no-suggestion cases.
-- [ ] Docs state that suggestions are prompts for human/agent judgment, not
+- [x] Docs state that suggestions are prompts for human/agent judgment, not
       durable memory.
+
+## Result
+
+Implemented as a read-only `suggest_writeback` MCP tool and
+`codemap suggest-writeback` CLI command. The core builder combines:
+
+- active topic
+- optional inspected files
+- optional modified files
+- optional work summary
+- git changed/untracked files on the CLI by default
+- related graph matches and stale graph source anchors
+
+The response groups prompts into `decisions`, `invariants`, `gotchas`, and
+`links`. Every prompt includes source-anchor candidates where available and a
+next action that tells the agent to inspect real files before calling
+`emit_node` or `link`. No path writes to `.codemap/graph.json`.
 
 ## Notes
 
