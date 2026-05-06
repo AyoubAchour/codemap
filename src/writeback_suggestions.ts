@@ -77,6 +77,14 @@ interface FileAccumulator {
 	reasons: Set<WritebackFileReason>;
 }
 
+type RepoPathResolution =
+	| { ok: true; absolutePath: string; filePath: string }
+	| {
+			ok: false;
+			reason: "empty" | "excluded" | "outside";
+			displayPath: string;
+	  };
+
 interface BuildContext {
 	activeTopic: string | null;
 	workSummary: string;
@@ -96,15 +104,20 @@ export async function buildWritebackSuggestions(
 	const limit = clampLimit(options.limit ?? DEFAULT_LIMIT);
 
 	const fileReasons = new Map<string, FileAccumulator>();
-	addInputFiles(fileReasons, options.inspectedFiles ?? [], "inspected");
-	addInputFiles(fileReasons, options.modifiedFiles ?? [], "modified");
+	addInputFiles(
+		repoRoot,
+		fileReasons,
+		options.inspectedFiles ?? [],
+		"inspected",
+	);
+	addInputFiles(repoRoot, fileReasons, options.modifiedFiles ?? [], "modified");
 
 	let gitChangedFiles: string[] = [];
 	if (options.includeGit) {
 		const gitResult = await gitChangedFilePaths(repoRoot);
 		gitChangedFiles = gitResult.files;
 		warnings.push(...gitResult.warnings);
-		addInputFiles(fileReasons, gitChangedFiles, "git_changed");
+		addInputFiles(repoRoot, fileReasons, gitChangedFiles, "git_changed");
 	}
 
 	const query = [activeTopic, workSummary].filter(Boolean).join(" ").trim();
@@ -116,7 +129,12 @@ export async function buildWritebackSuggestions(
 		staleness.stale_sources.map((source) => source.node_id),
 	);
 	for (const staleSource of staleness.stale_sources) {
-		addFileReason(fileReasons, staleSource.file_path, "stale_graph_source");
+		addFileReason(
+			repoRoot,
+			fileReasons,
+			staleSource.file_path,
+			"stale_graph_source",
+		);
 	}
 
 	const files = await validateFileCandidates(repoRoot, fileReasons, warnings);
@@ -350,9 +368,13 @@ async function validateFileCandidates(
 ): Promise<WritebackFileCandidate[]> {
 	const candidates: WritebackFileCandidate[] = [];
 	for (const entry of fileReasons.values()) {
-		const resolved = safeRepoPath(repoRoot, entry.file_path);
-		if (!resolved) {
-			warnings.push(`Ignored non-repo path: ${entry.file_path}`);
+		const resolved = resolveRepoPath(repoRoot, entry.file_path);
+		if (!resolved.ok) {
+			if (resolved.reason === "excluded") {
+				warnings.push(`Ignored excluded path: ${resolved.displayPath}`);
+			} else if (resolved.reason === "outside") {
+				warnings.push(`Ignored non-repo path: ${entry.file_path}`);
+			}
 			continue;
 		}
 		try {
@@ -378,23 +400,27 @@ async function validateFileCandidates(
 	return candidates.sort((a, b) => a.file_path.localeCompare(b.file_path));
 }
 
-function safeRepoPath(
+function resolveRepoPath(
 	repoRoot: string,
 	inputPath: string,
-): { absolutePath: string; filePath: string } | null {
+): RepoPathResolution {
 	const trimmed = inputPath.trim();
-	if (!trimmed) return null;
+	if (!trimmed) {
+		return { ok: false, reason: "empty", displayPath: inputPath };
+	}
 	const repoAbsolute = path.resolve(repoRoot);
 	const absolutePath = path.isAbsolute(trimmed)
 		? path.resolve(trimmed)
 		: path.resolve(repoAbsolute, trimmed);
 	const relative = path.relative(repoAbsolute, absolutePath);
 	if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
-		return null;
+		return { ok: false, reason: "outside", displayPath: trimmed };
 	}
 	const filePath = toPosixPath(relative);
-	if (shouldIgnoreFile(filePath)) return null;
-	return { absolutePath, filePath };
+	if (shouldIgnoreFile(filePath)) {
+		return { ok: false, reason: "excluded", displayPath: filePath };
+	}
+	return { ok: true, absolutePath, filePath };
 }
 
 async function gitChangedFilePaths(
@@ -405,23 +431,13 @@ async function gitChangedFilePaths(
 		await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], {
 			cwd: repoRoot,
 		});
-		const [tracked, untracked] = await Promise.all([
-			execFileAsync(
-				"git",
-				["diff", "--name-only", "--diff-filter=ACMRTUXB", "HEAD", "--"],
-				{
-					cwd: repoRoot,
-				},
-			),
-			execFileAsync("git", ["ls-files", "--others", "--exclude-standard"], {
-				cwd: repoRoot,
-			}),
-		]);
+		const status = await execFileAsync(
+			"git",
+			["status", "--porcelain=v1", "-z", "--untracked-files=normal"],
+			{ cwd: repoRoot },
+		);
 		return {
-			files: unique([
-				...splitLines(tracked.stdout),
-				...splitLines(untracked.stdout),
-			]),
+			files: parsePorcelainStatus(status.stdout),
 			warnings,
 		};
 	} catch (err) {
@@ -431,21 +447,23 @@ async function gitChangedFilePaths(
 }
 
 function addInputFiles(
+	repoRoot: string,
 	fileReasons: Map<string, FileAccumulator>,
 	files: string[],
 	reason: WritebackFileReason,
 ): void {
 	for (const file of files) {
-		addFileReason(fileReasons, file, reason);
+		addFileReason(repoRoot, fileReasons, file, reason);
 	}
 }
 
 function addFileReason(
+	repoRoot: string,
 	fileReasons: Map<string, FileAccumulator>,
 	file: string,
 	reason: WritebackFileReason,
 ): void {
-	const key = toPosixPath(file.trim());
+	const key = evidenceFileKey(repoRoot, file);
 	if (!key) return;
 	const existing = fileReasons.get(key);
 	if (existing) {
@@ -453,6 +471,13 @@ function addFileReason(
 	} else {
 		fileReasons.set(key, { file_path: key, reasons: new Set([reason]) });
 	}
+}
+
+function evidenceFileKey(repoRoot: string, file: string): string {
+	const resolved = resolveRepoPath(repoRoot, file);
+	if (resolved.ok) return resolved.filePath;
+	if (resolved.reason === "excluded") return resolved.displayPath;
+	return toPosixPath(file.trim());
 }
 
 function filesWithReason(
@@ -498,7 +523,11 @@ function normalizeText(value: string): string {
 
 function countLines(content: Buffer): number {
 	if (content.length === 0) return 1;
-	return content.toString("utf8").split(/\r?\n/).length;
+	const lines = content.toString("utf8").split(/\r?\n/);
+	if (lines.at(-1) === "") {
+		lines.pop();
+	}
+	return Math.max(1, lines.length);
 }
 
 function clampLimit(limit: number): number {
@@ -506,11 +535,24 @@ function clampLimit(limit: number): number {
 	return Math.min(20, Math.max(0, Math.floor(limit)));
 }
 
-function splitLines(value: string): string[] {
-	return value
-		.split(/\r?\n/)
-		.map((line) => line.trim())
-		.filter(Boolean);
+function parsePorcelainStatus(value: string): string[] {
+	const records = value.split("\0").filter(Boolean);
+	const files: string[] = [];
+	for (let index = 0; index < records.length; index += 1) {
+		const record = records[index];
+		if (record.length < 4) continue;
+		const status = record.slice(0, 2);
+		if (status === "!!") continue;
+		files.push(record.slice(3));
+		if (
+			/^[RC]/.test(status.trim()) &&
+			index + 1 < records.length &&
+			!/^[ MADRCU?!][ MADRCU?!] /.test(records[index + 1])
+		) {
+			index += 1;
+		}
+	}
+	return unique(files);
 }
 
 function unique(values: string[]): string[] {

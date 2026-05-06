@@ -63,6 +63,24 @@ describe("writeback suggestions", () => {
 		expect(response.total_suggestions).toBeGreaterThan(0);
 	});
 
+	test("uses git status evidence before the first commit", async () => {
+		await git(["init"]);
+		await write("src/auth.ts", "export const auth = true;\n");
+		await git(["add", "."]);
+
+		const response = await buildWritebackSuggestions(tmpRoot, {
+			workSummary: "Implemented auth behavior.",
+			includeGit: true,
+		});
+
+		expect(response.evidence.git_changed_files).toEqual(["src/auth.ts"]);
+		expect(response.warnings).not.toEqual(
+			expect.arrayContaining([
+				expect.stringContaining("Git changed-file inspection unavailable"),
+			]),
+		);
+	});
+
 	test("uses inspected files to suggest invariant writeback without git", async () => {
 		await write(
 			"src/auth.ts",
@@ -88,6 +106,49 @@ describe("writeback suggestions", () => {
 				],
 			}),
 		);
+	});
+
+	test("deduplicates absolute inspected paths with git-relative paths", async () => {
+		await git(["init"]);
+		await git(["config", "user.email", "test@example.com"]);
+		await git(["config", "user.name", "Test User"]);
+		await write("src/auth.ts", "export const auth = true;\n");
+		await git(["add", "."]);
+		await git(["commit", "-m", "seed"]);
+		await write(
+			"src/auth.ts",
+			"export function requireActiveUser() { return true; }\n",
+		);
+
+		const response = await buildWritebackSuggestions(tmpRoot, {
+			inspectedFiles: [path.join(tmpRoot, "src", "auth.ts")],
+			workSummary: "Confirmed active user behavior invariant.",
+			includeGit: true,
+		});
+
+		expect(response.evidence.inspected_files).toEqual(["src/auth.ts"]);
+		expect(response.evidence.git_changed_files).toEqual(["src/auth.ts"]);
+		const candidates = response.suggestions.invariants[0].source_candidates;
+		expect(
+			candidates.filter((file) => file.file_path === "src/auth.ts"),
+		).toHaveLength(1);
+		expect(candidates[0].reasons).toEqual(
+			expect.arrayContaining(["git_changed", "inspected"]),
+		);
+	});
+
+	test("reports line ranges without trailing-newline inflation", async () => {
+		await write("src/auth.ts", ["one", "two", "three", ""].join("\n"));
+
+		const response = await buildWritebackSuggestions(tmpRoot, {
+			inspectedFiles: ["src/auth.ts"],
+			workSummary: "Confirmed auth behavior invariant.",
+			includeGit: false,
+		});
+
+		expect(
+			response.suggestions.invariants[0].source_candidates[0].line_range,
+		).toEqual([1, 3]);
 	});
 
 	test("returns no suggestions when no repo-local evidence is available", async () => {
@@ -129,5 +190,20 @@ describe("writeback suggestions", () => {
 		} finally {
 			await fs.rm(outside, { force: true });
 		}
+	});
+
+	test("warns and ignores excluded in-repo paths distinctly", async () => {
+		const response = await buildWritebackSuggestions(tmpRoot, {
+			inspectedFiles: ["node_modules/pkg/index.ts"],
+			workSummary: "Confirmed behavior invariant.",
+			includeGit: false,
+		});
+
+		expect(response.total_suggestions).toBe(0);
+		expect(response.warnings).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining("Ignored excluded path"),
+			]),
+		);
 	});
 });
