@@ -142,4 +142,43 @@ describe("graph repair", () => {
       }),
     );
   });
+
+  test("does not count unreachable legacy anchors as re-readable legacy anchors", async () => {
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode(
+      node({
+        id: "legacy/missing",
+        sources: [
+          {
+            file_path: "src/missing.ts",
+            line_range: [1, 1],
+            content_hash: "sha256:old",
+          },
+        ],
+      }),
+    );
+    await store.save();
+
+    const repair = await inspectGraphRepair(tmpRoot);
+
+    expect(repair.ok).toBe(true);
+    if (!repair.ok) throw new Error("expected ok");
+    expect(repair.summary.proposals).toBe(1);
+    expect(repair.summary.legacy_anchors).toBe(0);
+    expect(repair.summary.missing_sources).toBe(1);
+    expect(repair.proposals[0]).toEqual(
+      expect.objectContaining({
+        node_id: "legacy/missing",
+        action: "deprecate_or_reanchor",
+        reason: "missing",
+        legacy: true,
+      }),
+    );
+    expect(repair.suggestions).not.toContain(
+      "Legacy full-file anchors need re-reading before they can be upgraded to range-aware replacement_source anchors.",
+    );
+    expect(repair.suggestions).toContain(
+      "Missing source files should usually lead to deprecation unless a replacement repo file is known.",
+    );
+  });
 });

@@ -112,7 +112,9 @@ export async function inspectGraphRepair(
     const anchorReviews = proposals.filter(
       (proposal) => proposal.action === "review_and_merge",
     ).length;
-    const legacyAnchors = proposals.filter((proposal) => proposal.legacy).length;
+    const legacyAnchors = proposals.filter(
+      (proposal) => proposal.action === "reanchor_legacy_source",
+    ).length;
     const missingSources = proposals.filter(
       (proposal) => proposal.reason === "missing",
     ).length;
