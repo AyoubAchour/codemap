@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 
 import { GraphStore } from "../../src/graph.js";
+import { benchmarkRetrieval } from "../../src/cli/benchmark_retrieval.js";
 import { changesContext } from "../../src/cli/changes_context.js";
 import { clearIndex } from "../../src/cli/clear_index.js";
 import { context } from "../../src/cli/context.js";
@@ -1398,6 +1399,55 @@ describe("CLI: source index", () => {
       }),
     );
     expect(out.next_steps.join("\n")).toContain("Changed areas: src");
+  });
+
+  test("benchmark-retrieval evaluates a local retrieval suite", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      "export function requireActiveUser() { return true; }\n",
+    );
+    await fs.writeFile(
+      path.join(tmpRoot, "retrieval-suite.json"),
+      JSON.stringify({
+        version: 1,
+        name: "CLI retrieval suite",
+        queries: [
+          {
+            id: "auth",
+            query: "require active user auth",
+            expected_files: ["src/auth.ts"],
+          },
+        ],
+      }),
+    );
+    await scan({}, { repoRoot: tmpRoot });
+
+    const result = await benchmarkRetrieval(
+      {
+        suite: "retrieval-suite.json",
+        limit: 3,
+        minFileHitRate: 1,
+      },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.ok).toBe(true);
+    expect(out.summary.files.hit_rate_at_k).toBe(1);
+    expect(out.summary.experimental.reranking).toBe("disabled");
+  });
+
+  test("bin benchmark-retrieval rejects invalid threshold values", async () => {
+    const result = await runCodemapBin([
+      "benchmark-retrieval",
+      "--min-file-hit-rate",
+      "1.5",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("expected a number between 0 and 1");
   });
 
   test("generate-skills builds content and response metadata from one repo snapshot", async () => {

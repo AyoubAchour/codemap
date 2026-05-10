@@ -2,7 +2,8 @@
 /**
  * `codemap` CLI entry. Subcommands: init, show, correct, deprecate,
  * validate, doctor, rollup, setup, scan, context, changes-context,
- * generate-skills, search-source, index-status, clear-index.
+ * generate-skills, benchmark-retrieval, search-source, index-status,
+ * clear-index.
  *
  * Each subcommand's logic lives in src/cli/<name>.ts as a pure function
  * returning { exitCode, stdout?, stderr? }; this entry file is the thin
@@ -11,6 +12,10 @@
 import { Command, InvalidArgumentError } from "commander";
 
 import packageJson from "../package.json" with { type: "json" };
+import {
+  benchmarkRetrieval,
+  type BenchmarkRetrievalFlags,
+} from "../src/cli/benchmark_retrieval.js";
 import {
   changesContext,
   type ChangesContextFlags,
@@ -75,6 +80,14 @@ function parsePositiveInteger(value: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     throw new InvalidArgumentError("expected a positive integer");
+  }
+  return parsed;
+}
+
+function parseUnitInterval(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    throw new InvalidArgumentError("expected a number between 0 and 1");
   }
   return parsed;
 }
@@ -381,6 +394,68 @@ program
       impactLimit: cmdOpts.impactLimit as number | undefined,
     };
     emit(await context(question, flags, { repoRoot: opts.repo }));
+  });
+
+program
+  .command("benchmark-retrieval [suite]")
+  .description(
+    "Run a local retrieval benchmark suite against query_context. No network or embeddings required.",
+  )
+  .option("-l, --limit <n>", "Maximum graph/source results per query.", parsePositiveInteger)
+  .option(
+    "--mode <mode>",
+    "query_context detail mode: compact, standard, or full.",
+    parseQueryContextMode,
+  )
+  .option(
+    "--max-content-chars <n>",
+    "Maximum characters of chunk content per source result.",
+    parsePositiveInteger,
+  )
+  .option(
+    "--dependency-limit <n>",
+    "Maximum import/importer context entries per source result.",
+    parsePositiveInteger,
+  )
+  .option(
+    "--include-impact",
+    "Include bounded symbol/file impact context in source results.",
+  )
+  .option(
+    "--impact-limit <n>",
+    "Maximum impact entries per category.",
+    parsePositiveInteger,
+  )
+  .option(
+    "--refresh-index <mode>",
+    "Source index refresh mode: never, if_missing, or if_stale.",
+    parseRefreshIndex,
+  )
+  .option(
+    "--min-file-hit-rate <n>",
+    "Exit 1 if file hit_rate_at_k is below this 0..1 threshold.",
+    parseUnitInterval,
+  )
+  .option(
+    "--min-node-hit-rate <n>",
+    "Exit 1 if node hit_rate_at_k is below this 0..1 threshold.",
+    parseUnitInterval,
+  )
+  .action(async (suite: string | undefined, cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: BenchmarkRetrievalFlags = {
+      suite,
+      limit: cmdOpts.limit as number | undefined,
+      mode: cmdOpts.mode as QueryContextMode | undefined,
+      maxContentChars: cmdOpts.maxContentChars as number | undefined,
+      dependencyLimit: cmdOpts.dependencyLimit as number | undefined,
+      includeImpact: cmdOpts.includeImpact as boolean | undefined,
+      impactLimit: cmdOpts.impactLimit as number | undefined,
+      refreshIndex: cmdOpts.refreshIndex as SourceRefreshMode | undefined,
+      minFileHitRate: cmdOpts.minFileHitRate as number | undefined,
+      minNodeHitRate: cmdOpts.minNodeHitRate as number | undefined,
+    };
+    emit(await benchmarkRetrieval(flags, { repoRoot: opts.repo }));
   });
 
 program

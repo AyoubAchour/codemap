@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "name": "Codemap local retrieval baseline",
+  "description": "Repo-owned queries for measuring Codemap's current lexical, symbol, graph, and source-index retrieval before adding optional embeddings or reranking.",
+  "queries": [
+    {
+      "id": "query-context-planning",
+      "query": "fused query_context planning graph source staleness dependency impact",
+      "expected_files": [
+        "src/query_context.ts",
+        "src/tools/query_context.ts"
+      ],
+      "tags": ["query-context", "planning"]
+    },
+    {
+      "id": "diff-impact-analysis",
+      "query": "changes_context git diff changed files likely tests docs writeback suggestions",
+      "expected_files": [
+        "src/changes_context.ts",
+        "src/tools/changes_context.ts",
+        "src/cli/changes_context.ts"
+      ],
+      "tags": ["diff", "impact"]
+    },
+    {
+      "id": "repo-guidance-area-slices",
+      "query": "generate-skills repo guidance area hashes area drift root area",
+      "expected_files": [
+        "src/repo_guidance.ts",
+        "src/cli/generate_skills.ts"
+      ],
+      "tags": ["guidance", "onboarding"]
+    },
+    {
+      "id": "ast-source-indexing",
+      "query": "TypeScript AST indexing symbols imports exports exact identifier references",
+      "expected_files": [
+        "src/source_index.ts",
+        "test/unit/source_index.test.ts"
+      ],
+      "tags": ["source-index", "ast"]
+    },
+    {
+      "id": "graph-health-staleness",
+      "query": "graph health source anchor staleness duplicate aliases validator warnings doctor",
+      "expected_files": [
+        "src/graph_health.ts",
+        "src/tools/graph_health.ts",
+        "src/cli/doctor.ts"
+      ],
+      "tags": ["graph-health", "staleness"]
+    },
+    {
+      "id": "global-client-setup",
+      "query": "setup global MCP clients Codex Cursor OpenCode Claude install health",
+      "expected_files": [
+        "src/setup.ts",
+        "src/cli/setup.ts",
+        "bin/codemap.ts"
+      ],
+      "tags": ["setup", "onboarding"]
+    }
+  ]
+}
