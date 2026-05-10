@@ -178,13 +178,14 @@ program
     "codemap-mcp",
   )
   .action(async (cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
     const flags: SetupFlags = {
       client: cmdOpts.client as SetupClient[] | undefined,
       check: cmdOpts.check as boolean | undefined,
       force: cmdOpts.force as boolean | undefined,
       command: cmdOpts.command as string | undefined,
     };
-    emit(await setup(flags));
+    emit(await setup(flags, { repoRoot: opts.repo }));
   });
 
 program

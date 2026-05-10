@@ -86,6 +86,25 @@ function parseToolText(result: { content: { type: string; text?: string }[] }) {
   return JSON.parse(first.text);
 }
 
+type ReadResourceResult = Awaited<ReturnType<Client["readResource"]>>;
+type GetPromptResult = Awaited<ReturnType<Client["getPrompt"]>>;
+
+function resourceText(result: ReadResourceResult): string {
+  const first = result.contents[0];
+  if (!first || !("text" in first)) {
+    throw new Error("expected first resource content item to be text");
+  }
+  return first.text;
+}
+
+function promptMessageText(result: GetPromptResult): string {
+  const first = result.messages[0]?.content;
+  if (!first || first.type !== "text") {
+    throw new Error("expected first prompt message content item to be text");
+  }
+  return first.text;
+}
+
 async function repoFileHash(filePath: string): Promise<string> {
   const content = await fs.readFile(path.join(tmpRoot, filePath));
   return `sha256:${createHash("sha256").update(content).digest("hex")}`;
@@ -240,6 +259,89 @@ describe("MCP server — tools/list", () => {
     const lineRangeItems = sources.items.properties.line_range?.items;
     expect(Array.isArray(lineRangeItems)).toBe(false);
     expect(lineRangeItems).toBeDefined();
+  });
+});
+
+// =============================================================
+// resources/list + prompts/list — agentic MCP surfaces
+// =============================================================
+
+describe("MCP server — resources and prompts", () => {
+  test("exposes lifecycle, status, graph health, and generated guidance resources", async () => {
+    const listed = await client.listResources();
+    const uris = listed.resources.map((resource) => resource.uri).sort();
+
+    expect(uris).toEqual(
+      expect.arrayContaining([
+        "codemap://guidance/lifecycle",
+        "codemap://guidance/repo-skill",
+        "codemap://status/graph-health",
+        "codemap://status/source-index",
+      ]),
+    );
+
+    const lifecycle = resourceText(
+      await client.readResource({ uri: "codemap://guidance/lifecycle" }),
+    );
+    expect(lifecycle).toContain("set_active_topic");
+    expect(lifecycle).toContain("WRITE AFTER");
+
+    const sourceStatus = JSON.parse(
+      resourceText(
+        await client.readResource({ uri: "codemap://status/source-index" }),
+      ),
+    );
+    expect(sourceStatus.indexed).toBe(false);
+
+    const graphHealth = JSON.parse(
+      resourceText(
+        await client.readResource({ uri: "codemap://status/graph-health" }),
+      ),
+    );
+    expect(graphHealth.ok).toBe(true);
+    expect(graphHealth.summary.total_nodes).toBe(0);
+
+    const repoSkill = resourceText(
+      await client.readResource({ uri: "codemap://guidance/repo-skill" }),
+    );
+    expect(repoSkill).toContain("Codemap Repo Context");
+    expect(repoSkill).toContain("generated guidance, not curated graph memory");
+  });
+
+  test("exposes planning, diff-review, and writeback prompt templates", async () => {
+    const listed = await client.listPrompts();
+    const names = listed.prompts.map((prompt) => prompt.name).sort();
+    expect(names).toEqual([
+      "codemap_diff_review",
+      "codemap_plan",
+      "codemap_writeback",
+    ]);
+
+    const plan = await client.getPrompt({
+      name: "codemap_plan",
+      arguments: { task: "update setup health checks" },
+    });
+    const planText = promptMessageText(plan);
+    expect(planText).toContain("set_active_topic");
+    expect(planText).toContain("query_context");
+    expect(planText).toContain("update setup health checks");
+
+    const diffReview = await client.getPrompt({
+      name: "codemap_diff_review",
+      arguments: { focus: "release readiness" },
+    });
+    const diffReviewText = promptMessageText(diffReview);
+    expect(diffReviewText).toContain("changes_context");
+    expect(diffReviewText).toContain("release readiness");
+
+    const writeback = await client.getPrompt({
+      name: "codemap_writeback",
+      arguments: { summary: "learned setup health invariants" },
+    });
+    const writebackText = promptMessageText(writeback);
+    expect(writebackText).toContain("suggest_writeback");
+    expect(writebackText).toContain("durable repo-local");
+    expect(writebackText).toContain("learned setup health invariants");
   });
 });
 

@@ -4,6 +4,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 
+import {
+  checkGuidanceFiles,
+  type GuidanceCheck,
+} from "./guidance.js";
+
 const execFileAsync = promisify(execFile);
 
 export type SetupClient = "claude" | "codex" | "cursor" | "opencode";
@@ -21,6 +26,7 @@ export interface SetupOptions {
   force?: boolean;
   command?: string;
   homeDir?: string;
+  repoRoot?: string;
 }
 
 export interface SetupClientResult {
@@ -40,10 +46,26 @@ export interface SetupResponse {
     node_ok: boolean;
     server_command_found: boolean;
     server_command_path?: string;
+    guidance: SetupGuidanceHealth;
   };
   clients: SetupClientResult[];
   warnings: string[];
   next_steps: string[];
+}
+
+export type SetupGuidanceStatus =
+  | "unchecked"
+  | "current"
+  | "missing"
+  | "stale"
+  | "error";
+
+export interface SetupGuidanceHealth {
+  checked: boolean;
+  status: SetupGuidanceStatus;
+  repo_root?: string;
+  files: GuidanceCheck[];
+  message: string;
 }
 
 const DEFAULT_CLIENTS: SetupClient[] = ["codex", "opencode", "cursor", "claude"];
@@ -54,7 +76,7 @@ export async function setupCodemap(
   const command = options.command ?? "codemap-mcp";
   const clients = options.clients?.length ? unique(options.clients) : DEFAULT_CLIENTS;
   const homeDir = options.homeDir ?? os.homedir();
-  const health = await installHealth(command);
+  const health = await installHealth(command, options.repoRoot);
   const warnings: string[] = [];
   const results: SetupClientResult[] = [];
 
@@ -66,6 +88,15 @@ export async function setupCodemap(
   if (!health.node_ok) {
     warnings.push(
       `Node.js ${process.version} is below Codemap's supported runtime (>=22).`,
+    );
+  }
+  if (
+    options.check &&
+    health.guidance.checked &&
+    health.guidance.status !== "current"
+  ) {
+    warnings.push(
+      `Generated guidance is ${health.guidance.status}; run codemap init --check inside the repo.`,
     );
   }
 
@@ -83,13 +114,52 @@ export async function setupCodemap(
   };
 }
 
-async function installHealth(command: string): Promise<SetupResponse["health"]> {
+async function installHealth(
+  command: string,
+  repoRoot?: string,
+): Promise<SetupResponse["health"]> {
   const found = await commandPath(command);
   return {
     node_version: process.version,
     node_ok: nodeMajorVersion(process.version) >= 22,
     server_command_found: found !== null,
     server_command_path: found ?? undefined,
+    guidance: await guidanceHealth(repoRoot),
+  };
+}
+
+async function guidanceHealth(repoRoot?: string): Promise<SetupGuidanceHealth> {
+  if (!repoRoot) {
+    return {
+      checked: false,
+      status: "unchecked",
+      files: [],
+      message: "No repo root supplied; run codemap setup from a repo or pass --repo.",
+    };
+  }
+
+  const resolvedRoot = path.resolve(repoRoot);
+  const files = await checkGuidanceFiles(resolvedRoot, ["AGENTS.md"]);
+  const hasError = files.some((file) => file.status === "error");
+  const allCurrent = files.every((file) => file.status === "current");
+  const hasMissing = files.some((file) => file.status === "missing");
+  const status: SetupGuidanceStatus = hasError
+    ? "error"
+    : allCurrent
+      ? "current"
+      : hasMissing
+        ? "missing"
+        : "stale";
+
+  return {
+    checked: true,
+    status,
+    repo_root: resolvedRoot,
+    files,
+    message:
+      status === "current"
+        ? "Generated repo guidance is current."
+        : "Generated repo guidance is not current.",
   };
 }
 

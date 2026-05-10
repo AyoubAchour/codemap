@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
+import { registerAgenticSurfaces } from "./agentic_surfaces.js";
 import { registerChangesContext } from "./tools/changes_context.js";
 import { registerClearIndex } from "./tools/clear_index.js";
 import { registerEmitNode } from "./tools/emit_node.js";
@@ -22,6 +23,11 @@ export interface RegisterToolsOptions {
 /**
  * Register Codemap's MCP tools onto the given server.
  *
+ * Agent-facing MCP surfaces:
+ *  - resources/list + resources/read for lifecycle guidance, source status,
+ *    graph health, and generated repo guidance
+ *  - prompts/list + prompts/get for planning, diff review, and writeback
+ *
  * Source discovery:
  *  - index_codebase
  *  - query_context   (fused graph/source/dependency/impact planning context)
@@ -43,6 +49,7 @@ export function registerTools(
   server: McpServer,
   options: RegisterToolsOptions,
 ): void {
+  registerAgenticSurfaces(server, options);
   registerIndexCodebase(server, options);
   registerQueryContext(server, options);
   registerChangesContext(server, options);
