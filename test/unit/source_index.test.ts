@@ -10,6 +10,7 @@ import {
   loadSourceIndex,
   scanSourceIndex,
   searchSourceIndex,
+  sourceIndexPath,
 } from "../../src/source_index.js";
 
 let tmpRoot: string;
@@ -73,6 +74,16 @@ describe("source index", () => {
 
     const reloaded = await loadSourceIndex(tmpRoot);
     expect(reloaded?.stats.chunks_indexed).toBe(4);
+    expect(reloaded?.search).toBeDefined();
+    expect(reloaded?.search?.document_count).toBe(4);
+    expect(reloaded?.search?.postings.require).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          chunk_id: "src/auth.ts:7-9",
+          term_frequency: expect.any(Number),
+        }),
+      ]),
+    );
   });
 
   test("search ranks symbol and path matches above unrelated chunks", async () => {
@@ -172,6 +183,32 @@ describe("source index", () => {
 
     expect(response.results).toHaveLength(2);
     expect(response.total_results).toBe(3);
+  });
+
+  test("repeated searches reuse persisted search statistics with stable counts and timing", async () => {
+    for (let index = 0; index < 30; index += 1) {
+      await write(
+        `src/generated-search-${index}.ts`,
+        `export function generatedSearch${index}() { return 'needle ${index}'; }`,
+      );
+    }
+
+    await scanSourceIndex(tmpRoot);
+    const first = await searchSourceIndex(tmpRoot, "generated search needle", {
+      limit: 5,
+    });
+    const second = await searchSourceIndex(tmpRoot, "generated search needle", {
+      limit: 5,
+    });
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    expect(first.total_results).toBe(second.total_results);
+    expect(first.results.map((result) => result.file_path)).toEqual(
+      second.results.map((result) => result.file_path),
+    );
+    expect(Number.isFinite(first.search_time_ms)).toBe(true);
+    expect(Number.isFinite(second.search_time_ms)).toBe(true);
   });
 
   test("scan reports files skipped by source-index filters", async () => {
@@ -624,6 +661,38 @@ describe("source index", () => {
     const status = await getSourceIndexStatus(tmpRoot);
     expect(status.missing_files).toBe(0);
     expect(status.fresh).toBe(true);
+  });
+
+  test("status detects a missing search-ready snapshot without reading source content", async () => {
+    await scanSourceIndex(tmpRoot);
+    const indexPath = sourceIndexPath(tmpRoot);
+    const raw = JSON.parse(await fs.readFile(indexPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    delete raw.search;
+    await fs.writeFile(indexPath, `${JSON.stringify(raw, null, 2)}\n`);
+
+    const status = await getSourceIndexStatus(tmpRoot);
+    expect(status.search_indexed).toBe(false);
+    expect(status.search_index_stale).toBe(true);
+    expect(status.fresh).toBe(false);
+
+    const response = await searchSourceIndex(tmpRoot, "active user auth", {
+      limit: 1,
+    });
+    expect(response.ok).toBe(true);
+    expect(response.results[0]?.file_path).toBe("src/auth.ts");
+    expect(response.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("search snapshot is stale or missing"),
+      ]),
+    );
+    expect(response.warnings).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("before relying on source hits"),
+      ]),
+    );
   });
 
   test("clear removes the source index cache", async () => {
