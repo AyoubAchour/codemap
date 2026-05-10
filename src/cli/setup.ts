@@ -2,7 +2,7 @@ import {
   setupCodemap,
   type SetupClient,
 } from "../setup.js";
-import type { CommandResult } from "./_types.js";
+import type { CommandResult, GlobalOptions } from "./_types.js";
 
 export interface SetupFlags {
   client?: SetupClient[];
@@ -11,7 +11,10 @@ export interface SetupFlags {
   command?: string;
 }
 
-export async function setup(flags: SetupFlags): Promise<CommandResult> {
+export async function setup(
+  flags: SetupFlags,
+  globals?: GlobalOptions,
+): Promise<CommandResult> {
   if (flags.check && flags.force) {
     return {
       exitCode: 1,
@@ -26,6 +29,7 @@ export async function setup(flags: SetupFlags): Promise<CommandResult> {
       check: flags.check,
       force: flags.force,
       command: flags.command,
+      repoRoot: globals?.repoRoot,
     });
     const hasError = response.clients.some((client) => client.status === "error");
     const hasMissing = response.clients.some(

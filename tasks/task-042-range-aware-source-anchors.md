@@ -1,6 +1,6 @@
 # Task 042 — Range-aware source anchors
 
-Status: in-progress
+Status: done
 
 Phase: Phase 4 / accuracy
 
@@ -43,4 +43,3 @@ preserving the existing full-file hash for compatibility and tamper checks.
 - `bun test test/unit/schema.test.ts test/unit/graph_health.test.ts test/integration/mcp.test.ts`
 - `bun test`
 - `bun run build`
-

@@ -1325,6 +1325,48 @@ describe("CLI: setup", () => {
     expect(check.clients.every((client) => client.status === "current")).toBe(true);
   });
 
+  test("setup health reports generated guidance freshness when a repo root is supplied", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    await init({ force: true }, { repoRoot: tmpRoot });
+
+    const current = await setupCodemap({
+      clients: ["codex"],
+      homeDir,
+      command: process.execPath,
+      repoRoot: tmpRoot,
+      check: true,
+    });
+    expect(current.health.guidance).toEqual(
+      expect.objectContaining({
+        checked: true,
+        status: "current",
+      }),
+    );
+    expect(current.health.guidance.files[0]).toEqual(
+      expect.objectContaining({
+        file: "AGENTS.md",
+        status: "current",
+      }),
+    );
+
+    await fs.writeFile(path.join(tmpRoot, "AGENTS.md"), "stale guidance\n");
+    const stale = await setupCodemap({
+      clients: ["codex"],
+      homeDir,
+      command: process.execPath,
+      repoRoot: tmpRoot,
+      check: true,
+    });
+    expect(stale.health.guidance.status).toBe("stale");
+    expect(stale.warnings.join("\n")).toContain("guidance");
+
+    const cli = await setup({ check: true, command: process.execPath }, {
+      repoRoot: tmpRoot,
+    });
+    const parsed = JSON.parse(cli.stdout!);
+    expect(parsed.health.guidance.status).toBe("stale");
+  });
+
   test("setup --check --force is rejected before touching real client config", async () => {
     const result = await setup({ check: true, force: true });
     expect(result.exitCode).toBe(1);

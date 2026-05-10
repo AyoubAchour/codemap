@@ -1,6 +1,6 @@
 # Task 046 — Agentic MCP surfaces
 
-Status: todo
+Status: done
 
 Phase: Phase 4 / agent behavior
 
@@ -26,9 +26,13 @@ MCP-aware clients.
 
 ## Exit Criteria
 
-- [ ] MCP resources/prompts are discoverable by compatible clients.
-- [ ] Setup health reports client config, server command, Node runtime, and
+- [x] MCP resources/prompts are discoverable by compatible clients.
+- [x] Setup health reports client config, server command, Node runtime, and
       guidance freshness.
-- [ ] The generated guidance remains repo-scoped and does not auto-write graph
+- [x] The generated guidance remains repo-scoped and does not auto-write graph
       memory.
 
+## Verification
+
+- `bun test test/integration/mcp.test.ts --timeout 20000`
+- `bun test test/unit/cli.test.ts --timeout 30000`
