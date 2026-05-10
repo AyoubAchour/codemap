@@ -19,8 +19,8 @@ Three docs are the real source of truth:
 | --- | --- |
 | Published | `codemap-mcp@0.6.0` on npm (https://www.npmjs.com/package/codemap-mcp); GitHub release `v0.6.0` is live |
 | Releases shipped | 0.1.0 → 0.1.1 → 0.1.2 → 0.2.0 → 0.2.1 → 0.2.2 → 0.3.0 → 0.4.0 → 0.5.0 → 0.5.1 → 0.5.2 → 0.6.0 |
-| MCP tools | Graph memory: `set_active_topic`, `query_context`, `query_graph`, `get_node`, `graph_health`, `suggest_writeback`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index` |
-| CLI subcommands | `init`, `show`, `correct`, `deprecate`, `validate`, `doctor`, `rollup`, `scan`, `context`, `suggest-writeback`, `search-source`, `index-status`, `clear-index` |
+| MCP tools | Graph memory: `set_active_topic`, `query_context`, `query_graph`, `get_node`, `graph_health`, `suggest_writeback`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index`; diff context: `changes_context` |
+| CLI subcommands | `init`, `setup`, `show`, `correct`, `deprecate`, `validate`, `doctor`, `rollup`, `scan`, `context`, `changes-context`, `suggest-writeback`, `generate-skills`, `search-source`, `index-status`, `clear-index` |
 | M3 trial result | 9 turns on voice2work → 27 nodes / 29 edges across 6 problem domains, 5 of 8 edge kinds + 4 of 9 node kinds exercised. **Codemap thesis validated.** |
 | Test suite | Run `bun test` before shipping; integration tests pin the MCP lifecycle contract |
 | CI | green on every PR; `publish-dryrun` job is the strict gate |
@@ -87,6 +87,13 @@ Task 040 prepares the `0.6.0` release so installed users get the full
 behavior-consistency sequence from tasks 035-038: retrieval explanations,
 source-result diversity, TS/JS impact context, memory quality ranking, and
 read-only workflow writeback suggestions.
+
+Task 049 prepares the next minor release, `0.7.0`, for the merged post-0.6.0
+work: diff-aware `changes_context`, global setup, generated repo guidance,
+compact query contexts, persisted source-search data, and AST-aware TS/JS
+indexing with exact identifier references. It also adds a public changelog and
+a README latest-release section so npm readers see a professional summary
+instead of internal planning notes.
 
 ## How to work in this repo (the conventions)
 

@@ -48,6 +48,18 @@ The graph and the source index are intentionally separate:
 - `.codemap/index/source.json` is a disposable cache for code discovery. It can
   be rebuilt at any time and never creates graph nodes by itself.
 
+## Latest Release
+
+Version `0.7.0` includes:
+
+- faster repeated source search with a persisted BM25 search index
+- AST-aware TypeScript/JavaScript indexing for more precise symbols, imports,
+  exports, and identifier references
+- diff-aware `changes_context` for impact analysis before commits and reviews
+- global `codemap setup` and versioned guidance checks for smoother onboarding
+
+See [CHANGELOG.md](CHANGELOG.md) for full release notes.
+
 ## Install
 
 Requires Node.js 22 or newer.
