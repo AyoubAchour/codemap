@@ -38,9 +38,9 @@ export interface StalenessReport {
 	range_fresh_sources: RangeFreshSource[];
 }
 
-function safeRepoPath(
-	repoRoot: string,
-	filePath: string,
+export function safeRepoPath(
+  repoRoot: string,
+  filePath: string,
 ): { ok: true; absolutePath: string } | { ok: false } {
 	const segments = filePath.split(/[\\/]+/).filter(Boolean);
 	if (

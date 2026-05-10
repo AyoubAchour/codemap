@@ -35,7 +35,7 @@ repo memory — query before exploring, WRITE AFTER.
 USE CODEMAP ONLY when the task touches this repository's code, docs,
 architecture, roadmap, tests, or build/release behavior. Do not call
 query_context, changes_context, query_graph, get_node, graph_health,
-suggest_writeback, emit_node, link, index_codebase, search_source,
+graph_repair, suggest_writeback, emit_node, link, index_codebase, search_source,
 get_index_status, or clear_index for unrelated Q&A, general web research, installs,
 recommendations, or tasks not anchored to this repo.
 
@@ -57,8 +57,9 @@ LIFECYCLE for any task that touches this codebase:
    when available. If using
    query_graph directly, use search_source for source chunks after query_graph;
    if the index is missing/stale, use index_codebase or get_index_status. If
-   graph memory looks stale or duplicated, use graph_health. Inspect real files
-   before relying on search results.
+   graph memory looks stale or duplicated, use graph_health. If graph_health
+   reports stale or legacy anchors, use graph_repair for read-only repair
+   proposals. Inspect real files before relying on search results.
 4. DIFF CHECK (when changes exist): call changes_context before committing,
    reviewing, or summarizing changes. Treat likely tests/docs and impact
    context as prompts to inspect, not proof.
@@ -140,7 +141,8 @@ For repo work, follow the lifecycle exactly:
    relying on them.
 4. Use \`changes_context\` before committing, reviewing, or summarizing a diff.
 5. If graph memory is stale, duplicated, or suspicious, call \`graph_health\`
-   before trusting it.
+   before trusting it; call \`graph_repair\` when source anchors need repair
+   proposals.
 6. Before ending, call \`suggest_writeback\` when useful; it is read-only and
    never creates graph memory.
 7. After exploring, write back only durable repo-local decisions, invariants,

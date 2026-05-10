@@ -148,6 +148,7 @@ describe("MCP server — initialize / instructions", () => {
       "query_graph",
       "get_node",
       "graph_health",
+      "graph_repair",
       "suggest_writeback",
       "emit_node",
       "link",
@@ -180,6 +181,7 @@ describe("MCP server — tools/list", () => {
       "get_index_status",
       "get_node",
       "graph_health",
+      "graph_repair",
       "index_codebase",
       "link",
       "query_context",
@@ -684,6 +686,49 @@ describe("MCP server — source index tools", () => {
     expect(parsed.summary.fresh).toBe(false);
     expect(parsed.summary.changed_sources).toBe(1);
     expect(parsed.issues.changed_sources[0].node_id).toBe("health/stale");
+  });
+
+  test("graph_repair returns read-only source-anchor repair proposals", async () => {
+    const { GraphStore } = await import("../../src/graph.js");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode({
+      id: "repair/legacy",
+      kind: "gotcha",
+      name: "Repair legacy node",
+      summary: "Old full-file hashes should become repair proposals.",
+      sources: [
+        {
+          file_path: "src/x.ts",
+          line_range: [1, 1],
+          content_hash: "sha256:old",
+        },
+      ],
+      tags: ["repair"],
+      aliases: [],
+      status: "active",
+      confidence: 0.9,
+      last_verified_at: new Date().toISOString(),
+    });
+    await store.save();
+
+    const result = await client.callTool({
+      name: "graph_repair",
+      arguments: {},
+    });
+    const parsed = parseToolText(result as never);
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.summary.legacy_anchors).toBe(1);
+    expect(parsed.proposals[0]).toEqual(
+      expect.objectContaining({
+        node_id: "repair/legacy",
+        action: "reanchor_legacy_source",
+        replacement_source: expect.objectContaining({
+          file_path: "src/x.ts",
+          range_hash: expect.stringMatching(/^sha256:/),
+        }),
+      }),
+    );
   });
 
   test("suggest_writeback returns read-only capture suggestions", async () => {
