@@ -125,7 +125,7 @@ Maintained manually. Update status as tasks land.
 | 045 | AST-aware TS/JS indexing | done | Phase 4 / accuracy | [task-045-ast-aware-ts-js-indexing.md](task-045-ast-aware-ts-js-indexing.md) |
 | 046 | Agentic MCP surfaces | done | Phase 4 / agent behavior | [task-046-agentic-mcp-surfaces.md](task-046-agentic-mcp-surfaces.md) |
 | 047 | Repo guidance v2 | done | Phase 4 / onboarding | [task-047-repo-guidance-v2.md](task-047-repo-guidance-v2.md) |
-| 048 | Hybrid retrieval evaluation | todo | Phase 4 / retrieval | [task-048-hybrid-retrieval-evaluation.md](task-048-hybrid-retrieval-evaluation.md) |
+| 048 | Hybrid retrieval evaluation | done | Phase 4 / retrieval | [task-048-hybrid-retrieval-evaluation.md](task-048-hybrid-retrieval-evaluation.md) |
 | 049 | Release v0.7.0 | done | Phase 4 / release | [task-049-release-v0.7.0.md](task-049-release-v0.7.0.md) |
 
 ---

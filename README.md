@@ -205,6 +205,7 @@ codemap doctor --json                 # Full structured health report
 codemap scan                          # Build the local source index
 codemap context "auth guard"          # Graph + source context for planning
 codemap context "auth guard" --mode compact
+codemap benchmark-retrieval           # Evaluate local retrieval against a suite
 codemap changes-context               # Diff impact, stale graph anchors, tests/docs
 codemap suggest-writeback --summary "what changed"
 codemap generate-skills               # Generate repo-local skill guidance and area slices
@@ -218,6 +219,11 @@ codemap --help                        # Full command reference
 
 By default, commands operate on the current working directory. Use
 `--repo <path>` to target a different repository.
+
+`codemap benchmark-retrieval` looks for `benchmarks/retrieval.codemap.json` or
+`.codemap/retrieval-benchmark.json` and reports offline baseline metrics for
+the current retrieval stack: hit rate, precision/recall@K, MRR, diversity,
+latency, and response size. Use it before adding heavier retrieval machinery.
 
 ## Graph Health
 

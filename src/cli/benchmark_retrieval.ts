@@ -1,0 +1,61 @@
+import {
+  runRetrievalBenchmark,
+  type RetrievalBenchmarkOptions,
+} from "../retrieval_benchmark.js";
+import type { QueryContextMode, SourceRefreshMode } from "../query_context.js";
+import type { CommandResult, GlobalOptions } from "./_types.js";
+
+export interface BenchmarkRetrievalFlags {
+  suite?: string;
+  limit?: number;
+  mode?: QueryContextMode;
+  maxContentChars?: number;
+  dependencyLimit?: number;
+  includeImpact?: boolean;
+  impactLimit?: number;
+  refreshIndex?: SourceRefreshMode;
+  minFileHitRate?: number;
+  minNodeHitRate?: number;
+}
+
+export async function benchmarkRetrieval(
+  flags: BenchmarkRetrievalFlags,
+  options: GlobalOptions,
+): Promise<CommandResult> {
+  try {
+    const benchmarkOptions: RetrievalBenchmarkOptions = {
+      suitePath: flags.suite,
+      limit: flags.limit,
+      mode: flags.mode,
+      maxContentChars: flags.maxContentChars,
+      dependencyLimit: flags.dependencyLimit,
+      includeImpact: flags.includeImpact,
+      impactLimit: flags.impactLimit,
+      refreshIndex: flags.refreshIndex,
+      minFileHitRate: flags.minFileHitRate,
+      minNodeHitRate: flags.minNodeHitRate,
+    };
+    const response = await runRetrievalBenchmark(
+      options.repoRoot,
+      benchmarkOptions,
+    );
+    if (!response.ok) {
+      return {
+        exitCode: 1,
+        stderr: `${JSON.stringify(response, null, 2)}\n`,
+      };
+    }
+    return {
+      exitCode: response.summary.thresholds.passed ? 0 : 1,
+      stdout: `${JSON.stringify(response, null, 2)}\n`,
+    };
+  } catch (err) {
+    return {
+      exitCode: 1,
+      stderr: `${JSON.stringify({
+        ok: false,
+        error: { code: "BENCHMARK_RETRIEVAL_FAILED", message: String(err) },
+      })}\n`,
+    };
+  }
+}
