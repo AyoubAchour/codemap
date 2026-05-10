@@ -95,9 +95,7 @@ export async function setupCodemap(
     health.guidance.checked &&
     health.guidance.status !== "current"
   ) {
-    warnings.push(
-      `Generated guidance is ${health.guidance.status}; run codemap init --check inside the repo.`,
-    );
+    warnings.push(setupGuidanceWarning(health.guidance.status));
   }
 
   for (const client of clients) {
@@ -112,6 +110,16 @@ export async function setupCodemap(
     warnings,
     next_steps: setupNextSteps(results, warnings),
   };
+}
+
+function setupGuidanceWarning(status: SetupGuidanceStatus): string {
+  if (status === "error") {
+    return "Generated guidance could not be checked; inspect health.guidance.files for the read error.";
+  }
+  if (status === "missing") {
+    return "Generated guidance is missing; run codemap init inside the repo.";
+  }
+  return "Generated guidance is stale; run codemap init --check inside the repo, then codemap init --force when ready to refresh.";
 }
 
 async function installHealth(

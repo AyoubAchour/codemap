@@ -1365,6 +1365,24 @@ describe("CLI: setup", () => {
     });
     const parsed = JSON.parse(cli.stdout!);
     expect(parsed.health.guidance.status).toBe("stale");
+
+    await fs.rm(path.join(tmpRoot, "AGENTS.md"), {
+      force: true,
+      recursive: true,
+    });
+    await fs.mkdir(path.join(tmpRoot, "AGENTS.md"));
+    const error = await setupCodemap({
+      clients: ["codex"],
+      homeDir,
+      command: process.execPath,
+      repoRoot: tmpRoot,
+      check: true,
+    });
+    expect(error.health.guidance.status).toBe("error");
+    expect(error.warnings.join("\n")).toContain(
+      "Generated guidance could not be checked",
+    );
+    expect(error.warnings.join("\n")).not.toContain("codemap init --check");
   });
 
   test("setup --check --force is rejected before touching real client config", async () => {
