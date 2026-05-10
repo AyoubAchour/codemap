@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { lock } from "proper-lockfile";
+import ts from "typescript";
 
 import { GraphStore } from "./graph.js";
 import type { Node } from "./types.js";
@@ -12,6 +13,7 @@ const SEARCH_INDEX_VERSION = 1 as const;
 const INDEX_DIR = ".codemap/index";
 const INDEX_FILE = "source.json";
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
+const MAX_REFERENCES_PER_FILE = 2000;
 
 const SUPPORTED_EXTENSIONS = new Map<string, string>([
   [".cjs", "javascript"],
@@ -54,12 +56,21 @@ export interface SourceSymbol {
   name: string;
   kind: "class" | "const" | "enum" | "function" | "interface" | "type";
   line: number;
+  name_line?: number;
+  end_line?: number;
   exported: boolean;
 }
 
 export interface SourceImport {
   module: string;
   line: number;
+  end_line?: number;
+}
+
+export interface SourceReference {
+  name: string;
+  start_line: number;
+  end_line: number;
 }
 
 export type SourceDependencyDirection = "imports" | "imported_by";
@@ -178,6 +189,8 @@ export interface IndexedSourceFile {
   imports: SourceImport[];
   exports: string[];
   symbols: SourceSymbol[];
+  references?: SourceReference[];
+  references_truncated?: boolean;
   chunks: SourceChunk[];
 }
 
@@ -264,6 +277,14 @@ interface CandidateFile {
   language: string;
   size_bytes: number;
   mtime_ms: number;
+}
+
+interface ExtractedSourceFacts {
+  imports: SourceImport[];
+  exports: string[];
+  symbols: SourceSymbol[];
+  references: SourceReference[];
+  references_truncated: boolean;
 }
 
 interface ReverseImportReference {
@@ -736,10 +757,15 @@ function indexFile(
 ): IndexedSourceFile {
   const lines = content.split(/\r?\n/);
   const contentHash = hashString(content);
-  const imports = extractImports(lines);
-  const exports = extractExports(lines);
-  const symbols = extractSymbols(lines);
-  const chunks = createChunks(candidate, lines, contentHash, symbols, imports, exports);
+  const facts = extractSourceFacts(candidate, content, lines);
+  const chunks = createChunks(
+    candidate,
+    lines,
+    contentHash,
+    facts.symbols,
+    facts.imports,
+    facts.exports,
+  );
 
   return {
     file_path: candidate.file_path,
@@ -749,11 +775,460 @@ function indexFile(
     line_count: lines.length,
     content_hash: contentHash,
     indexed_at: indexedAt,
-    imports,
-    exports,
-    symbols,
+    imports: facts.imports,
+    exports: facts.exports,
+    symbols: facts.symbols,
+    references: facts.references,
+    references_truncated: facts.references_truncated,
     chunks,
   };
+}
+
+function extractSourceFacts(
+  candidate: CandidateFile,
+  content: string,
+  lines: string[],
+): ExtractedSourceFacts {
+  return (
+    extractAstSourceFacts(candidate, content) ?? extractFallbackSourceFacts(lines)
+  );
+}
+
+function extractFallbackSourceFacts(lines: string[]): ExtractedSourceFacts {
+  return {
+    imports: extractImports(lines),
+    exports: extractExports(lines),
+    symbols: extractSymbols(lines),
+    references: [],
+    references_truncated: false,
+  };
+}
+
+function extractAstSourceFacts(
+  candidate: CandidateFile,
+  content: string,
+): ExtractedSourceFacts | null {
+  try {
+    if (hasSyntacticErrors(candidate.file_path, content)) {
+      return null;
+    }
+    const sourceFile = ts.createSourceFile(
+      candidate.file_path,
+      content,
+      ts.ScriptTarget.Latest,
+      true,
+      scriptKindForPath(candidate.file_path),
+    );
+
+    const namedExportLocals = collectNamedExportLocals(sourceFile);
+    const imports: SourceImport[] = [];
+    const exports = new Set<string>();
+    const symbols: SourceSymbol[] = [];
+
+    for (const statement of sourceFile.statements) {
+      if (
+        ts.isImportDeclaration(statement) &&
+        isStringLiteralLike(statement.moduleSpecifier)
+      ) {
+        imports.push(
+          sourceImportFromNode(
+            sourceFile,
+            statement.moduleSpecifier,
+            statement,
+          ),
+        );
+        continue;
+      }
+
+      if (ts.isExportDeclaration(statement)) {
+        if (
+          statement.moduleSpecifier &&
+          isStringLiteralLike(statement.moduleSpecifier)
+        ) {
+          imports.push(
+            sourceImportFromNode(
+              sourceFile,
+              statement.moduleSpecifier,
+              statement,
+            ),
+          );
+        }
+        if (statement.exportClause) {
+          if (ts.isNamedExports(statement.exportClause)) {
+            for (const specifier of statement.exportClause.elements) {
+              exports.add(specifier.name.text);
+            }
+          } else {
+            exports.add(statement.exportClause.name.text);
+          }
+        }
+        continue;
+      }
+
+      if (ts.isExportAssignment(statement)) {
+        exports.add("default");
+        continue;
+      }
+
+      if (isDefaultExport(statement)) {
+        exports.add("default");
+      }
+
+      for (const symbol of symbolsForStatement(
+        sourceFile,
+        statement,
+        namedExportLocals,
+      )) {
+        symbols.push(symbol);
+        if (isDirectNamedExport(statement)) exports.add(symbol.name);
+        if (isDefaultExport(statement)) exports.add("default");
+      }
+    }
+
+    findRuntimeImports(sourceFile, imports);
+    const extractedReferences = extractReferences(
+      sourceFile,
+      MAX_REFERENCES_PER_FILE,
+    );
+
+    return {
+      imports: sortImports(dedupeImports(imports)),
+      exports: Array.from(exports).sort(),
+      symbols: sortSymbols(dedupeSymbols(symbols)),
+      references: sortReferences(
+        dedupeReferences(extractedReferences.references),
+      ),
+      references_truncated: extractedReferences.truncated,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function hasSyntacticErrors(filePath: string, content: string): boolean {
+  const result = ts.transpileModule(content, {
+    fileName: filePath,
+    reportDiagnostics: true,
+    compilerOptions: {
+      experimentalDecorators: true,
+      jsx: ts.JsxEmit.Preserve,
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.Latest,
+    },
+  });
+  return (result.diagnostics ?? []).some(
+    (diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error,
+  );
+}
+
+function scriptKindForPath(filePath: string): ts.ScriptKind {
+  switch (path.extname(filePath)) {
+    case ".jsx":
+      return ts.ScriptKind.JSX;
+    case ".tsx":
+      return ts.ScriptKind.TSX;
+    case ".js":
+    case ".cjs":
+    case ".mjs":
+      return ts.ScriptKind.JS;
+    default:
+      return ts.ScriptKind.TS;
+  }
+}
+
+function collectNamedExportLocals(sourceFile: ts.SourceFile): Set<string> {
+  const locals = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isExportDeclaration(statement) ||
+      statement.moduleSpecifier ||
+      !statement.exportClause ||
+      !ts.isNamedExports(statement.exportClause)
+    ) {
+      continue;
+    }
+    for (const specifier of statement.exportClause.elements) {
+      locals.add(specifier.propertyName?.text ?? specifier.name.text);
+    }
+  }
+  return locals;
+}
+
+function sourceImportFromNode(
+  sourceFile: ts.SourceFile,
+  literal: ts.StringLiteralLike,
+  locationNode: ts.Node = literal,
+): SourceImport {
+  const range = lineRange(sourceFile, locationNode);
+  return { module: literal.text, line: range.line, end_line: range.end_line };
+}
+
+function symbolsForStatement(
+  sourceFile: ts.SourceFile,
+  statement: ts.Statement,
+  namedExportLocals: Set<string>,
+): SourceSymbol[] {
+  if (ts.isVariableStatement(statement)) {
+    const statementExported = hasSyntaxModifier(
+      statement,
+      ts.SyntaxKind.ExportKeyword,
+    );
+    return statement.declarationList.declarations
+      .flatMap((declaration) => bindingIdentifiers(declaration.name))
+      .map((binding) =>
+        symbolFromNamedNode(
+          sourceFile,
+          statement,
+          binding.name,
+          "const",
+          statementExported || namedExportLocals.has(binding.name),
+          binding.node,
+        ),
+      );
+  }
+
+  if (
+    ts.isClassDeclaration(statement) ||
+    ts.isFunctionDeclaration(statement) ||
+    ts.isInterfaceDeclaration(statement) ||
+    ts.isTypeAliasDeclaration(statement) ||
+    ts.isEnumDeclaration(statement)
+  ) {
+    if (!statement.name) return [];
+    const exported =
+      hasSyntaxModifier(statement, ts.SyntaxKind.ExportKeyword) ||
+      namedExportLocals.has(statement.name.text);
+    return [
+      symbolFromNamedNode(
+        sourceFile,
+        statement,
+        statement.name.text,
+        symbolKindForDeclaration(statement),
+        exported,
+        statement.name,
+      ),
+    ];
+  }
+
+  return [];
+}
+
+interface BindingIdentifier {
+  name: string;
+  node?: ts.Identifier;
+}
+
+function bindingIdentifiers(name: ts.BindingName): BindingIdentifier[] {
+  if (ts.isIdentifier(name)) return [{ name: name.text, node: name }];
+  return name.elements.flatMap((element) =>
+    ts.isOmittedExpression(element) ? [] : bindingIdentifiers(element.name),
+  );
+}
+
+function symbolFromNamedNode(
+  sourceFile: ts.SourceFile,
+  node: ts.Node,
+  name: string,
+  kind: SourceSymbol["kind"],
+  exported: boolean,
+  nameNode?: ts.Node,
+): SourceSymbol {
+  const range = lineRange(sourceFile, node);
+  const nameRange = nameNode ? lineRange(sourceFile, nameNode) : undefined;
+  return {
+    name,
+    kind,
+    line: range.line,
+    name_line: nameRange?.line,
+    end_line: range.end_line,
+    exported,
+  };
+}
+
+function symbolKindForDeclaration(
+  declaration:
+    | ts.ClassDeclaration
+    | ts.EnumDeclaration
+    | ts.FunctionDeclaration
+    | ts.InterfaceDeclaration
+    | ts.TypeAliasDeclaration,
+): SourceSymbol["kind"] {
+  if (ts.isClassDeclaration(declaration)) return "class";
+  if (ts.isEnumDeclaration(declaration)) return "enum";
+  if (ts.isFunctionDeclaration(declaration)) return "function";
+  if (ts.isInterfaceDeclaration(declaration)) return "interface";
+  return "type";
+}
+
+function isDefaultExport(node: ts.Node): boolean {
+  return hasSyntaxModifier(node, ts.SyntaxKind.DefaultKeyword);
+}
+
+function isDirectNamedExport(node: ts.Node): boolean {
+  return (
+    hasSyntaxModifier(node, ts.SyntaxKind.ExportKeyword) &&
+    !isDefaultExport(node)
+  );
+}
+
+function hasSyntaxModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
+  return (
+    ts.canHaveModifiers(node) &&
+    (ts.getModifiers(node)?.some((modifier) => modifier.kind === kind) ?? false)
+  );
+}
+
+function findRuntimeImports(
+  sourceFile: ts.SourceFile,
+  imports: SourceImport[],
+): void {
+  function visit(node: ts.Node): void {
+    if (
+      ts.isCallExpression(node) &&
+      node.arguments.length > 0 &&
+      isStringLiteralLike(node.arguments[0]) &&
+      (isRequireCall(node) || isDynamicImportCall(node))
+    ) {
+      imports.push(sourceImportFromNode(sourceFile, node.arguments[0], node));
+    }
+    ts.forEachChild(node, visit);
+  }
+  ts.forEachChild(sourceFile, visit);
+}
+
+function isRequireCall(node: ts.CallExpression): boolean {
+  return ts.isIdentifier(node.expression) && node.expression.text === "require";
+}
+
+function isDynamicImportCall(node: ts.CallExpression): boolean {
+  return node.expression.kind === ts.SyntaxKind.ImportKeyword;
+}
+
+function extractReferences(
+  sourceFile: ts.SourceFile,
+  limit: number,
+): { references: SourceReference[]; truncated: boolean } {
+  const references: SourceReference[] = [];
+  let truncated = false;
+
+  function visit(node: ts.Node): void {
+    if (truncated) return;
+    if (ts.isIdentifier(node) && !isReferenceExcludedIdentifier(node)) {
+      if (references.length >= limit) {
+        truncated = true;
+        return;
+      }
+      const range = lineRange(sourceFile, node);
+      references.push({
+        name: node.text,
+        start_line: range.line,
+        end_line: range.end_line,
+      });
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  ts.forEachChild(sourceFile, visit);
+  return { references, truncated };
+}
+
+function isReferenceExcludedIdentifier(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  if (!parent) return false;
+  if (
+    (ts.isClassDeclaration(parent) ||
+      ts.isClassExpression(parent) ||
+      ts.isEnumDeclaration(parent) ||
+      ts.isFunctionExpression(parent) ||
+      ts.isFunctionDeclaration(parent) ||
+      ts.isGetAccessorDeclaration(parent) ||
+      ts.isInterfaceDeclaration(parent) ||
+      ts.isSetAccessorDeclaration(parent) ||
+      ts.isTypeAliasDeclaration(parent) ||
+      ts.isVariableDeclaration(parent) ||
+      ts.isParameter(parent) ||
+      ts.isMethodDeclaration(parent) ||
+      ts.isPropertyDeclaration(parent) ||
+      ts.isPropertySignature(parent) ||
+      ts.isMethodSignature(parent) ||
+      ts.isBindingElement(parent) ||
+      ts.isTypeParameterDeclaration(parent)) &&
+    parent.name === node
+  ) {
+    return true;
+  }
+
+  return (
+    ts.isImportSpecifier(parent) ||
+    ts.isImportClause(parent) ||
+    ts.isNamespaceImport(parent) ||
+    ts.isExportSpecifier(parent) ||
+    (ts.isPropertyAssignment(parent) && parent.name === node) ||
+    (ts.isBindingElement(parent) && parent.propertyName === node) ||
+    (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+    (ts.isEnumMember(parent) && parent.name === node)
+  );
+}
+
+function isStringLiteralLike(node: ts.Node): node is ts.StringLiteralLike {
+  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
+}
+
+function lineRange(
+  sourceFile: ts.SourceFile,
+  node: ts.Node,
+): { line: number; end_line: number } {
+  const start = sourceFile.getLineAndCharacterOfPosition(
+    node.getStart(sourceFile),
+  );
+  const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
+  return { line: start.line + 1, end_line: end.line + 1 };
+}
+
+function dedupeImports(imports: SourceImport[]): SourceImport[] {
+  const byKey = new Map<string, SourceImport>();
+  for (const sourceImport of imports) {
+    byKey.set(`${sourceImport.module}:${sourceImport.line}`, sourceImport);
+  }
+  return Array.from(byKey.values());
+}
+
+function sortImports(imports: SourceImport[]): SourceImport[] {
+  return imports.sort(
+    (a, b) => a.line - b.line || a.module.localeCompare(b.module),
+  );
+}
+
+function dedupeSymbols(symbols: SourceSymbol[]): SourceSymbol[] {
+  const byKey = new Map<string, SourceSymbol>();
+  for (const symbol of symbols) {
+    byKey.set(`${symbol.name}:${symbol.kind}:${symbol.line}`, symbol);
+  }
+  return Array.from(byKey.values());
+}
+
+function sortSymbols(symbols: SourceSymbol[]): SourceSymbol[] {
+  return symbols.sort((a, b) => a.line - b.line || a.name.localeCompare(b.name));
+}
+
+function dedupeReferences(references: SourceReference[]): SourceReference[] {
+  const byKey = new Map<string, SourceReference>();
+  for (const reference of references) {
+    byKey.set(
+      `${reference.name}:${reference.start_line}:${reference.end_line}`,
+      reference,
+    );
+  }
+  return Array.from(byKey.values());
+}
+
+function sortReferences(references: SourceReference[]): SourceReference[] {
+  return references.sort(
+    (a, b) =>
+      a.start_line - b.start_line ||
+      a.end_line - b.end_line ||
+      a.name.localeCompare(b.name),
+  );
 }
 
 function extractImports(lines: string[]): SourceImport[] {
@@ -769,7 +1244,7 @@ function extractImports(lines: string[]): SourceImport[] {
       line.match(exportFromPattern) ??
       line.match(requirePattern);
     if (match?.[1]) {
-      imports.push({ module: match[1], line: index + 1 });
+      imports.push({ module: match[1], line: index + 1, end_line: index + 1 });
     }
   });
 
@@ -843,6 +1318,7 @@ function extractSymbols(lines: string[]): SourceSymbol[] {
           name: match[1],
           kind,
           line: index + 1,
+          end_line: index + 1,
           exported: /\bexport\b/.test(line),
         });
         break;
@@ -1626,7 +2102,7 @@ function findSymbolDefinitions(
         precision: "exact",
         file_path: file.file_path,
         start_line: chunk?.start_line ?? symbol.line,
-        end_line: chunk?.end_line ?? symbol.line,
+        end_line: chunk?.end_line ?? symbol.end_line ?? symbol.line,
         symbol,
         reason: `indexed ${symbol.kind} definition for ${symbol.name}`,
         content_preview: boundedPreview(
@@ -1697,7 +2173,7 @@ function buildImporterImpactReferences(
       precision: "exact",
       file_path: importer.file_path,
       start_line: importEntry.line,
-      end_line: importEntry.line,
+      end_line: importEntry.end_line ?? importEntry.line,
       module: importEntry.module,
       import_line: importEntry.line,
       reason: `${importer.file_path} imports ${filePath}`,
@@ -1723,8 +2199,60 @@ function buildApproximateReferences(
   );
 
   for (const file of files) {
+    const exactReferences = file.references?.filter(
+      (reference) => reference.name === symbolName,
+    );
+    const referencesMayBeTruncated =
+      file.references_truncated === true ||
+      (file.references_truncated === undefined &&
+        (file.references?.length ?? 0) >= MAX_REFERENCES_PER_FILE);
+    let exactCoverageEndLine = 0;
+    if (exactReferences && exactReferences.length > 0) {
+      const definitionLines = definitionReferenceLines(file, symbolName);
+      for (const reference of exactReferences) {
+        if (
+          file.file_path === definingFilePath &&
+          definitionLines.has(reference.start_line)
+        ) {
+          continue;
+        }
+        exactCoverageEndLine = Math.max(
+          exactCoverageEndLine,
+          reference.end_line,
+        );
+        const chunk = chunkForLine(file, reference.start_line);
+        const preview = chunk
+          ? chunkContentRange(chunk, reference.start_line, reference.end_line)
+          : "";
+        references.push({
+          kind: "text_reference",
+          precision: "approximate",
+          file_path: file.file_path,
+          start_line: reference.start_line,
+          end_line: reference.end_line,
+          reason: `identifier reference mentions ${symbolName}`,
+          content_preview: boundedPreview(preview, maxContentChars),
+        });
+        if (references.length >= limit) return references;
+      }
+      if (!referencesMayBeTruncated) continue;
+    }
+
+    const shouldSearchChunks =
+      exactReferences === undefined ||
+      exactReferences.length === 0 ||
+      (referencesMayBeTruncated &&
+        file.chunks.some((chunk) => chunk.end_line > exactCoverageEndLine));
+    if (!shouldSearchChunks) continue;
+
     for (const chunk of file.chunks) {
-      if (!chunk.content.toLowerCase().includes(symbolLower)) continue;
+      const searchableStartLine = Math.max(
+        chunk.start_line,
+        exactCoverageEndLine + 1,
+      );
+      if (searchableStartLine > chunk.end_line) continue;
+      const searchableContent = chunkContentFromLine(chunk, searchableStartLine);
+      if (!searchableContent.toLowerCase().includes(symbolLower)) continue;
       if (
         file.file_path === definingFilePath &&
         chunk.symbols.some((symbol) => symbol.name === symbolName)
@@ -1735,16 +2263,49 @@ function buildApproximateReferences(
         kind: "text_reference",
         precision: "approximate",
         file_path: file.file_path,
-        start_line: chunk.start_line,
+        start_line: searchableStartLine,
         end_line: chunk.end_line,
         reason: `chunk text mentions ${symbolName}`,
-        content_preview: boundedPreview(chunk.content, maxContentChars),
+        content_preview: boundedPreview(searchableContent, maxContentChars),
       });
       if (references.length >= limit) return references;
     }
   }
 
   return references;
+}
+
+function definitionReferenceLines(
+  file: IndexedSourceFile,
+  symbolName: string,
+): Set<number> {
+  const lines = new Set<number>();
+  for (const symbol of file.symbols) {
+    if (symbol.name !== symbolName) continue;
+    lines.add(symbol.line);
+    if (symbol.name_line !== undefined) lines.add(symbol.name_line);
+  }
+  return lines;
+}
+
+function chunkContentFromLine(chunk: SourceChunk, startLine: number): string {
+  return chunkContentRange(chunk, startLine, chunk.end_line);
+}
+
+function chunkContentRange(
+  chunk: SourceChunk,
+  startLine: number,
+  endLine: number,
+): string {
+  const lines = chunk.content.split(/\r?\n/);
+  const startOffset = Math.max(0, startLine - chunk.start_line);
+  const endOffset = Math.min(
+    lines.length,
+    Math.max(startOffset + 1, endLine - chunk.start_line + 1),
+  );
+  if (startOffset === 0 && endOffset === lines.length) return chunk.content;
+  const lineEnding = chunk.content.includes("\r\n") ? "\r\n" : "\n";
+  return lines.slice(startOffset, endOffset).join(lineEnding);
 }
 
 function exportedSymbols(
@@ -1760,10 +2321,15 @@ function chunkForSymbol(
   file: IndexedSourceFile,
   symbol: SourceSymbol,
 ): SourceChunk | undefined {
+  return chunkForLine(file, symbol.line);
+}
+
+function chunkForLine(
+  file: IndexedSourceFile,
+  line: number,
+): SourceChunk | undefined {
   return file.chunks.find(
-    (chunk) =>
-      chunk.start_line <= symbol.line &&
-      chunk.end_line >= symbol.line,
+    (chunk) => chunk.start_line <= line && chunk.end_line >= line,
   );
 }
 

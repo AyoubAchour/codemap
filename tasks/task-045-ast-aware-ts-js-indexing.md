@@ -1,6 +1,6 @@
 # Task 045 — AST-aware TS/JS indexing
 
-Status: todo
+Status: done
 
 Phase: Phase 4 / accuracy
 
@@ -26,8 +26,14 @@ unsupported cases.
 
 ## Exit Criteria
 
-- [ ] TS/JS symbols and imports are at least as complete as the current index.
-- [ ] References have file/line coordinates that match navigable source.
-- [ ] Tests cover common TS syntax, default exports, re-exports, and parse
+- [x] TS/JS symbols and imports are at least as complete as the current index.
+- [x] References have file/line coordinates that match navigable source.
+- [x] Tests cover common TS syntax, default exports, re-exports, and parse
       failures.
 
+## Verification
+
+- `bun run typecheck`
+- `bun test test/unit/source_index.test.ts`
+- `bun test`
+- `bun run build`
