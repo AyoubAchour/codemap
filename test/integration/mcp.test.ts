@@ -520,6 +520,15 @@ describe("MCP server — source index tools", () => {
     expect(parsed.summary.source_hits[0].file_path).toBe(
       "src/auth/distinct.ts",
     );
+    expect(parsed.summary.repo_map.files[0]).toEqual(
+      expect.objectContaining({
+        file_path: "src/auth/distinct.ts",
+        role: "source",
+      }),
+    );
+    expect(parsed.repo_map.files[0].top_symbols).toContain(
+      "requireActiveUser",
+    );
     expect(parsed.expansion.graph_nodes[0].arguments.id).toBe(
       "auth/active-user",
     );
@@ -610,6 +619,15 @@ describe("MCP server — source index tools", () => {
     expect(result.structuredContent?.ok).toBe(true);
     expect(result.structuredContent?.git?.has_changes).toBe(true);
     expect(parsed.files[0].file_path).toBe("src/auth/distinct.ts");
+    expect(parsed.files[0].repo_map).toEqual(
+      expect.objectContaining({
+        file_path: "src/auth/distinct.ts",
+        rank: expect.any(Number),
+      }),
+    );
+    expect(parsed.repo_map.changed_files[0].file_path).toBe(
+      "src/auth/distinct.ts",
+    );
     expect(parsed.writeback).toBeNull();
   });
 

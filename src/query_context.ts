@@ -8,11 +8,19 @@ import {
 import { checkSourceStaleness, type StalenessReport } from "./staleness.js";
 import {
   getSourceIndexStatus,
+  loadSourceIndex,
   scanSourceIndex,
   searchSourceIndex,
   type SourceIndexStatus,
   type SourceSearchResponse,
 } from "./source_index.js";
+import {
+  buildRepoMap,
+  repoMapFileSummary,
+  type RepoMapFileRank,
+  type RepoMapSymbolRank,
+  type RepoMapSummary,
+} from "./repo_map.js";
 import type { Node } from "./types.js";
 
 export type SourceRefreshMode = "never" | "if_missing" | "if_stale";
@@ -52,9 +60,28 @@ export interface QueryContextSourceHitSummary {
   has_impact_context: boolean;
 }
 
+export interface QueryContextRepoMapFileSummary {
+  file_path: string;
+  area: string;
+  role: RepoMapFileRank["role"];
+  rank: number;
+  centrality: number;
+  imported_by: number;
+  symbols: number;
+  top_symbols: string[];
+  reasons: string[];
+}
+
+export interface QueryContextRepoMapSummary {
+  summary: RepoMapSummary;
+  files: QueryContextRepoMapFileSummary[];
+  symbols: RepoMapSymbolRank[];
+}
+
 export interface QueryContextSummary {
   graph_memories: QueryContextGraphMemorySummary[];
   source_hits: QueryContextSourceHitSummary[];
+  repo_map: QueryContextRepoMapSummary;
   source_index: Pick<
     SourceIndexStatus,
     | "chunks_indexed"
@@ -69,6 +96,7 @@ export interface QueryContextSummary {
   totals: {
     graph_nodes: number;
     related_nodes: number;
+    repo_map_files: number;
     source_results: number;
     stale_graph_sources: number;
     warnings: number;
@@ -124,6 +152,7 @@ export interface QueryContextResponse {
     refreshed: boolean;
     search: SourceSearchResponse | null;
   };
+  repo_map: QueryContextRepoMapSummary;
   related_nodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
 }
 
@@ -250,6 +279,14 @@ export async function buildQueryContext(
   }
 
   let sourceSearch: SourceSearchResponse | null = null;
+  const sourceIndex = sourceStatus.indexed
+    ? await loadSourceIndex(repoRoot)
+    : null;
+  const repoMap = buildRepoMap(sourceIndex, {
+    query: trimmedQuestion,
+    fileLimit: Math.max(sourceLimit, 5),
+    symbolLimit: 12,
+  });
   if (sourceStatus.indexed && sourceStatus.fresh) {
     sourceSearch = await searchSourceIndex(repoRoot, trimmedQuestion, {
       limit: sourceLimit,
@@ -270,6 +307,11 @@ export async function buildQueryContext(
           "Impact context is bounded planning context; exact imports/importers are stronger than approximate text references.",
         );
       }
+    }
+    if (repoMap.files.length > 0) {
+      warnings.push(
+        "Repo map rankings are rebuildable source-index signals; use them to choose files to inspect, not as durable memory.",
+      );
     }
   } else if (!sourceStatus.indexed) {
     warnings.push(
@@ -293,6 +335,7 @@ export async function buildQueryContext(
     relatedNodes,
     sourceSearch,
     sourceStatus,
+    repoMap,
     refreshed,
     staleness,
     warnings,
@@ -306,6 +349,7 @@ export async function buildQueryContext(
     sourceSearch,
     staleness,
   });
+  const repoMapSummary = summarizeRepoMap(repoMap);
 
   return {
     ok: true,
@@ -321,6 +365,7 @@ export async function buildQueryContext(
       refreshed,
       search: sourceSearch,
     },
+    repo_map: repoMapSummary,
     related_nodes: relatedNodes,
   };
 }
@@ -330,6 +375,7 @@ function buildSummary(input: {
   relatedNodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
   sourceSearch: SourceSearchResponse | null;
   sourceStatus: SourceIndexStatus;
+  repoMap: ReturnType<typeof buildRepoMap>;
   refreshed: boolean;
   staleness: StalenessReport;
   warnings: string[];
@@ -369,6 +415,7 @@ function buildSummary(input: {
       has_dependency_context: result.dependency_context.length > 0,
       has_impact_context: result.impact_context !== undefined,
     })),
+    repo_map: summarizeRepoMap(input.repoMap),
     source_index: {
       indexed: input.sourceStatus.indexed,
       fresh: input.sourceStatus.fresh,
@@ -383,10 +430,27 @@ function buildSummary(input: {
     totals: {
       graph_nodes: input.graphResult.nodes.length,
       related_nodes: input.relatedNodes.length,
+      repo_map_files: input.repoMap.summary.files,
       source_results: sourceResults.length,
       stale_graph_sources: input.staleness.stale_sources.length,
       warnings: input.warnings.length,
     },
+  };
+}
+
+function summarizeRepoMap(
+  repoMap: ReturnType<typeof buildRepoMap>,
+): QueryContextRepoMapSummary {
+  return {
+    summary: repoMap.summary,
+    files: repoMap.files.slice(0, 5).map((file) => {
+      const summary = repoMapFileSummary(file);
+      return {
+        ...summary,
+        top_symbols: summary.top_symbols.map((symbol) => symbol.name),
+      };
+    }),
+    symbols: repoMap.symbols.slice(0, 8),
   };
 }
 

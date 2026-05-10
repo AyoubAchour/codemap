@@ -47,6 +47,8 @@ The graph and the source index are intentionally separate:
   relationships.
 - `.codemap/index/source.json` is a disposable cache for code discovery. It can
   be rebuilt at any time and never creates graph nodes by itself.
+- Repo map rankings are rebuildable source-index signals: they help agents pick
+  high-value files and symbols to inspect, but they are not durable memory.
 
 ## Latest Release
 
@@ -145,12 +147,12 @@ For repository tasks, agents should follow this loop:
 
 1. `set_active_topic` to name the task and reset per-turn write limits.
 2. `query_context` before planning. This combines quality-ranked graph memory,
-   source-index status, source search, dependency/impact context, match reasons,
-   stale-anchor warnings, and next steps.
+   source-index status, source search, repo map rankings, dependency/impact
+   context, match reasons, stale-anchor warnings, and next steps.
 3. Inspect real project files before relying on search results.
 4. Run `changes_context` before committing, reviewing, or summarizing a diff.
    It maps changed files to indexed symbols, impact context, stale graph nodes,
-   likely tests/docs, and read-only writeback suggestions.
+   likely tests/docs, repo map impact, and read-only writeback suggestions.
 5. Run `suggest_writeback` near the end when useful. It is read-only and turns
    inspected files, changed files, and a work summary into possible writeback
    prompts.
@@ -169,8 +171,8 @@ per turn to prevent graph spam.
 | Tool | Purpose |
 | --- | --- |
 | `set_active_topic` | Mark the current task and reset the per-turn emit budget. |
-| `query_context` | Preferred planning tool. Combines quality-ranked graph memory, source search, staleness, match reasons, dependencies, impact context, and next steps. Supports `compact`, `standard`, and `full` response modes. |
-| `changes_context` | Diff-aware planning tool. Maps git changes to source impact context, stale graph anchors, likely tests/docs, and read-only writeback prompts. |
+| `query_context` | Preferred planning tool. Combines quality-ranked graph memory, source search, repo map rankings, staleness, match reasons, dependencies, impact context, and next steps. Supports `compact`, `standard`, and `full` response modes. |
+| `changes_context` | Diff-aware planning tool. Maps git changes to source impact context, repo map rankings, stale graph anchors, likely tests/docs, and read-only writeback prompts. |
 | `query_graph` | Search curated graph memory for relevant nodes, edges, match reasons, and trust metadata. |
 | `get_node` | Fetch one node by id or alias. |
 | `graph_health` | Read-only graph health report: validator warnings and source-anchor staleness. |

@@ -16,6 +16,7 @@ import {
   type SourceIndexStatus,
   type SourceSymbol,
 } from "./source_index.js";
+import { buildRepoMap, type RepoMap } from "./repo_map.js";
 import { checkSourceStaleness } from "./staleness.js";
 import type { Node } from "./types.js";
 
@@ -107,6 +108,8 @@ interface RepoSkillArea {
   memory: RepoSkillMemory[];
   highTrustMemory: RepoSkillMemory[];
   staleOrLowMemory: number;
+  topRank: number;
+  fileRanks: Record<string, number>;
   body: string;
 }
 
@@ -199,6 +202,10 @@ async function repoSkillRender(
   const index = await loadSourceIndex(repoRoot);
   const graph = await GraphStore.load(repoRoot);
   const files = Object.values(index?.files ?? {});
+  const repoMap = buildRepoMap(index, {
+    fileLimit: Math.max(files.length, 1),
+    symbolLimit: 24,
+  });
   const graphNodes = graph.listNodes();
   const graphStaleness = await checkSourceStaleness(repoRoot, graphNodes);
   const memory = graphNodes
@@ -222,6 +229,7 @@ async function repoSkillRender(
     files,
     memory,
     outputDir,
+    repoMap,
     sourceStatus,
   });
   const areaHashes = Object.fromEntries(
@@ -315,6 +323,7 @@ function buildAreas(input: {
   files: IndexedSourceFile[];
   memory: RepoSkillMemory[];
   outputDir: string;
+  repoMap: RepoMap;
   sourceStatus: SourceIndexStatus;
 }): RepoSkillArea[] {
   const byArea = new Map<string, IndexedSourceFile[]>();
@@ -340,9 +349,21 @@ function buildAreas(input: {
       ).length;
       const sortedFiles = [...files].sort(
         (a, b) =>
+          (input.repoMap.files_by_path[b.file_path]?.rank ?? 0) -
+            (input.repoMap.files_by_path[a.file_path]?.rank ?? 0) ||
           b.symbols.length - a.symbols.length ||
           b.exports.length - a.exports.length ||
           a.file_path.localeCompare(b.file_path),
+      );
+      const topRank = Math.max(
+        ...files.map((file) => input.repoMap.files_by_path[file.file_path]?.rank ?? 0),
+        0,
+      );
+      const fileRanks = Object.fromEntries(
+        files.map((file) => [
+          file.file_path,
+          input.repoMap.files_by_path[file.file_path]?.rank ?? 0,
+        ]),
       );
       const symbols = files.reduce((sum, file) => sum + file.symbols.length, 0);
       const hash = hashJson({
@@ -358,6 +379,7 @@ function buildAreas(input: {
             symbol.exported,
           ]),
           exports: file.exports,
+          repo_rank: input.repoMap.files_by_path[file.file_path]?.rank ?? 0,
         })),
         memory: relevantMemory.map((item) => ({
           id: item.id,
@@ -378,6 +400,8 @@ function buildAreas(input: {
         memory: relevantMemory,
         highTrustMemory,
         staleOrLowMemory,
+        topRank,
+        fileRanks,
         body: "",
       };
       area.body = renderAreaBody(area, input.sourceStatus);
@@ -385,6 +409,7 @@ function buildAreas(input: {
     })
     .sort(
       (a, b) =>
+        b.topRank - a.topRank ||
         b.files.length - a.files.length ||
         b.symbols - a.symbols ||
         a.name.localeCompare(b.name),
@@ -410,12 +435,13 @@ inspect real files, not as proof or durable graph memory.
 - source_index_updated_at: ${sourceStatus.updated_at ?? "not indexed"}
 - files: ${area.files.length}
 - symbols: ${area.symbols}
+- top_repo_rank: ${area.topRank.toFixed(4)}
 - high_trust_memory: ${area.highTrustMemory.length}
 - stale_or_low_trust_memory: ${area.staleOrLowMemory}
 
 ## Inspect First
 
-${area.files.length > 0 ? area.files.slice(0, AREA_FILE_LIMIT).map(fileLine).join("\n") : "- No indexed files in this area."}
+${area.files.length > 0 ? area.files.slice(0, AREA_FILE_LIMIT).map((file) => fileLine(file, area)).join("\n") : "- No indexed files in this area."}
 
 ## Exports To Recognize
 
@@ -434,14 +460,15 @@ ${area.staleOrLowMemory > 0 ? `- ${area.staleOrLowMemory} related graph memories
 }
 
 function areaSummaryLine(area: RepoSkillArea): string {
-  return `- ${area.name}: [areas/${area.slug}.md](areas/${area.slug}.md), ${area.files.length} files, ${area.symbols} symbols, high_trust_memory=${area.highTrustMemory.length}, hash=${area.hash}`;
+  return `- ${area.name}: [areas/${area.slug}.md](areas/${area.slug}.md), ${area.files.length} files, ${area.symbols} symbols, top_repo_rank=${area.topRank.toFixed(4)}, high_trust_memory=${area.highTrustMemory.length}, hash=${area.hash}`;
 }
 
-function fileLine(file: IndexedSourceFile): string {
+function fileLine(file: IndexedSourceFile, area: RepoSkillArea): string {
   const exports = file.exports.length > 0
     ? `; exports ${file.exports.slice(0, 5).join(", ")}`
     : "";
-  return `- ${file.file_path}: ${file.symbols.length} symbols${exports}`;
+  const rank = area.fileRanks[file.file_path] ?? 0;
+  return `- ${file.file_path}: repo_rank ${rank.toFixed(4)}, ${file.symbols.length} symbols${exports}`;
 }
 
 function exportLine(entry: SourceSymbol & { file_path: string }): string {

@@ -896,6 +896,12 @@ describe("CLI: source index", () => {
     expect(out.ok).toBe(true);
     expect(out.mode).toBe("standard");
     expect(out.summary.source_hits[0].file_path).toBe("src/auth.ts");
+    expect(out.summary.repo_map.files[0]).toEqual(
+      expect.objectContaining({
+        file_path: "src/auth.ts",
+        role: "source",
+      }),
+    );
     expect(out.expansion.source_files[0].file_path).toBe("src/auth.ts");
     expect(out.source.refreshed).toBe(true);
     expect(out.source.status.indexed).toBe(true);
@@ -1193,6 +1199,13 @@ describe("CLI: source index", () => {
       }),
     );
     expect(out.files[0].related_graph_nodes[0].id).toBe("auth/active-user");
+    expect(out.files[0].repo_map).toEqual(
+      expect.objectContaining({
+        file_path: "src/auth.ts",
+        rank: expect.any(Number),
+      }),
+    );
+    expect(out.repo_map.changed_files[0].file_path).toBe("src/auth.ts");
     expect(out.stale_graph_nodes[0].id).toBe("auth/active-user");
     expect(out.likely_tests).toEqual(
       expect.arrayContaining([
@@ -1352,6 +1365,7 @@ describe("CLI: source index", () => {
     expect(body).toContain("Repo Area Slices");
     expect(body).toContain("areas/root.md");
     expect(body).toContain("areas/src.md");
+    expect(body).toContain("top_repo_rank");
     expect(body).toContain("changes_context");
     const rootArea = await fs.readFile(
       path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", "root.md"),
@@ -1371,6 +1385,7 @@ describe("CLI: source index", () => {
       "utf8",
     );
     expect(srcArea).toContain("Codemap Area: src");
+    expect(srcArea).toContain("repo_rank");
     expect(srcArea).toContain("auth/active-user");
     expect(srcArea).toContain("area_hash");
 
