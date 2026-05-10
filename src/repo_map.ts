@@ -35,6 +35,18 @@ export interface RepoMapFileRank {
 	reasons: string[];
 }
 
+export interface RepoMapFileSummary {
+	file_path: string;
+	area: string;
+	role: RepoMapFileRole;
+	rank: number;
+	centrality: number;
+	imported_by: number;
+	symbols: number;
+	top_symbols: string[];
+	reasons: string[];
+}
+
 export interface RepoMapSymbolRank {
 	name: string;
 	kind: SourceSymbol["kind"];
@@ -202,13 +214,14 @@ export function buildRepoMap(
 	);
 	const queryTokens = tokensFor(options.query ?? "");
 	const seedFiles = new Set(options.seedFiles ?? []);
+	const seedAdjacentFiles = seedAdjacentFilesFor(seedFiles, edges);
 
 	const rankedFiles = files
 		.map((file) => {
 			const centrality = centralityByFile.get(file.file_path) ?? 0;
 			const queryScore =
 				queryTokens.length > 0 ? queryRelevance(file, queryTokens) : 0;
-			const seedScore = seedRelevance(file, seedFiles, edges);
+			const seedScore = seedRelevance(file, seedFiles, seedAdjacentFiles);
 			const rank = combinedFileRank(centrality, queryScore, seedScore);
 			const topSymbols = topSymbolsForFile(file, symbolReferenceCounts);
 			return {
@@ -291,20 +304,7 @@ export function buildRepoMap(
 	};
 }
 
-export function repoMapFileSummary(
-	file: RepoMapFileRank,
-): Pick<
-	RepoMapFileRank,
-	| "file_path"
-	| "area"
-	| "role"
-	| "rank"
-	| "centrality"
-	| "imported_by"
-	| "symbols"
-	| "top_symbols"
-	| "reasons"
-> {
+export function repoMapFileSummary(file: RepoMapFileRank): RepoMapFileSummary {
 	return {
 		file_path: file.file_path,
 		area: file.area,
@@ -313,7 +313,7 @@ export function repoMapFileSummary(
 		centrality: file.centrality,
 		imported_by: file.imported_by,
 		symbols: file.symbols,
-		top_symbols: file.top_symbols.slice(0, 3),
+		top_symbols: file.top_symbols.slice(0, 3).map((symbol) => symbol.name),
 		reasons: file.reasons.slice(0, 3),
 	};
 }
@@ -386,7 +386,10 @@ function pageRank(
 		ranks = next;
 	}
 
-	const maxRank = Math.max(...ranks.values(), 0);
+	let maxRank = 0;
+	for (const rank of ranks.values()) {
+		if (rank > maxRank) maxRank = rank;
+	}
 	return new Map(
 		[...ranks.entries()].map(([filePath, rank]) => [
 			filePath,
@@ -416,16 +419,24 @@ function queryRelevance(
 function seedRelevance(
 	file: IndexedSourceFile,
 	seedFiles: Set<string>,
-	edges: RepoMapEdge[],
+	seedAdjacentFiles: Set<string>,
 ): number {
 	if (seedFiles.size === 0) return 0;
 	if (seedFiles.has(file.file_path)) return 1;
-	const connected = edges.some(
-		(edge) =>
-			(edge.to_file === file.file_path && seedFiles.has(edge.from_file)) ||
-			(edge.from_file === file.file_path && seedFiles.has(edge.to_file)),
-	);
-	return connected ? 0.65 : 0;
+	return seedAdjacentFiles.has(file.file_path) ? 0.65 : 0;
+}
+
+function seedAdjacentFilesFor(
+	seedFiles: Set<string>,
+	edges: RepoMapEdge[],
+): Set<string> {
+	const adjacent = new Set<string>();
+	if (seedFiles.size === 0) return adjacent;
+	for (const edge of edges) {
+		if (seedFiles.has(edge.from_file)) adjacent.add(edge.to_file);
+		if (seedFiles.has(edge.to_file)) adjacent.add(edge.from_file);
+	}
+	return adjacent;
 }
 
 function combinedFileRank(

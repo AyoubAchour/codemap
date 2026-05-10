@@ -908,6 +908,38 @@ describe("CLI: source index", () => {
     expect(out.source.search.results[0].file_path).toBe("src/auth.ts");
   });
 
+  test("context warns when repo map rankings come from a stale source index", async () => {
+    const scanResult = await scan({}, { repoRoot: tmpRoot });
+    expect(scanResult.exitCode).toBe(0);
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      [
+        "export interface SessionUser { id: string }",
+        "export function requireActiveUser(token: string): SessionUser {",
+        "  if (!token) throw new Error('missing token');",
+        "  return { id: token };",
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await context(
+      "active user",
+      { sourceLimit: 1, refreshIndex: "never" },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.source.status.fresh).toBe(false);
+    expect(out.repo_map.files[0].file_path).toBe("src/auth.ts");
+    expect(out.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Source index is stale"),
+        expect.stringContaining("Repo map rankings are rebuildable"),
+      ]),
+    );
+  });
+
   test("context compact mode keeps summaries and expansion hints while trimming source detail", async () => {
     await fs.writeFile(
       path.join(tmpRoot, "src", "auth.ts"),

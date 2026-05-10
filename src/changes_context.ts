@@ -24,6 +24,7 @@ import {
   buildRepoMap,
   repoMapFileSummary,
   type RepoMapFileRank,
+  type RepoMapFileSummary,
   type RepoMapSummary,
 } from "./repo_map.js";
 import type { Node } from "./types.js";
@@ -67,27 +68,15 @@ export interface ChangedFileContext {
   related_graph_nodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
   dependency_context: SourceDependencyContext[];
   impact_context?: SourceImpactContext;
-  repo_map?: ChangesRepoMapFileSummary;
+  repo_map?: RepoMapFileSummary;
   warnings: string[];
-}
-
-export interface ChangesRepoMapFileSummary {
-  file_path: string;
-  area: string;
-  role: RepoMapFileRank["role"];
-  rank: number;
-  centrality: number;
-  imported_by: number;
-  symbols: number;
-  top_symbols: string[];
-  reasons: string[];
 }
 
 export interface ChangesRepoMapContext {
   summary: RepoMapSummary;
-  changed_files: ChangesRepoMapFileSummary[];
-  likely_affected_files: ChangesRepoMapFileSummary[];
-  top_files: ChangesRepoMapFileSummary[];
+  changed_files: RepoMapFileSummary[];
+  likely_affected_files: RepoMapFileSummary[];
+  top_files: RepoMapFileSummary[];
 }
 
 export interface ChangesContextOptions {
@@ -327,15 +316,15 @@ export async function buildChangesContext(
       summary: repoMap.summary,
       changed_files: changedFilePaths
         .map((filePath) => summarizeRepoMapFile(repoMap.files_by_path[filePath]))
-        .filter((file): file is ChangesRepoMapFileSummary => file !== undefined),
+        .filter((file): file is RepoMapFileSummary => file !== undefined),
       likely_affected_files: [...likelyAffectedFiles]
         .sort()
         .map((filePath) => summarizeRepoMapFile(repoMap.files_by_path[filePath]))
-        .filter((file): file is ChangesRepoMapFileSummary => file !== undefined),
+        .filter((file): file is RepoMapFileSummary => file !== undefined),
       top_files: repoMap.files
         .slice(0, 5)
         .map((file) => summarizeRepoMapFile(file))
-        .filter((file): file is ChangesRepoMapFileSummary => file !== undefined),
+        .filter((file): file is RepoMapFileSummary => file !== undefined),
     },
     writeback,
     warnings,
@@ -350,13 +339,9 @@ export async function buildChangesContext(
 
 function summarizeRepoMapFile(
   file: RepoMapFileRank | undefined,
-): ChangesRepoMapFileSummary | undefined {
+): RepoMapFileSummary | undefined {
   if (!file) return undefined;
-  const summary = repoMapFileSummary(file);
-  return {
-    ...summary,
-    top_symbols: summary.top_symbols.map((symbol) => symbol.name),
-  };
+  return repoMapFileSummary(file);
 }
 
 async function assertGitRepo(repoRoot: string): Promise<void> {

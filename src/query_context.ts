@@ -17,7 +17,7 @@ import {
 import {
   buildRepoMap,
   repoMapFileSummary,
-  type RepoMapFileRank,
+  type RepoMapFileSummary,
   type RepoMapSymbolRank,
   type RepoMapSummary,
 } from "./repo_map.js";
@@ -60,21 +60,9 @@ export interface QueryContextSourceHitSummary {
   has_impact_context: boolean;
 }
 
-export interface QueryContextRepoMapFileSummary {
-  file_path: string;
-  area: string;
-  role: RepoMapFileRank["role"];
-  rank: number;
-  centrality: number;
-  imported_by: number;
-  symbols: number;
-  top_symbols: string[];
-  reasons: string[];
-}
-
 export interface QueryContextRepoMapSummary {
   summary: RepoMapSummary;
-  files: QueryContextRepoMapFileSummary[];
+  files: RepoMapFileSummary[];
   symbols: RepoMapSymbolRank[];
 }
 
@@ -161,6 +149,8 @@ const DEFAULT_SOURCE_LIMIT = 5;
 const DEFAULT_DEPENDENCY_LIMIT = 3;
 const DEFAULT_REFRESH_INDEX: SourceRefreshMode = "if_missing";
 const DEFAULT_MODE: QueryContextMode = "standard";
+const REPO_MAP_CAVEAT =
+  "Repo map rankings are rebuildable source-index signals; use them to choose files to inspect, not as durable memory.";
 
 const MODE_DEFAULTS: Record<
   QueryContextMode,
@@ -309,9 +299,7 @@ export async function buildQueryContext(
       }
     }
     if (repoMap.files.length > 0) {
-      warnings.push(
-        "Repo map rankings are rebuildable source-index signals; use them to choose files to inspect, not as durable memory.",
-      );
+      warnings.push(REPO_MAP_CAVEAT);
     }
   } else if (!sourceStatus.indexed) {
     warnings.push(
@@ -321,6 +309,9 @@ export async function buildQueryContext(
     warnings.push(
       "Source index is stale; use refresh_index: if_stale or run index_codebase before relying on source hits.",
     );
+    if (repoMap.files.length > 0) {
+      warnings.push(REPO_MAP_CAVEAT);
+    }
   }
 
   const relatedNodes = dedupeRelatedNodes(sourceSearch);
@@ -443,13 +434,7 @@ function summarizeRepoMap(
 ): QueryContextRepoMapSummary {
   return {
     summary: repoMap.summary,
-    files: repoMap.files.slice(0, 5).map((file) => {
-      const summary = repoMapFileSummary(file);
-      return {
-        ...summary,
-        top_symbols: summary.top_symbols.map((symbol) => symbol.name),
-      };
-    }),
+    files: repoMap.files.slice(0, 5).map(repoMapFileSummary),
     symbols: repoMap.symbols.slice(0, 8),
   };
 }
