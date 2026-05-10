@@ -209,9 +209,8 @@ export async function runRetrievalBenchmark(
       files: evaluateTargets(
         (benchmarkQuery.expected_files ?? []).map(normalizeRepoPath),
         returnedFiles.map(normalizeRepoPath),
-        limit,
       ),
-      nodes: evaluateTargets(benchmarkQuery.expected_nodes ?? [], returnedNodes, limit),
+      nodes: evaluateTargets(benchmarkQuery.expected_nodes ?? [], returnedNodes),
       warnings: context.warnings,
     });
   }
@@ -310,8 +309,14 @@ function parseQuery(value: unknown, label: string): RetrievalBenchmarkQuery {
   if (typeof entry.query !== "string" || entry.query.trim().length === 0) {
     throw new Error(`${label}.query must be a non-empty string.`);
   }
-  const expectedFiles = parseStringArray(entry.expected_files, `${label}.expected_files`);
-  const expectedNodes = parseStringArray(entry.expected_nodes, `${label}.expected_nodes`);
+  const expectedFiles = parseOptionalStringArray(
+    entry.expected_files,
+    `${label}.expected_files`,
+  );
+  const expectedNodes = parseOptionalStringArray(
+    entry.expected_nodes,
+    `${label}.expected_nodes`,
+  );
   if (expectedFiles.length === 0 && expectedNodes.length === 0) {
     throw new Error(
       `${label} must include expected_files, expected_nodes, or both.`,
@@ -322,17 +327,19 @@ function parseQuery(value: unknown, label: string): RetrievalBenchmarkQuery {
     query: entry.query,
     expected_files: expectedFiles.map(normalizeRepoPath),
     expected_nodes: expectedNodes,
-    tags: parseStringArray(entry.tags, `${label}.tags`, true),
+    tags: parseOptionalStringArray(entry.tags, `${label}.tags`),
   };
 }
 
-function parseStringArray(
-  value: unknown,
-  label: string,
-  optional = false,
-): string[] {
-  if (value === undefined && optional) return [];
+function parseOptionalStringArray(value: unknown, label: string): string[] {
   if (value === undefined) return [];
+  return parseStringArray(value, label);
+}
+
+function parseStringArray(value: unknown, label: string): string[] {
+  if (value === undefined) {
+    throw new Error(`${label} must be an array of strings.`);
+  }
   if (!Array.isArray(value)) {
     throw new Error(`${label} must be an array of strings.`);
   }
@@ -348,7 +355,6 @@ function parseStringArray(
 function evaluateTargets(
   expected: string[],
   returned: string[],
-  limit: number,
 ): RetrievalTargetEvaluation {
   const expectedSet = new Set(expected);
   const uniqueReturned = unique(returned);
@@ -365,7 +371,10 @@ function evaluateTargets(
     hit: matched.length > 0,
     first_match_rank: firstMatchRank,
     reciprocal_rank: firstMatchRank ? round4(1 / firstMatchRank) : 0,
-    precision_at_k: expected.length > 0 ? round4(matched.length / limit) : 0,
+    precision_at_k:
+      expected.length > 0 && uniqueReturned.length > 0
+        ? round4(matched.length / uniqueReturned.length)
+        : 0,
     recall_at_k:
       expected.length > 0 ? round4(matched.length / expected.length) : 0,
   };

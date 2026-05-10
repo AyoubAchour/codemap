@@ -95,6 +95,90 @@ describe("retrieval benchmark", () => {
     expect(response.results[0]?.nodes.returned).toContain("auth/active-user");
   });
 
+  test("calculates precision against actual returned targets", async () => {
+    await write(
+      "src/auth.ts",
+      "export function requireActiveUser(token: string) { return token; }\n",
+    );
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "sparse precision suite",
+          queries: [
+            {
+              id: "auth-source",
+              query: "require active user token",
+              expected_files: ["src/auth.ts"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 10,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.results[0]?.files.returned).toEqual(["src/auth.ts"]);
+    expect(response.results[0]?.files.precision_at_k).toBe(1);
+  });
+
+  test("accepts node-only expectations", async () => {
+    const authSource = "export const AUTH_SCOPE = 'active';\n";
+    await write("src/auth.ts", authSource);
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "node-only suite",
+          queries: [
+            {
+              id: "auth-memory",
+              query: "active user auth invariant",
+              expected_nodes: ["auth/active-user"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+    await seed([
+      makeNode({
+        id: "auth/active-user",
+        name: "Active user auth invariant",
+        summary: "AUTH_SCOPE documents active user behavior.",
+        sources: [
+          {
+            file_path: "src/auth.ts",
+            line_range: [1, 1],
+            content_hash: hashBuffer(Buffer.from(authSource)),
+          },
+        ],
+      }),
+    ]);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 3,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.summary.files.evaluated_queries).toBe(0);
+    expect(response.summary.nodes.hit_rate_at_k).toBe(1);
+  });
+
   test("reports threshold failures without changing benchmark data", async () => {
     await write("src/auth.ts", "export const AUTH_SCOPE = 'active';\n");
     await write(
@@ -127,6 +211,40 @@ describe("retrieval benchmark", () => {
     if (!response.ok) throw new Error(response.error.message);
     expect(response.summary.thresholds.passed).toBe(false);
     expect(response.summary.thresholds.failed).toEqual(["files.hit_rate_at_k"]);
+  });
+
+  test("reports node threshold failures", async () => {
+    await write("src/auth.ts", "export const AUTH_SCOPE = 'active';\n");
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "node threshold suite",
+          queries: [
+            {
+              id: "missing-node",
+              query: "missing graph memory",
+              expected_nodes: ["auth/missing"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 1,
+      minNodeHitRate: 1,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.summary.thresholds.passed).toBe(false);
+    expect(response.summary.thresholds.failed).toEqual(["nodes.hit_rate_at_k"]);
   });
 
   test("rejects suites without expected files or nodes", async () => {
