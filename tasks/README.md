@@ -126,6 +126,7 @@ Maintained manually. Update status as tasks land.
 | 046 | Agentic MCP surfaces | todo | Phase 4 / agent behavior | [task-046-agentic-mcp-surfaces.md](task-046-agentic-mcp-surfaces.md) |
 | 047 | Repo guidance v2 | todo | Phase 4 / onboarding | [task-047-repo-guidance-v2.md](task-047-repo-guidance-v2.md) |
 | 048 | Hybrid retrieval evaluation | todo | Phase 4 / retrieval | [task-048-hybrid-retrieval-evaluation.md](task-048-hybrid-retrieval-evaluation.md) |
+| 049 | Release v0.7.0 | in-progress | Phase 4 / release | [task-049-release-v0.7.0.md](task-049-release-v0.7.0.md) |
 
 ---
 

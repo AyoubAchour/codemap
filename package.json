@@ -1,6 +1,6 @@
 {
   "name": "codemap-mcp",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "license": "MIT",
   "description": "Local-first persistent codebase memory for MCP-enabled coding agents.",
@@ -33,6 +33,7 @@
     "dist/cli/codemap.js",
     "dist/cli/codemap-mcp.js",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
