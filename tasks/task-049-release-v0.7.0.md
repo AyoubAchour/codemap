@@ -63,7 +63,7 @@ graph storage compatible and the source index rebuildable.
 - [x] Version is bumped to `0.7.0`.
 - [x] Changelog and README describe the `0.7.0` release.
 - [x] Local release gates pass.
-- [ ] Release PR is opened.
+- [x] Release PR is opened.
 - [ ] Release PR is merged.
 - [ ] `codemap-mcp@0.7.0` is published to npm.
 - [ ] Global install reports `codemap --version` as `0.7.0`.
@@ -82,3 +82,5 @@ Release-prep verification passed on 2026-05-10: `bun run typecheck`,
 
 As of release prep, npm latest still resolves to `codemap-mcp@0.6.0`; publish
 `0.7.0` only after the release PR is reviewed and merged.
+
+Release PR: https://github.com/AyoubAchour/codemap/pull/41
