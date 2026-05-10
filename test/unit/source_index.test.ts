@@ -100,6 +100,589 @@ describe("source index", () => {
     );
   });
 
+  test("scan uses AST extraction for TS and JS module shapes", async () => {
+    await write(
+      "src/module-shapes.tsx",
+      [
+        "import React from 'react';",
+        "const LOCAL_VERSION = 1;",
+        "export default class DefaultWidget {}",
+        "const localThing = () => LOCAL_VERSION;",
+        "export { localThing as renamedThing };",
+        "export { externalThing } from './external';",
+        "export * from './star';",
+        "export async function loadLazy() {",
+        "  return import('./lazy');",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/runtime.js",
+      [
+        "const legacy = require('./legacy');",
+        "export default function runtimeEntry() {",
+        "  return legacy;",
+        "}",
+      ].join("\n"),
+    );
+
+    const index = await scanSourceIndex(tmpRoot);
+    const moduleShapes = index.files["src/module-shapes.tsx"];
+    const runtime = index.files["src/runtime.js"];
+
+    expect(moduleShapes?.symbols).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "LOCAL_VERSION",
+          kind: "const",
+          line: 2,
+          end_line: 2,
+        }),
+        expect.objectContaining({
+          name: "DefaultWidget",
+          kind: "class",
+          exported: true,
+        }),
+        expect.objectContaining({
+          name: "loadLazy",
+          kind: "function",
+          exported: true,
+        }),
+      ]),
+    );
+    expect(moduleShapes?.exports).toEqual([
+      "default",
+      "externalThing",
+      "loadLazy",
+      "renamedThing",
+    ]);
+    expect(moduleShapes?.imports).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ module: "react", line: 1, end_line: 1 }),
+        expect.objectContaining({ module: "./external", line: 6, end_line: 6 }),
+        expect.objectContaining({ module: "./star", line: 7, end_line: 7 }),
+        expect.objectContaining({ module: "./lazy", line: 9, end_line: 9 }),
+      ]),
+    );
+    expect(runtime?.symbols).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "runtimeEntry", exported: true }),
+      ]),
+    );
+    expect(runtime?.imports).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ module: "./legacy", line: 1, end_line: 1 }),
+      ]),
+    );
+  });
+
+  test("impact references skip decorated definitions and preview exact lines", async () => {
+    await write(
+      "src/decorated.ts",
+      [
+        "function Injectable(): ClassDecorator {",
+        "  return () => undefined;",
+        "}",
+        "",
+        "@Injectable()",
+        "export class DecoratedService {",
+        "  run() {",
+        "    return 'ok';",
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/decorated-consumer.ts",
+      [
+        "import { DecoratedService } from './decorated';",
+        "",
+        "export function consumeDecorated(",
+        "  service: DecoratedService,",
+        ") {",
+        "  const first = service.run();",
+        "  const second = service.run();",
+        "  return first + ':' + second;",
+        "}",
+      ].join("\n"),
+    );
+
+    const index = await scanSourceIndex(tmpRoot);
+    const decoratedSymbol = index.files["src/decorated.ts"]?.symbols.find(
+      (symbol) => symbol.name === "DecoratedService",
+    );
+
+    expect(decoratedSymbol).toEqual(
+      expect.objectContaining({
+        name: "DecoratedService",
+        line: 5,
+        name_line: 6,
+        end_line: 10,
+      }),
+    );
+
+    const response = await searchSourceIndex(tmpRoot, "DecoratedService", {
+      limit: 5,
+      includeImpact: true,
+      impactLimit: 5,
+    });
+    const result = response.results.find(
+      (entry) => entry.file_path === "src/decorated.ts",
+    );
+    const approximateReferences =
+      result?.impact_context?.approximate_references ?? [];
+
+    expect(approximateReferences).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          file_path: "src/decorated.ts",
+          start_line: 6,
+          reason: "identifier reference mentions DecoratedService",
+        }),
+      ]),
+    );
+
+    const consumerReference = approximateReferences.find(
+      (reference) =>
+        reference.file_path === "src/decorated-consumer.ts" &&
+        reference.reason === "identifier reference mentions DecoratedService",
+    );
+
+    expect(consumerReference).toEqual(
+      expect.objectContaining({
+        start_line: 4,
+        end_line: 4,
+        content_preview: "  service: DecoratedService,",
+      }),
+    );
+    expect(consumerReference?.content_preview).not.toContain("const first");
+  });
+
+  test("scan falls back to regex extraction when AST parsing fails", async () => {
+    await write(
+      "src/broken.ts",
+      [
+        "import { dependency } from './dep';",
+        "export function stillIndexed(",
+      ].join("\n"),
+    );
+
+    const index = await scanSourceIndex(tmpRoot);
+    const broken = index.files["src/broken.ts"];
+
+    expect(broken?.imports).toEqual([
+      expect.objectContaining({ module: "./dep", line: 1, end_line: 1 }),
+    ]);
+    expect(broken?.exports).toContain("stillIndexed");
+    expect(broken?.symbols).toEqual([
+      expect.objectContaining({
+        name: "stillIndexed",
+        kind: "function",
+        line: 2,
+        end_line: 2,
+      }),
+    ]);
+    expect(broken?.references).toEqual([]);
+  });
+
+  test("scan caps stored AST identifier references per file", async () => {
+    await write(
+      "src/reference-heavy.ts",
+      [
+        "export function referenceHeavy() {",
+        ...Array.from(
+          { length: 2500 },
+          (_, index) => `  returnValue${index};`,
+        ),
+        "}",
+      ].join("\n"),
+    );
+
+    const index = await scanSourceIndex(tmpRoot);
+    const heavy = index.files["src/reference-heavy.ts"];
+
+    expect(heavy?.references?.length).toBe(2000);
+    expect(heavy?.references_truncated).toBe(true);
+    expect(heavy?.references?.at(-1)).toEqual(
+      expect.objectContaining({
+        start_line: 2001,
+        end_line: 2001,
+      }),
+    );
+  });
+
+  test("scan excludes destructuring binding names from AST references", async () => {
+    await write(
+      "src/destructuring.ts",
+      [
+        "export function readOptions(opts: { source: string }) {",
+        "  const { source: localAlias } = opts;",
+        "  return opts.source;",
+        "}",
+      ].join("\n"),
+    );
+
+    const index = await scanSourceIndex(tmpRoot);
+    const destructuring = index.files["src/destructuring.ts"];
+
+    expect(
+      destructuring?.references?.some(
+        (reference) => reference.name === "localAlias",
+      ),
+    ).toBe(false);
+  });
+
+  test("scan excludes accessor and named function expression names from AST references", async () => {
+    await write(
+      "src/accessors.ts",
+      [
+        "class Account {",
+        "  get id() {",
+        "    return 'account';",
+        "  }",
+        "  set id(value: string) {",
+        "    this.write(value);",
+        "  }",
+        "  write(value: string) {",
+        "    return value;",
+        "  }",
+        "}",
+        "const handler = function namedHandler() {",
+        "  return new Account();",
+        "};",
+      ].join("\n"),
+    );
+
+    const index = await scanSourceIndex(tmpRoot);
+    const accessors = index.files["src/accessors.ts"];
+
+    expect(
+      accessors?.references?.some((reference) => reference.name === "id"),
+    ).toBe(false);
+    expect(
+      accessors?.references?.some(
+        (reference) => reference.name === "namedHandler",
+      ),
+    ).toBe(false);
+  });
+
+  test("scan excludes property access names from AST references", async () => {
+    await write(
+      "src/property-access.ts",
+      [
+        "export function update(values: string[], formatter: { format(value: string): string }) {",
+        "  values.push(formatter.format('x'));",
+        "  return values.map((value) => value.trim());",
+        "}",
+      ].join("\n"),
+    );
+
+    const index = await scanSourceIndex(tmpRoot);
+    const propertyAccess = index.files["src/property-access.ts"];
+
+    for (const name of ["push", "format", "map", "trim"]) {
+      expect(
+        propertyAccess?.references?.some((reference) => reference.name === name),
+      ).toBe(false);
+    }
+  });
+
+  test("scan excludes enum members and named class expressions from AST references", async () => {
+    await write(
+      "src/declaration-names.ts",
+      [
+        "enum Status {",
+        "  Active,",
+        "  Inactive,",
+        "}",
+        "const Widget = class NamedWidget {};",
+        "export function read(status: Status) {",
+        "  return Status.Active;",
+        "}",
+      ].join("\n"),
+    );
+
+    const index = await scanSourceIndex(tmpRoot);
+    const declarations = index.files["src/declaration-names.ts"];
+
+    for (const name of ["Active", "Inactive", "NamedWidget"]) {
+      expect(
+        declarations?.references?.some((reference) => reference.name === name),
+      ).toBe(false);
+    }
+  });
+
+  test("impact fallback still runs when dedupe lowers capped reference count", async () => {
+    const duplicateLines = Array.from(
+      { length: 1100 },
+      () => "  repeatedValue; repeatedValue;",
+    );
+    const sourceLines = [
+      "export function firstTargetUse() {",
+      "  targetSymbol();",
+      "}",
+      "",
+      "export function noisyReferences() {",
+      ...duplicateLines,
+      "}",
+      "",
+      "export function lateTargetUse() {",
+      "  targetSymbol();",
+      "}",
+      "",
+      "export function targetSymbol() {",
+      "  return 1;",
+      "}",
+    ];
+    const lateTargetLine =
+      sourceLines.findIndex(
+        (line, index) => index > 10 && line === "  targetSymbol();",
+      ) + 1;
+
+    await write("src/deduped-capped-references.ts", sourceLines.join("\n"));
+
+    const index = await scanSourceIndex(tmpRoot);
+    const capped = index.files["src/deduped-capped-references.ts"];
+
+    expect(capped?.references_truncated).toBe(true);
+    expect(capped?.references?.length).toBeLessThan(2000);
+    expect(
+      capped?.references?.filter(
+        (reference) => reference.name === "targetSymbol",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        start_line: 2,
+        end_line: 2,
+      }),
+    ]);
+
+    const response = await searchSourceIndex(tmpRoot, "targetSymbol", {
+      limit: 5,
+      includeImpact: true,
+      impactLimit: 2,
+    });
+    const result = response.results.find(
+      (entry) => entry.file_path === "src/deduped-capped-references.ts",
+    );
+
+    const approximateReferences =
+      result?.impact_context?.approximate_references ?? [];
+
+    expect(approximateReferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          file_path: "src/deduped-capped-references.ts",
+          start_line: 2,
+          end_line: 2,
+          reason: "identifier reference mentions targetSymbol",
+        }),
+        expect.objectContaining({
+          file_path: "src/deduped-capped-references.ts",
+          start_line: lateTargetLine - 1,
+          reason: "chunk text mentions targetSymbol",
+        }),
+      ]),
+    );
+  });
+
+  test("impact fallback searches straddling chunk tails after exact references", async () => {
+    const duplicateLines = Array.from(
+      { length: 1100 },
+      () => "  repeatedValue; repeatedValue;",
+    );
+    const sourceLines = [
+      "export function allTargetUses() {",
+      "  targetSymbol();",
+      ...duplicateLines,
+      "  targetSymbol();",
+      "}",
+      "",
+      "export function targetSymbol() {",
+      "  return 1;",
+      "}",
+    ];
+
+    await write("src/straddling-capped-references.ts", sourceLines.join("\n"));
+
+    const index = await scanSourceIndex(tmpRoot);
+    const capped = index.files["src/straddling-capped-references.ts"];
+
+    expect(capped?.references_truncated).toBe(true);
+    expect(
+      capped?.references?.filter(
+        (reference) => reference.name === "targetSymbol",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        start_line: 2,
+        end_line: 2,
+      }),
+    ]);
+
+    const response = await searchSourceIndex(tmpRoot, "targetSymbol", {
+      limit: 5,
+      includeImpact: true,
+      impactLimit: 2,
+    });
+    const result = response.results.find(
+      (entry) => entry.file_path === "src/straddling-capped-references.ts",
+    );
+
+    const approximateReferences =
+      result?.impact_context?.approximate_references ?? [];
+
+    expect(approximateReferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          file_path: "src/straddling-capped-references.ts",
+          start_line: 2,
+          end_line: 2,
+          reason: "identifier reference mentions targetSymbol",
+        }),
+        expect.objectContaining({
+          file_path: "src/straddling-capped-references.ts",
+          start_line: 3,
+          reason: "chunk text mentions targetSymbol",
+        }),
+      ]),
+    );
+  });
+
+  test("impact references fall back to later chunks when exact references are capped", async () => {
+    const fillerLines = Array.from(
+      { length: 2100 },
+      (_, index) => `  filler${index};`,
+    );
+    const sourceLines = [
+      "export function firstTargetUse() {",
+      "  targetSymbol();",
+      ...fillerLines,
+      "}",
+      "",
+      "export function lateTargetUse() {",
+      "  targetSymbol();",
+      "}",
+      "",
+      "export function targetSymbol() {",
+      "  return 1;",
+      "}",
+    ];
+    const lateTargetLine =
+      sourceLines.findIndex(
+        (line, index) => index > 10 && line === "  targetSymbol();",
+      ) + 1;
+
+    await write("src/capped-references.ts", sourceLines.join("\n"));
+
+    const index = await scanSourceIndex(tmpRoot);
+    const capped = index.files["src/capped-references.ts"];
+
+    expect(capped?.references?.length).toBe(2000);
+    expect(
+      capped?.references?.filter(
+        (reference) => reference.name === "targetSymbol",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        start_line: 2,
+        end_line: 2,
+      }),
+    ]);
+
+    const response = await searchSourceIndex(tmpRoot, "targetSymbol", {
+      limit: 5,
+      includeImpact: true,
+      impactLimit: 2,
+    });
+    const result = response.results.find(
+      (entry) => entry.file_path === "src/capped-references.ts",
+    );
+
+    const approximateReferences =
+      result?.impact_context?.approximate_references ?? [];
+
+    expect(approximateReferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          file_path: "src/capped-references.ts",
+          start_line: 2,
+          end_line: 2,
+          reason: "identifier reference mentions targetSymbol",
+        }),
+        expect.objectContaining({
+          file_path: "src/capped-references.ts",
+          start_line: lateTargetLine - 1,
+          reason: "chunk text mentions targetSymbol",
+        }),
+      ]),
+    );
+    expect(approximateReferences).not.toContainEqual(
+      expect.objectContaining({
+        file_path: "src/capped-references.ts",
+        start_line: 1,
+        reason: "chunk text mentions targetSymbol",
+      }),
+    );
+  });
+
+  test("chunk fallback previews preserve stored CRLF line endings", async () => {
+    await write(
+      "src/crlf-target.ts",
+      "export function crlfTarget() {\n  return 1;\n}",
+    );
+    await write(
+      "src/crlf-legacy-consumer.ts",
+      [
+        "export function consumeCrlf() {",
+        "  crlfTarget();",
+        "  return crlfTarget;",
+        "}",
+      ].join("\n"),
+    );
+
+    const index = await scanSourceIndex(tmpRoot);
+    const consumer = index.files["src/crlf-legacy-consumer.ts"];
+    expect(consumer).toBeDefined();
+    if (!consumer) return;
+
+    delete consumer.references;
+    delete consumer.references_truncated;
+    for (const chunk of consumer.chunks) {
+      chunk.content = chunk.content.replaceAll("\n", "\r\n");
+    }
+    delete index.search;
+    await fs.writeFile(
+      sourceIndexPath(tmpRoot),
+      `${JSON.stringify(index, null, 2)}\n`,
+    );
+
+    const response = await searchSourceIndex(tmpRoot, "crlfTarget", {
+      limit: 5,
+      includeImpact: true,
+      impactLimit: 5,
+      impactContentChars: 200,
+    });
+    const result = response.results.find(
+      (entry) => entry.file_path === "src/crlf-target.ts",
+    );
+    const fallbackReference =
+      result?.impact_context?.approximate_references.find(
+        (reference) =>
+          reference.file_path === "src/crlf-legacy-consumer.ts" &&
+          reference.reason === "chunk text mentions crlfTarget",
+      );
+
+    expect(fallbackReference?.content_preview).toBe(
+      [
+        "export function consumeCrlf() {",
+        "  crlfTarget();",
+        "  return crlfTarget;",
+        "}",
+      ].join("\r\n"),
+    );
+  });
+
   test("search explains source matches with score breakdowns", async () => {
     await scanSourceIndex(tmpRoot);
 
@@ -459,7 +1042,9 @@ describe("source index", () => {
     await write(
       "src/consumer.ts",
       [
-        "import { requireActiveUser } from './auth';",
+        "import {",
+        "  requireActiveUser,",
+        "} from './auth';",
         "",
         "export function consumeAuth(token: string) {",
         "  return requireActiveUser(token);",
@@ -524,6 +1109,9 @@ describe("source index", () => {
           kind: "imported_by",
           precision: "exact",
           file_path: "src/consumer.ts",
+          start_line: 1,
+          end_line: 3,
+          import_line: 1,
           module: "./auth",
         }),
       ]),
@@ -537,6 +1125,8 @@ describe("source index", () => {
           kind: "text_reference",
           precision: "approximate",
           file_path: "src/consumer.ts",
+          start_line: 6,
+          end_line: 6,
         }),
       ]),
     );
@@ -628,7 +1218,17 @@ describe("source index", () => {
 
     expect(response.results[0]?.file_path).toBe("src/preamble.ts");
     expect(response.results[0]?.chunk_type).toBe("mixed");
-    expect(response.results[0]?.content).toContain("SCHEMA_VERSION");
+    expect(response.results[0]?.content).toContain("Handshake sentinel");
+
+    const constantResponse = await searchSourceIndex(tmpRoot, "SCHEMA_VERSION", {
+      limit: 1,
+    });
+    expect(constantResponse.results[0]?.file_path).toBe("src/preamble.ts");
+    expect(constantResponse.results[0]?.symbols).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "SCHEMA_VERSION", kind: "const" }),
+      ]),
+    );
   });
 
   test("status reports fresh, stale, missing, and new files", async () => {
