@@ -284,6 +284,7 @@ export async function buildQueryContext(
       dependencyLimit,
       includeImpact,
       impactLimit,
+      sourceIndex: sourceIndex ?? undefined,
     });
     if (!sourceSearch.ok && sourceSearch.error) {
       warnings.push(`Source search failed: ${sourceSearch.error.message}`);

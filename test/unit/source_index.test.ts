@@ -100,6 +100,20 @@ describe("source index", () => {
     );
   });
 
+  test("search can reuse a preloaded source index", async () => {
+    const sourceIndex = await scanSourceIndex(tmpRoot);
+    await clearSourceIndex(tmpRoot);
+
+    const response = await searchSourceIndex(tmpRoot, "active user auth", {
+      limit: 1,
+      sourceIndex,
+    });
+
+    expect(response.ok).toBe(true);
+    expect(response.results[0]?.file_path).toBe("src/auth.ts");
+    expect(await loadSourceIndex(tmpRoot)).toBeNull();
+  });
+
   test("scan uses AST extraction for TS and JS module shapes", async () => {
     await write(
       "src/module-shapes.tsx",
