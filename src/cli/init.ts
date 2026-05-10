@@ -88,12 +88,12 @@ export async function init(
   }
 
   const targets = pickTargets(flags);
-  const body = guidanceBodyForRepo(globals.repoRoot);
 
   if (flags.check) {
     return checkGuidance(targets, globals);
   }
 
+  const body = guidanceBodyForRepo(globals.repoRoot);
   const wrote: string[] = [];
   const skipped: string[] = [];
   const errors: string[] = [];

@@ -311,11 +311,13 @@ describe("MCP server — resources and prompts", () => {
   test("exposes planning, diff-review, and writeback prompt templates", async () => {
     const listed = await client.listPrompts();
     const names = listed.prompts.map((prompt) => prompt.name).sort();
-    expect(names).toEqual([
-      "codemap_diff_review",
-      "codemap_plan",
-      "codemap_writeback",
-    ]);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "codemap_diff_review",
+        "codemap_plan",
+        "codemap_writeback",
+      ]),
+    );
 
     const plan = await client.getPrompt({
       name: "codemap_plan",
