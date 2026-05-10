@@ -17,6 +17,7 @@ import { generateSkills } from "../../src/cli/generate_skills.js";
 import { indexStatus } from "../../src/cli/index_status.js";
 import { init } from "../../src/cli/init.js";
 import { rollup } from "../../src/cli/rollup.js";
+import { repairGraph } from "../../src/cli/repair_graph.js";
 import { scan } from "../../src/cli/scan.js";
 import { searchSource } from "../../src/cli/search_source.js";
 import { setup } from "../../src/cli/setup.js";
@@ -523,6 +524,46 @@ describe("CLI: doctor", () => {
     const out = JSON.parse(r.stdout);
     expect(out.summary.missing_sources).toBe(180);
     expect(out.staleness.stale_sources).toHaveLength(180);
+  });
+});
+
+// =============================================================
+// repair-graph
+// =============================================================
+
+describe("CLI: repair-graph", () => {
+  test("reports read-only graph anchor repair proposals", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(path.join(tmpRoot, "src/x.ts"), "export const x = 1;\n");
+    await seed([makeNode({ id: "a/legacy" })]);
+
+    const r = await repairGraph({ json: true }, { repoRoot: tmpRoot });
+
+    expect(r.exitCode).toBe(1);
+    const out = JSON.parse(r.stdout!);
+    expect(out.summary.legacy_anchors).toBe(1);
+    expect(out.proposals[0]).toEqual(
+      expect.objectContaining({
+        node_id: "a/legacy",
+        action: "reanchor_legacy_source",
+        legacy: true,
+        replacement_source: expect.objectContaining({
+          file_path: "src/x.ts",
+          range_hash: expect.stringMatching(/^sha256:/),
+        }),
+      }),
+    );
+  });
+
+  test("bin repair-graph --json preserves structured output", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(path.join(tmpRoot, "src/x.ts"), "export const x = 1;\n");
+    await seed([makeNode({ id: "a/legacy" })]);
+
+    const r = await runCodemapBin(["repair-graph", "--json"]);
+
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout).summary.legacy_anchors).toBe(1);
   });
 });
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * `codemap` CLI entry. Subcommands: init, show, correct, deprecate,
- * validate, doctor, rollup, setup, scan, context, changes-context,
+ * validate, doctor, repair-graph, rollup, setup, scan, context, changes-context,
  * generate-skills, benchmark-retrieval, search-source, index-status,
  * clear-index.
  *
@@ -32,6 +32,10 @@ import {
 import { indexStatus } from "../src/cli/index_status.js";
 import { init, type InitFlags } from "../src/cli/init.js";
 import { rollup } from "../src/cli/rollup.js";
+import {
+  repairGraph,
+  type RepairGraphFlags,
+} from "../src/cli/repair_graph.js";
 import { scan, type ScanFlags } from "../src/cli/scan.js";
 import {
   setup,
@@ -280,6 +284,31 @@ program
       json: cmdOpts.json as boolean | undefined,
     };
     emit(await doctor(flags, { repoRoot: opts.repo }));
+  });
+
+program
+  .command("repair-graph")
+  .description(
+    "Plan source-anchor repair actions for graph memory without writing changes.",
+  )
+  .option(
+    "--include-deprecated",
+    "Include deprecated nodes when planning source-anchor repairs.",
+  )
+  .option(
+    "--issue-limit <n>",
+    "Maximum repair proposals to show in compact output and JSON proposal arrays.",
+    parsePositiveInteger,
+  )
+  .option("--json", "Print the full structured repair report.")
+  .action(async (cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: RepairGraphFlags = {
+      includeDeprecated: cmdOpts.includeDeprecated as boolean | undefined,
+      issueLimit: cmdOpts.issueLimit as number | undefined,
+      json: cmdOpts.json as boolean | undefined,
+    };
+    emit(await repairGraph(flags, { repoRoot: opts.repo }));
   });
 
 program

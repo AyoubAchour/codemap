@@ -174,6 +174,7 @@ per turn to prevent graph spam.
 | `query_graph` | Search curated graph memory for relevant nodes, edges, match reasons, and trust metadata. |
 | `get_node` | Fetch one node by id or alias. |
 | `graph_health` | Read-only graph health report: validator warnings and source-anchor staleness. |
+| `graph_repair` | Read-only repair planner for stale, range-fresh, missing, unsafe, or legacy source anchors. |
 | `suggest_writeback` | Read-only end-of-task prompts for possible durable writeback. Never creates nodes or links. |
 | `emit_node` | Create or merge a durable repo-local finding. |
 | `link` | Create or update a typed relationship between two nodes. |
@@ -202,6 +203,8 @@ codemap deprecate <id> --reason "..." # Mark stale knowledge as deprecated
 codemap validate                      # Validate and dry-run graph repairs
 codemap doctor                        # Compact graph health summary
 codemap doctor --json                 # Full structured health report
+codemap repair-graph                  # Read-only source-anchor repair proposals
+codemap repair-graph --json           # Full structured repair report
 codemap scan                          # Build the local source index
 codemap context "auth guard"          # Graph + source context for planning
 codemap context "auth guard" --mode compact
@@ -239,6 +242,12 @@ It reports:
 
 The default output is readable in a terminal. Use `--json` when piping to other
 tools.
+
+`codemap repair-graph` turns graph-health source-anchor findings into concrete
+read-only repair proposals. It separates range-unchanged anchors that can be
+refreshed after inspection, changed ranges that need review, missing files that
+may need deprecation, and legacy full-file anchors that should be upgraded to
+range-aware source anchors.
 
 ## Memory Quality
 

@@ -2,6 +2,14 @@
 
 All notable user-facing changes to Codemap are documented here.
 
+## Unreleased
+
+### Added
+
+- `graph_repair` / `codemap repair-graph`, a read-only graph memory repair
+  planner that turns stale, range-fresh, missing, unsafe, unreadable, and
+  legacy source anchors into concrete replacement or review proposals.
+
 ## 0.7.0 - 2026-05-10
 
 This release focuses on making Codemap faster and more accurate for everyday

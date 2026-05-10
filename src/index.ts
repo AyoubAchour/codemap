@@ -7,6 +7,7 @@ import { registerEmitNode } from "./tools/emit_node.js";
 import { registerGetIndexStatus } from "./tools/get_index_status.js";
 import { registerGetNode } from "./tools/get_node.js";
 import { registerGraphHealth } from "./tools/graph_health.js";
+import { registerGraphRepair } from "./tools/graph_repair.js";
 import { registerIndexCodebase } from "./tools/index_codebase.js";
 import { registerLink } from "./tools/link.js";
 import { registerQueryContext } from "./tools/query_context.js";
@@ -38,6 +39,7 @@ export interface RegisterToolsOptions {
  *
  * Curated memory graph:
  *  - graph_health
+ *  - graph_repair    (read-only source-anchor repair proposals)
  *  - query_graph
  *  - get_node
  *  - suggest_writeback (read-only end-of-task writeback prompts)
@@ -57,6 +59,7 @@ export function registerTools(
   registerGetIndexStatus(server, options);
   registerClearIndex(server, options);
   registerGraphHealth(server, options);
+  registerGraphRepair(server, options);
   registerQueryGraph(server, options);
   registerGetNode(server, options);
   registerSuggestWriteback(server, options);
