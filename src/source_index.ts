@@ -295,6 +295,16 @@ interface SearchReadySnapshot {
   postings: Map<string, SourceSearchPosting[]>;
 }
 
+interface SearchReadyInput {
+  chunks: SourceChunk[];
+  compatibleSearch?: SourceSearchIndex;
+}
+
+interface LoadedSourceIndexStatus {
+  status: SourceIndexStatus;
+  searchReadyInput: SearchReadyInput;
+}
+
 const MAX_MATCH_REASONS = 8;
 const SEARCH_READY_CACHE_LIMIT = 8;
 const searchReadyCache = new Map<string, SearchReadySnapshot>();
@@ -419,15 +429,23 @@ export async function getSourceIndexStatus(
     };
   }
 
+  return (await loadedSourceIndexStatus(repoRoot, index, indexPath)).status;
+}
+
+async function loadedSourceIndexStatus(
+  repoRoot: string,
+  index: SourceIndex,
+  indexPath: string,
+): Promise<LoadedSourceIndexStatus> {
   const { candidates: currentFiles } = await findCandidateFiles(repoRoot, {
     maxFileBytes: index.max_file_bytes ?? DEFAULT_MAX_FILE_BYTES,
   });
   const currentByPath = new Map(
     currentFiles.map((file) => [file.file_path, file] as const),
   );
-  const chunks = sourceChunks(index);
+  const searchReadyInput = searchReadyInputForIndex(index);
   const searchIndexed = Boolean(index.search);
-  const searchIndexStale = !isSearchIndexCompatible(index, chunks);
+  const searchIndexStale = !searchReadyInput.compatibleSearch;
   let staleFiles = 0;
   let missingFiles = 0;
   let newFiles = 0;
@@ -462,22 +480,25 @@ export async function getSourceIndexStatus(
   }
 
   return {
-    indexed: true,
-    index_path: indexPath,
-    updated_at: index.updated_at,
-    files_indexed: index.stats.files_indexed,
-    chunks_indexed: index.stats.chunks_indexed,
-    symbols_indexed: index.stats.symbols_indexed,
-    stale_files: staleFiles,
-    missing_files: missingFiles,
-    new_files: newFiles,
-    search_indexed: searchIndexed,
-    search_index_stale: searchIndexStale,
-    fresh:
-      staleFiles === 0 &&
-      missingFiles === 0 &&
-      newFiles === 0 &&
-      !searchIndexStale,
+    status: {
+      indexed: true,
+      index_path: indexPath,
+      updated_at: index.updated_at,
+      files_indexed: index.stats.files_indexed,
+      chunks_indexed: index.stats.chunks_indexed,
+      symbols_indexed: index.stats.symbols_indexed,
+      stale_files: staleFiles,
+      missing_files: missingFiles,
+      new_files: newFiles,
+      search_indexed: searchIndexed,
+      search_index_stale: searchIndexStale,
+      fresh:
+        staleFiles === 0 &&
+        missingFiles === 0 &&
+        newFiles === 0 &&
+        !searchIndexStale,
+    },
+    searchReadyInput,
   };
 }
 
@@ -536,7 +557,11 @@ export async function searchSourceIndex(
   }
 
   const warnings: string[] = [];
-  const status = await getSourceIndexStatus(repoRoot);
+  const { status, searchReadyInput } = await loadedSourceIndexStatus(
+    repoRoot,
+    index,
+    sourceIndexPath(repoRoot),
+  );
   if (
     status.indexed &&
     (status.stale_files > 0 ||
@@ -553,7 +578,7 @@ export async function searchSourceIndex(
     );
   }
 
-  const searchReady = getSearchReadySnapshot(repoRoot, index);
+  const searchReady = getSearchReadySnapshot(repoRoot, index, searchReadyInput);
   const relatedNodesByFile = await loadRelatedNodesByFile(repoRoot);
   const reverseImportIndex =
     dependencyLimit > 0 || includeImpact
@@ -1022,19 +1047,26 @@ function isSearchIndexCompatible(
   return true;
 }
 
+function searchReadyInputForIndex(index: SourceIndex): SearchReadyInput {
+  const chunks = sourceChunks(index);
+  const compatibleSearch =
+    index.search && isSearchIndexCompatible(index, chunks)
+      ? index.search
+      : undefined;
+  return { chunks, compatibleSearch };
+}
+
 function getSearchReadySnapshot(
   repoRoot: string,
   index: SourceIndex,
+  input = searchReadyInputForIndex(index),
 ): SearchReadySnapshot {
-  const chunks = sourceChunks(index);
+  const { chunks, compatibleSearch } = input;
   const cacheKey = searchReadyCacheKey(repoRoot, index, chunks);
   const cached = searchReadyCache.get(cacheKey);
   if (cached) return cached;
 
-  const search =
-    index.search && isSearchIndexCompatible(index, chunks)
-      ? index.search
-      : buildSearchIndex(chunks);
+  const search = compatibleSearch ?? buildSearchIndex(chunks);
   const snapshot: SearchReadySnapshot = {
     chunks,
     document_frequencies: new Map(
