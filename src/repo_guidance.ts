@@ -81,6 +81,11 @@ interface GeneratedRepoFile {
   areaName?: string;
 }
 
+interface GeneratedFileStatus {
+  current: boolean;
+  staleAreaNames: string[];
+}
+
 interface RepoSkillRender {
   body: string;
   files: GeneratedRepoFile[];
@@ -123,10 +128,11 @@ export async function generateRepoSkills(
   const targetPath = path.resolve(repoRoot, options.outputPath ?? DEFAULT_OUTPUT);
   const render = await repoSkillRender(repoRoot, targetPath);
   const existingMain = await readOptional(targetPath);
-  const current = await generatedFilesCurrent(render.files);
-  const areaDrift = compareAreaHashes(
-    parseAreaHashes(existingMain),
-    render.areaHashes,
+  const fileStatus = await generatedFileStatus(render.files);
+  const current = fileStatus.current;
+  const areaDrift = includeAreaFileDrift(
+    compareAreaHashes(parseAreaHashes(existingMain), render.areaHashes),
+    fileStatus.staleAreaNames,
   );
   const warnings: string[] = [];
 
@@ -332,7 +338,7 @@ function buildAreas(input: {
       const staleOrLowMemory = relevantMemory.filter(
         (item) => item.trust === "low" || item.freshness === "stale",
       ).length;
-      const sortedFiles = files.sort(
+      const sortedFiles = [...files].sort(
         (a, b) =>
           b.symbols.length - a.symbols.length ||
           b.exports.length - a.exports.length ||
@@ -465,11 +471,25 @@ function summarizeExports(
     .slice(0, limit);
 }
 
-async function generatedFilesCurrent(files: GeneratedRepoFile[]): Promise<boolean> {
+async function generatedFileStatus(
+  files: GeneratedRepoFile[],
+): Promise<GeneratedFileStatus> {
   const checks = await Promise.all(
-    files.map(async (file) => (await readOptional(file.path)) === file.body),
+    files.map(async (file) => ({
+      file,
+      current: (await readOptional(file.path)) === file.body,
+    })),
   );
-  return checks.every(Boolean);
+  return {
+    current: checks.every((check) => check.current),
+    staleAreaNames: [
+      ...new Set(
+        checks
+          .filter((check) => !check.current && check.file.areaName)
+          .map((check) => check.file.areaName as string),
+      ),
+    ].sort(),
+  };
 }
 
 async function writeGeneratedFiles(files: GeneratedRepoFile[]): Promise<void> {
@@ -539,6 +559,32 @@ function compareAreaHashes(
   return { metadata_found: true, added, changed, removed, unchanged };
 }
 
+function includeAreaFileDrift(
+  drift: RepoGuidanceAreaDrift,
+  staleAreaNames: string[],
+): RepoGuidanceAreaDrift {
+  if (staleAreaNames.length === 0) return drift;
+
+  const added = new Set(drift.added);
+  const removed = new Set(drift.removed);
+  const changed = new Set(drift.changed);
+  const unchanged = new Set(drift.unchanged);
+
+  for (const name of staleAreaNames) {
+    if (added.has(name) || removed.has(name)) continue;
+    changed.add(name);
+    unchanged.delete(name);
+  }
+
+  return {
+    metadata_found: drift.metadata_found,
+    added: [...added].sort(),
+    changed: [...changed].sort(),
+    removed: [...removed].sort(),
+    unchanged: [...unchanged].sort(),
+  };
+}
+
 function repoSkillNextSteps(input: {
   check: boolean;
   stdout: boolean;
@@ -585,7 +631,7 @@ function sourceAreasForNode(node: Node): string[] {
 }
 
 function areaNameForPath(filePath: string): string {
-  return filePath.includes("/") ? filePath.split("/")[0] ?? filePath : ".";
+  return filePath.includes("/") ? filePath.split("/")[0] ?? filePath : "root";
 }
 
 function slugAreaName(name: string): string {
@@ -593,7 +639,7 @@ function slugAreaName(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return slug.length > 0 ? slug : "root";
+  return slug.length > 0 && slug !== "." ? slug : "root";
 }
 
 function memorySort(a: RepoSkillMemory, b: RepoSkillMemory): number {

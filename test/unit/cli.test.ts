@@ -1258,6 +1258,10 @@ describe("CLI: source index", () => {
     ].join("\n");
     await fs.writeFile(path.join(tmpRoot, "src", "auth.ts"), authSource);
     await fs.writeFile(
+      path.join(tmpRoot, "root.ts"),
+      "export const ROOT_FLAG = true;\n",
+    );
+    await fs.writeFile(
       path.join(tmpRoot, "test", "auth.test.ts"),
       "import { requireActiveUser } from '../src/auth';\nrequireActiveUser();\n",
     );
@@ -1287,6 +1291,7 @@ describe("CLI: source index", () => {
     expect(out.generated_files).toEqual(
       expect.arrayContaining([
         ".codemap/skills/codemap-repo/SKILL.md",
+        ".codemap/skills/codemap-repo/areas/root.md",
         ".codemap/skills/codemap-repo/areas/src.md",
       ]),
     );
@@ -1303,8 +1308,22 @@ describe("CLI: source index", () => {
     const body = await fs.readFile(skillPath, "utf8");
     expect(body).toContain("Generated Codemap repo context");
     expect(body).toContain("Repo Area Slices");
+    expect(body).toContain("areas/root.md");
     expect(body).toContain("areas/src.md");
     expect(body).toContain("changes_context");
+    const rootArea = await fs.readFile(
+      path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", "root.md"),
+      "utf8",
+    );
+    expect(rootArea).toContain("Codemap Area: root");
+    expect(rootArea).toContain("root.ts");
+    const hiddenRootAreaExists = await fs.stat(
+      path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", ".md"),
+    ).then(
+      () => true,
+      () => false,
+    );
+    expect(hiddenRootAreaExists).toBe(false);
     const srcArea = await fs.readFile(
       path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", "src.md"),
       "utf8",
@@ -1349,6 +1368,33 @@ describe("CLI: source index", () => {
       expect.objectContaining({
         metadata_found: true,
         changed: expect.arrayContaining(["src"]),
+      }),
+    );
+    expect(out.next_steps.join("\n")).toContain("Changed areas: src");
+  });
+
+  test("generate-skills --check reports stale area files", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      "export function requireActiveUser() { return true; }\n",
+    );
+    await scan({}, { repoRoot: tmpRoot });
+    await generateSkills({}, { repoRoot: tmpRoot });
+
+    await fs.rm(
+      path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", "src.md"),
+    );
+    const check = await generateSkills({ check: true }, { repoRoot: tmpRoot });
+
+    expect(check.exitCode).toBe(1);
+    const out = JSON.parse(check.stdout!);
+    expect(out.current).toBe(false);
+    expect(out.summary.area_drift).toEqual(
+      expect.objectContaining({
+        metadata_found: true,
+        changed: expect.arrayContaining(["src"]),
+        unchanged: expect.not.arrayContaining(["src"]),
       }),
     );
     expect(out.next_steps.join("\n")).toContain("Changed areas: src");
