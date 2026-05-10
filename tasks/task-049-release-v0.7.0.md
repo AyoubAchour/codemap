@@ -1,6 +1,6 @@
 # Task 049: Release v0.7.0
 
-**Status:** in-progress
+**Status:** done
 **Phase:** Phase 4 / release
 **Started:** 2026-05-10
 **Depends on:** task-041, task-043, task-044, task-045
@@ -64,10 +64,10 @@ graph storage compatible and the source index rebuildable.
 - [x] Changelog and README describe the `0.7.0` release.
 - [x] Local release gates pass.
 - [x] Release PR is opened.
-- [ ] Release PR is merged.
-- [ ] `codemap-mcp@0.7.0` is published to npm.
-- [ ] Global install reports `codemap --version` as `0.7.0`.
-- [ ] GitHub release `v0.7.0` is published.
+- [x] Release PR is merged.
+- [x] `codemap-mcp@0.7.0` is published to npm.
+- [x] Global install reports `codemap --version` as `0.7.0`.
+- [x] GitHub release `v0.7.0` is published.
 
 ## Notes
 
@@ -84,3 +84,8 @@ As of release prep, npm latest still resolves to `codemap-mcp@0.6.0`; publish
 `0.7.0` only after the release PR is reviewed and merged.
 
 Release PR: https://github.com/AyoubAchour/codemap/pull/41
+
+Publish verification passed on 2026-05-10: `npm publish --access public`,
+`npm view codemap-mcp version dist-tags --json --registry=https://registry.npmjs.org/ --prefer-online`,
+global `npm i -g codemap-mcp@0.7.0 --prefer-online --registry=https://registry.npmjs.org/`,
+`codemap --version`, `codemap init --check`, and GitHub release `v0.7.0`.
