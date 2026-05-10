@@ -207,7 +207,7 @@ codemap context "auth guard"          # Graph + source context for planning
 codemap context "auth guard" --mode compact
 codemap changes-context               # Diff impact, stale graph anchors, tests/docs
 codemap suggest-writeback --summary "what changed"
-codemap generate-skills               # Generate repo-local orientation guidance
+codemap generate-skills               # Generate repo-local skill guidance and area slices
 codemap generate-skills --check       # Check generated repo guidance freshness
 codemap search-source "auth guard"    # Search indexed source chunks
 codemap search-source "requireActiveUser" --include-impact
@@ -299,6 +299,7 @@ Optional:
 Usually ignored:
 
 - `.codemap/index/source.json` because it is a rebuildable cache
+- `.codemap/skills/` because generated repo guidance can be regenerated
 
 ## Development
 

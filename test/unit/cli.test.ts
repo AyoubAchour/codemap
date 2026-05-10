@@ -1247,20 +1247,157 @@ describe("CLI: source index", () => {
   });
 
   test("generate-skills writes generated repo guidance and --check detects current", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.mkdir(path.join(tmpRoot, "test"), { recursive: true });
+    const authSource = [
+      "export function requireActiveUser() {",
+      "  return { id: 'user_123' };",
+      "}",
+      "export const AUTH_SCOPE = 'active-user';",
+      "",
+    ].join("\n");
+    await fs.writeFile(path.join(tmpRoot, "src", "auth.ts"), authSource);
+    await fs.writeFile(
+      path.join(tmpRoot, "root.ts"),
+      "export const ROOT_FLAG = true;\n",
+    );
+    await fs.writeFile(
+      path.join(tmpRoot, "test", "auth.test.ts"),
+      "import { requireActiveUser } from '../src/auth';\nrequireActiveUser();\n",
+    );
     await scan({}, { repoRoot: tmpRoot });
+    await seed([
+      makeNode({
+        id: "auth/active-user",
+        kind: "invariant",
+        name: "Active user invariant",
+        sources: [
+          {
+            file_path: "src/auth.ts",
+            line_range: [1, 4],
+            content_hash: hashBuffer(Buffer.from(authSource)),
+          },
+        ],
+        tags: ["src"],
+        confidence: 0.95,
+        last_verified_at: "2026-05-10T12:00:00Z",
+      }),
+    ]);
     const generated = await generateSkills({}, { repoRoot: tmpRoot });
 
     expect(generated.exitCode).toBe(0);
     const out = JSON.parse(generated.stdout!);
     expect(out.wrote).toBe(true);
+    expect(out.generated_files).toEqual(
+      expect.arrayContaining([
+        ".codemap/skills/codemap-repo/SKILL.md",
+        ".codemap/skills/codemap-repo/areas/root.md",
+        ".codemap/skills/codemap-repo/areas/src.md",
+      ]),
+    );
+    expect(out.summary.area_files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "src",
+          file_path: ".codemap/skills/codemap-repo/areas/src.md",
+          high_trust_memory: 1,
+        }),
+      ]),
+    );
     const skillPath = path.join(tmpRoot, out.target_path);
     const body = await fs.readFile(skillPath, "utf8");
     expect(body).toContain("Generated Codemap repo context");
+    expect(body).toContain("Repo Area Slices");
+    expect(body).toContain("areas/root.md");
+    expect(body).toContain("areas/src.md");
     expect(body).toContain("changes_context");
+    const rootArea = await fs.readFile(
+      path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", "root.md"),
+      "utf8",
+    );
+    expect(rootArea).toContain("Codemap Area: root");
+    expect(rootArea).toContain("root.ts");
+    const hiddenRootAreaExists = await fs.stat(
+      path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", ".md"),
+    ).then(
+      () => true,
+      () => false,
+    );
+    expect(hiddenRootAreaExists).toBe(false);
+    const srcArea = await fs.readFile(
+      path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", "src.md"),
+      "utf8",
+    );
+    expect(srcArea).toContain("Codemap Area: src");
+    expect(srcArea).toContain("auth/active-user");
+    expect(srcArea).toContain("area_hash");
 
     const check = await generateSkills({ check: true }, { repoRoot: tmpRoot });
     expect(check.exitCode).toBe(0);
-    expect(JSON.parse(check.stdout!).current).toBe(true);
+    const checked = JSON.parse(check.stdout!);
+    expect(checked.current).toBe(true);
+    expect(checked.summary.area_drift).toEqual(
+      expect.objectContaining({
+        metadata_found: true,
+        changed: [],
+        removed: [],
+      }),
+    );
+  });
+
+  test("generate-skills --check reports area-level drift", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      "export function requireActiveUser() { return true; }\n",
+    );
+    await scan({}, { repoRoot: tmpRoot });
+    await generateSkills({}, { repoRoot: tmpRoot });
+
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "billing.ts"),
+      "export function collectInvoice() { return true; }\n",
+    );
+    await scan({}, { repoRoot: tmpRoot });
+    const check = await generateSkills({ check: true }, { repoRoot: tmpRoot });
+
+    expect(check.exitCode).toBe(1);
+    const out = JSON.parse(check.stdout!);
+    expect(out.current).toBe(false);
+    expect(out.summary.area_drift).toEqual(
+      expect.objectContaining({
+        metadata_found: true,
+        changed: expect.arrayContaining(["src"]),
+      }),
+    );
+    expect(out.next_steps.join("\n")).toContain("Changed areas: src");
+  });
+
+  test("generate-skills --check reports stale area files", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      "export function requireActiveUser() { return true; }\n",
+    );
+    await scan({}, { repoRoot: tmpRoot });
+    await generateSkills({}, { repoRoot: tmpRoot });
+
+    await fs.rm(
+      path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", "src.md"),
+    );
+    const check = await generateSkills({ check: true }, { repoRoot: tmpRoot });
+
+    expect(check.exitCode).toBe(1);
+    const out = JSON.parse(check.stdout!);
+    expect(out.current).toBe(false);
+    expect(out.summary.area_drift).toEqual(
+      expect.objectContaining({
+        metadata_found: true,
+        changed: expect.arrayContaining(["src"]),
+        unchanged: expect.not.arrayContaining(["src"]),
+      }),
+    );
+    expect(out.next_steps.join("\n")).toContain("Changed areas: src");
   });
 
   test("generate-skills builds content and response metadata from one repo snapshot", async () => {
