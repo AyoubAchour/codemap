@@ -1,6 +1,6 @@
 # Task 056: Release v0.8.0
 
-**Status:** in-progress
+**Status:** done
 **Phase:** Phase 4 / release
 **Started:** 2026-05-11
 **Depends on:** task-050, task-051, task-052, task-053, task-054, task-055
@@ -62,10 +62,10 @@ disabled by default.
 - [x] Changelog and README describe the `0.8.0` release.
 - [x] Local release gates pass.
 - [x] Release PR is opened.
-- [ ] Release PR is merged.
-- [ ] `codemap-mcp@0.8.0` is published to npm.
-- [ ] Global install reports `codemap --version` as `0.8.0`.
-- [ ] GitHub release `v0.8.0` is published.
+- [x] Release PR is merged.
+- [x] `codemap-mcp@0.8.0` is published to npm.
+- [x] Global install reports `codemap --version` as `0.8.0`.
+- [x] GitHub release `v0.8.0` is published.
 
 ## Notes
 
@@ -85,3 +85,15 @@ Local release gates passed on 2026-05-11:
 - `bun run bin/codemap.ts init --check`
 
 Release PR: https://github.com/AyoubAchour/codemap/pull/55
+
+Post-merge release verification passed on 2026-05-11:
+
+- PR #55 merged to `main`.
+- `npm publish --access public` published `codemap-mcp@0.8.0`.
+- `npm view codemap-mcp version dist-tags --json --prefer-online` reports
+  `latest` as `0.8.0`.
+- `npm i -g codemap-mcp@0.8.0 --prefer-online --registry=https://registry.npmjs.org/`
+  completed successfully.
+- `codemap --version` reports `0.8.0`.
+- `codemap init --check` reports AGENTS.md current for version `0.8.0`.
+- GitHub release: https://github.com/AyoubAchour/codemap/releases/tag/v0.8.0
