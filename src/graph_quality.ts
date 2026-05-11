@@ -60,6 +60,7 @@ export interface RankGraphQualityOptions {
 }
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const UNRATED_UTILITY_FACTOR = 0.8;
 
 export function rankGraphResultByQuality(
 	result: QueryResult,
@@ -121,7 +122,7 @@ export function filterStalenessReportForNodes(
 	}
 	const nodeIds = new Set(nodes.map((node) => node.id));
 	return {
-		checked_sources: nodes.reduce((sum, node) => sum + node.sources.length, 0),
+		checked_sources: staleness.checked_sources,
 		stale_sources: staleness.stale_sources.filter((source) =>
 			nodeIds.has(source.node_id),
 		),
@@ -296,7 +297,7 @@ function verificationAgeFactor(ageDays: number | null): number {
 }
 
 function utilityFactor(utilityScore: number | undefined): number {
-	if (utilityScore === undefined) return 0.72;
+	if (utilityScore === undefined) return UNRATED_UTILITY_FACTOR;
 	return clamp01(utilityScore);
 }
 
@@ -377,7 +378,7 @@ function trustTier(input: {
 	if (
 		input.freshness === "fresh" &&
 		input.confidence >= 0.8 &&
-		(input.metadata?.utility_score ?? 0.8) >= 0.55 &&
+		(input.metadata?.utility_score ?? UNRATED_UTILITY_FACTOR) >= 0.55 &&
 		input.metadata?.maturity !== "draft" &&
 		input.score >= 0.82
 	) {
