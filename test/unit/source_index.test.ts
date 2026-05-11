@@ -809,16 +809,39 @@ describe("source index", () => {
   });
 
   test("scan reports files skipped by source-index filters", async () => {
-    await write("src/readme.md", "not a supported source extension");
+    await write("src/readme.md", "Markdown docs are indexed for retrieval");
+    await write("src/notes.txt", "not a supported source extension");
     await write("src/client.generated.ts", "export function generated() {}");
     await write("src/huge.ts", "x".repeat(257 * 1024));
 
     const index = await scanSourceIndex(tmpRoot);
 
-    expect(index.files["src/readme.md"]).toBeUndefined();
+    expect(index.files["src/readme.md"]?.language).toBe("markdown");
+    expect(index.files["src/notes.txt"]).toBeUndefined();
     expect(index.files["src/client.generated.ts"]).toBeUndefined();
     expect(index.files["src/huge.ts"]).toBeUndefined();
     expect(index.stats.files_skipped).toBeGreaterThanOrEqual(3);
+  });
+
+  test("markdown files use fallback extraction even when content looks like TypeScript", async () => {
+    await write(
+      "docs/runbook.md",
+      [
+        "export function markdownAstProbe() {",
+        "  return helperValue;",
+        "}",
+        "const helperValue = 1;",
+      ].join("\n"),
+    );
+
+    const index = await scanSourceIndex(tmpRoot);
+    const file = index.files["docs/runbook.md"];
+
+    expect(file?.language).toBe("markdown");
+    expect(file?.symbols.map((symbol) => symbol.name)).toEqual([
+      "markdownAstProbe",
+    ]);
+    expect(file?.references).toEqual([]);
   });
 
   test("search returns related graph nodes for matching source files", async () => {

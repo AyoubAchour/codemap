@@ -10,6 +10,7 @@ import { hashBuffer } from "../../src/staleness.js";
 import type { Node } from "../../src/types.js";
 
 let tmpRoot: string;
+const repoRoot = path.resolve(import.meta.dir, "../..");
 
 beforeEach(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codemap-retrieval-"));
@@ -20,6 +21,87 @@ afterEach(async () => {
 });
 
 describe("retrieval benchmark", () => {
+  test("bundled Codemap suite covers harder retrieval scenarios", async () => {
+    const suite = JSON.parse(
+      await fs.readFile(
+        path.join(repoRoot, "benchmarks", "retrieval.codemap.json"),
+        "utf8",
+      ),
+    ) as {
+      queries: Array<{
+        id: string;
+        expected_files?: string[];
+        tags?: string[];
+      }>;
+    };
+    const tags = new Set(suite.queries.flatMap((query) => query.tags ?? []));
+    const ids = new Set(suite.queries.map((query) => query.id));
+
+    expect(suite.queries.length).toBeGreaterThanOrEqual(12);
+    expect([...tags].sort()).toEqual(
+      expect.arrayContaining([
+        "semantic",
+        "typo",
+        "impact",
+        "renamed-symbol",
+        "stale-graph",
+        "docs",
+        "tests",
+      ]),
+    );
+    expect([...ids].sort()).toEqual(
+      expect.arrayContaining([
+        "semantic-agent-onboarding",
+        "typo-source-index",
+        "renamed-reexport-ast",
+        "docs-task-055",
+        "tests-retrieval-benchmark",
+      ]),
+    );
+    expect(
+      suite.queries.some((query) =>
+        (query.expected_files ?? []).some((filePath) =>
+          filePath.startsWith("tasks/"),
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      suite.queries.some((query) =>
+        (query.expected_files ?? []).some((filePath) =>
+          filePath.startsWith("test/"),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  test("runs a non-Codemap fixture repo retrieval suite", async () => {
+    await fs.rm(tmpRoot, { recursive: true, force: true });
+    await fs.cp(
+      path.join(repoRoot, "benchmarks", "fixtures", "taskflow-app"),
+      tmpRoot,
+      { recursive: true },
+    );
+    await scanSourceIndex(tmpRoot);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "benchmarks/retrieval.fixture.json",
+      limit: 5,
+      maxContentChars: 200,
+      dependencyLimit: 1,
+      includeImpact: true,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.summary.query_count).toBeGreaterThanOrEqual(6);
+    expect(response.summary.files.hit_rate_at_k).toBe(1);
+    expect(response.summary.files.recall_at_k).toBeGreaterThanOrEqual(0.75);
+    expect(response.summary.average_source_file_diversity).toBeGreaterThan(0);
+    expect(
+      [...new Set(response.results.flatMap((result) => result.tags))].sort(),
+    ).toEqual(expect.arrayContaining(["semantic", "typo", "docs", "tests"]));
+  });
+
   test("runs a local suite and reports file/node retrieval metrics", async () => {
     const authSource = [
       "export function requireActiveUser(token: string) {",
@@ -129,6 +211,41 @@ describe("retrieval benchmark", () => {
     if (!response.ok) throw new Error(response.error.message);
     expect(response.results[0]?.files.returned).toEqual(["src/auth.ts"]);
     expect(response.results[0]?.files.precision_at_k).toBe(1);
+  });
+
+  test("refreshes a stale source index by default", async () => {
+    await write("src/old.ts", "export const OLD_MARKER = true;\n");
+    await scanSourceIndex(tmpRoot);
+    await write("docs/runbook.md", "fresh benchmark runbook marker\n");
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "fresh benchmark suite",
+          queries: [
+            {
+              id: "fresh-doc",
+              query: "fresh benchmark runbook marker",
+              expected_files: ["docs/runbook.md"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 3,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.source.fresh).toBe(true);
+    expect(response.results[0]?.files.returned).toContain("docs/runbook.md");
+    expect(response.summary.files.hit_rate_at_k).toBe(1);
   });
 
   test("accepts node-only expectations", async () => {

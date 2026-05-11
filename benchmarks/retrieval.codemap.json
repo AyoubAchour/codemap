@@ -59,6 +59,85 @@
         "bin/codemap.ts"
       ],
       "tags": ["setup", "onboarding"]
+    },
+    {
+      "id": "semantic-agent-onboarding",
+      "query": "make coding agents follow repo memory lifecycle without relying on chat reminders guidance freshness contract",
+      "expected_files": [
+        "src/instructions.ts",
+        "src/guidance.ts",
+        "src/setup.ts"
+      ],
+      "tags": ["semantic", "onboarding", "agent-compliance"]
+    },
+    {
+      "id": "typo-source-index",
+      "query": "sorce indx frshness seach chunks symbols stale files",
+      "expected_files": [
+        "src/source_index.ts",
+        "src/tools/search_source.ts",
+        "src/tools/get_index_status.ts"
+      ],
+      "tags": ["typo", "source-index"]
+    },
+    {
+      "id": "cross-file-change-impact",
+      "query": "after a diff what imports this what tests docs and writeback are likely affected",
+      "expected_files": [
+        "src/changes_context.ts",
+        "src/source_index.ts",
+        "src/writeback_suggestions.ts",
+        "test/unit/cli.test.ts"
+      ],
+      "tags": ["impact", "cross-file", "tests"]
+    },
+    {
+      "id": "renamed-reexport-ast",
+      "query": "renamed re-export local symbol as public export AST extraction should not leak local name",
+      "expected_files": [
+        "src/source_index.ts",
+        "test/unit/source_index.test.ts"
+      ],
+      "tags": ["renamed-symbol", "source-index", "ast"]
+    },
+    {
+      "id": "stale-graph-anchor-repair",
+      "query": "stale graph source anchors unchanged ranges legacy reanchor repair proposals",
+      "expected_files": [
+        "src/graph_repair.ts",
+        "src/graph_health.ts",
+        "src/staleness.ts"
+      ],
+      "tags": ["stale-graph", "repair", "memory-quality"]
+    },
+    {
+      "id": "docs-task-055",
+      "query": "larger retrieval benchmark suite semantic typo docs tests fixture retrieval complexity before embeddings",
+      "expected_files": [
+        "tasks/task-055-retrieval-benchmark-suite.md",
+        "tasks/task-052-semantic-retrieval-layer.md",
+        "tasks/README.md"
+      ],
+      "tags": ["docs", "semantic", "benchmark"]
+    },
+    {
+      "id": "tests-retrieval-benchmark",
+      "query": "benchmark thresholds precision recall MRR fixture suite tests",
+      "expected_files": [
+        "test/unit/retrieval_benchmark.test.ts",
+        "src/retrieval_benchmark.ts"
+      ],
+      "tags": ["tests", "benchmark"]
+    },
+    {
+      "id": "optional-semantic-gating",
+      "query": "optional embeddings reranker local first gated by benchmark misses not required cloud",
+      "expected_files": [
+        "tasks/task-052-semantic-retrieval-layer.md",
+        "src/retrieval_benchmark.ts",
+        "tasks/task-055-retrieval-benchmark-suite.md"
+      ],
+      "tags": ["semantic", "embeddings", "benchmark"]
     }
   ]
 }

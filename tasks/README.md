@@ -132,7 +132,7 @@ Maintained manually. Update status as tasks land.
 | 052 | Optional semantic retrieval layer | todo | Phase 4 / retrieval | [task-052-semantic-retrieval-layer.md](task-052-semantic-retrieval-layer.md) |
 | 053 | Watch mode and freshness daemon | todo | Phase 4 / performance | [task-053-watch-mode-freshness-daemon.md](task-053-watch-mode-freshness-daemon.md) |
 | 054 | Agentic writeback quality signals | todo | Phase 4 / memory quality | [task-054-agentic-writeback-quality.md](task-054-agentic-writeback-quality.md) |
-| 055 | Larger retrieval benchmark suite | todo | Phase 4 / evaluation | [task-055-retrieval-benchmark-suite.md](task-055-retrieval-benchmark-suite.md) |
+| 055 | Larger retrieval benchmark suite | done | Phase 4 / evaluation | [task-055-retrieval-benchmark-suite.md](task-055-retrieval-benchmark-suite.md) |
 
 ---
 
