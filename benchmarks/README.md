@@ -10,6 +10,11 @@ Run the default suite from the repository root:
 codemap benchmark-retrieval --refresh-index if_stale
 ```
 
+Semantic retrieval and reranking are disabled by default. The CLI currently
+accepts only `--semantic-provider disabled` and `--reranker-provider disabled`;
+provider experiments should be wired through the benchmark adapter interfaces
+first, then compared against the same suite before runtime retrieval changes.
+
 The default suite lives at `benchmarks/retrieval.codemap.json`. It should cover
 more than happy-path symbol lookup:
 

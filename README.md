@@ -231,7 +231,10 @@ the current retrieval stack: hit rate, precision/recall@K, MRR, diversity,
 latency, and response size. The bundled suite includes semantic, typo,
 cross-file impact, renamed-symbol, stale-graph, docs, and tests cases, plus a
 small non-Codemap fixture under `benchmarks/fixtures/`. Use it before adding
-heavier retrieval machinery.
+heavier retrieval machinery. Semantic retrieval and reranking are disabled by
+default; the CLI currently accepts only `--semantic-provider disabled` and
+`--reranker-provider disabled`, while adapter experiments can be benchmarked
+programmatically.
 
 ## Graph Health
 

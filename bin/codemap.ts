@@ -96,6 +96,13 @@ function parseUnitInterval(value: string): number {
   return parsed;
 }
 
+function parseDisabledProvider(value: string): "disabled" {
+  if (value === "disabled") return "disabled";
+  throw new InvalidArgumentError(
+    'semantic provider must be "disabled" in this build; adapter experiments are available through the benchmark API.',
+  );
+}
+
 function parseRefreshIndex(value: string): SourceRefreshMode {
   if (
     value !== "never" &&
@@ -470,6 +477,16 @@ program
     "Exit 1 if node hit_rate_at_k is below this 0..1 threshold.",
     parseUnitInterval,
   )
+  .option(
+    "--semantic-provider <provider>",
+    "Semantic retrieval provider for benchmark experiments. Current CLI build supports: disabled.",
+    parseDisabledProvider,
+  )
+  .option(
+    "--reranker-provider <provider>",
+    "Reranker provider for benchmark experiments. Current CLI build supports: disabled.",
+    parseDisabledProvider,
+  )
   .action(async (suite: string | undefined, cmdOpts: Record<string, unknown>) => {
     const opts = program.opts() as { repo: string };
     const flags: BenchmarkRetrievalFlags = {
@@ -483,6 +500,8 @@ program
       refreshIndex: cmdOpts.refreshIndex as SourceRefreshMode | undefined,
       minFileHitRate: cmdOpts.minFileHitRate as number | undefined,
       minNodeHitRate: cmdOpts.minNodeHitRate as number | undefined,
+      semanticProvider: cmdOpts.semanticProvider as "disabled" | undefined,
+      rerankerProvider: cmdOpts.rerankerProvider as "disabled" | undefined,
     };
     emit(await benchmarkRetrieval(flags, { repoRoot: opts.repo }));
   });

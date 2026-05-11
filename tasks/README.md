@@ -129,7 +129,7 @@ Maintained manually. Update status as tasks land.
 | 049 | Release v0.7.0 | done | Phase 4 / release | [task-049-release-v0.7.0.md](task-049-release-v0.7.0.md) |
 | 050 | Graph re-anchoring and memory repair | done | Phase 4 / memory quality | [task-050-graph-anchor-repair.md](task-050-graph-anchor-repair.md) |
 | 051 | Repo map and symbol graph ranking | done | Phase 4 / retrieval | [task-051-repo-map-symbol-ranking.md](task-051-repo-map-symbol-ranking.md) |
-| 052 | Optional semantic retrieval layer | todo | Phase 4 / retrieval | [task-052-semantic-retrieval-layer.md](task-052-semantic-retrieval-layer.md) |
+| 052 | Optional semantic retrieval layer | done | Phase 4 / retrieval | [task-052-semantic-retrieval-layer.md](task-052-semantic-retrieval-layer.md) |
 | 053 | Watch mode and freshness daemon | todo | Phase 4 / performance | [task-053-watch-mode-freshness-daemon.md](task-053-watch-mode-freshness-daemon.md) |
 | 054 | Agentic writeback quality signals | todo | Phase 4 / memory quality | [task-054-agentic-writeback-quality.md](task-054-agentic-writeback-quality.md) |
 | 055 | Larger retrieval benchmark suite | done | Phase 4 / evaluation | [task-055-retrieval-benchmark-suite.md](task-055-retrieval-benchmark-suite.md) |
