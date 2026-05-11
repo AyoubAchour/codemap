@@ -10,6 +10,19 @@ import {
   getSourceIndexStatus,
   type SourceIndexStatus,
 } from "./source_index.js";
+import {
+  type ResolvedSemanticReranker,
+  type ResolvedSemanticRetrieval,
+  resolveSemanticReranker,
+  resolveSemanticRetrieval,
+  runSemanticFileRetrieval,
+  runSemanticRerank,
+  type SemanticProviderKind,
+  type SemanticRerankBenchmarkOptions,
+  type SemanticRerankCandidate,
+  type SemanticRetrievalBenchmarkOptions,
+  type SemanticRetrievalFileHit,
+} from "./semantic_retrieval.js";
 
 const BENCHMARK_VERSION = 1 as const;
 const DEFAULT_LIMIT = 10;
@@ -49,6 +62,8 @@ export interface RetrievalBenchmarkOptions {
   refreshIndex?: SourceRefreshMode;
   minFileHitRate?: number;
   minNodeHitRate?: number;
+  semantic?: SemanticRetrievalBenchmarkOptions;
+  reranker?: SemanticRerankBenchmarkOptions;
 }
 
 export interface RetrievalTargetEvaluation {
@@ -73,6 +88,8 @@ export interface RetrievalBenchmarkQueryResult {
   source_file_diversity: number;
   files: RetrievalTargetEvaluation;
   nodes: RetrievalTargetEvaluation;
+  semantic: RetrievalBenchmarkSemanticResult;
+  reranker: RetrievalBenchmarkRerankerResult;
   warnings: string[];
 }
 
@@ -101,10 +118,50 @@ export interface RetrievalBenchmarkSummary {
     passed: boolean;
   };
   experimental: {
-    embeddings: "disabled";
-    reranking: "disabled";
+    embeddings: "disabled" | "adapter";
+    reranking: "disabled" | "adapter";
     reason: string;
+    semantic_retrieval: RetrievalBenchmarkSemanticSummary;
+    reranker: RetrievalBenchmarkRerankerSummary;
   };
+}
+
+export interface RetrievalBenchmarkSemanticResult {
+  enabled: boolean;
+  provider: string;
+  provider_kind: SemanticProviderKind;
+  latency_ms: number;
+  hits: SemanticRetrievalFileHit[];
+  files: RetrievalTargetEvaluation;
+  warnings: string[];
+}
+
+export interface RetrievalBenchmarkSemanticSummary {
+  enabled: boolean;
+  provider: string;
+  provider_kind: SemanticProviderKind;
+  average_latency_ms: number;
+  files: RetrievalBenchmarkAggregate;
+  warnings: string[];
+}
+
+export interface RetrievalBenchmarkRerankerSummary {
+  enabled: boolean;
+  provider: string;
+  provider_kind: SemanticProviderKind;
+  average_latency_ms: number;
+  files: RetrievalBenchmarkAggregate;
+  warnings: string[];
+}
+
+export interface RetrievalBenchmarkRerankerResult {
+  enabled: boolean;
+  provider: string;
+  provider_kind: SemanticProviderKind;
+  latency_ms: number;
+  hits: SemanticRetrievalFileHit[];
+  files: RetrievalTargetEvaluation;
+  warnings: string[];
 }
 
 export interface RetrievalBenchmarkOkResponse {
@@ -173,6 +230,8 @@ export async function runRetrievalBenchmark(
   const includeImpact = options.includeImpact ?? false;
   const impactLimit = options.impactLimit ?? DEFAULT_IMPACT_LIMIT;
   const refreshIndex = options.refreshIndex ?? DEFAULT_REFRESH_INDEX;
+  const semantic = resolveSemanticRetrieval(options.semantic);
+  const reranker = resolveSemanticReranker(options.reranker);
   const startedAt = Date.now();
   const results: RetrievalBenchmarkQueryResult[] = [];
   const warnings: string[] = [];
@@ -197,6 +256,28 @@ export async function runRetrievalBenchmark(
     const returnedNodes = context.graph.nodes.map((node) => node.id);
     const sourceFileDiversity =
       sourceResults.length === 0 ? 0 : returnedFiles.length / sourceResults.length;
+    const expectedFiles = (benchmarkQuery.expected_files ?? []).map(normalizeRepoPath);
+    const semanticRun = await runSemanticFileRetrieval(semantic, {
+      repoRoot: resolvedRepoRoot,
+      suitePath: suiteResolution.relativePath,
+      queryId: benchmarkQuery.id,
+      query: benchmarkQuery.query,
+      limit,
+    });
+    for (const warning of semanticRun.warnings) {
+      if (!warnings.includes(warning)) warnings.push(warning);
+    }
+    const rerankRun = await runSemanticRerank(reranker, {
+      repoRoot: resolvedRepoRoot,
+      suitePath: suiteResolution.relativePath,
+      queryId: benchmarkQuery.id,
+      query: benchmarkQuery.query,
+      candidates: sourceResults.map(toRerankCandidate),
+      limit,
+    });
+    for (const warning of rerankRun.warnings) {
+      if (!warnings.includes(warning)) warnings.push(warning);
+    }
 
     results.push({
       id: benchmarkQuery.id,
@@ -207,10 +288,34 @@ export async function runRetrievalBenchmark(
       source_result_count: sourceResults.length,
       source_file_diversity: round4(sourceFileDiversity),
       files: evaluateTargets(
-        (benchmarkQuery.expected_files ?? []).map(normalizeRepoPath),
+        expectedFiles,
         returnedFiles.map(normalizeRepoPath),
       ),
       nodes: evaluateTargets(benchmarkQuery.expected_nodes ?? [], returnedNodes),
+      semantic: {
+        enabled: semanticRun.enabled,
+        provider: semanticRun.provider,
+        provider_kind: semanticRun.provider_kind,
+        latency_ms: semanticRun.latency_ms,
+        hits: semanticRun.hits,
+        files: evaluateTargets(
+          semanticRun.enabled ? expectedFiles : [],
+          semanticRun.hits.map((hit) => normalizeRepoPath(hit.file_path)),
+        ),
+        warnings: semanticRun.warnings,
+      },
+      reranker: {
+        enabled: rerankRun.enabled,
+        provider: rerankRun.provider,
+        provider_kind: rerankRun.provider_kind,
+        latency_ms: rerankRun.latency_ms,
+        hits: rerankRun.hits,
+        files: evaluateTargets(
+          rerankRun.enabled ? expectedFiles : [],
+          rerankRun.hits.map((hit) => normalizeRepoPath(hit.file_path)),
+        ),
+        warnings: rerankRun.warnings,
+      },
       warnings: context.warnings,
     });
   }
@@ -223,6 +328,8 @@ export async function runRetrievalBenchmark(
     totalTimeMs,
     minFileHitRate: options.minFileHitRate,
     minNodeHitRate: options.minNodeHitRate,
+    semantic,
+    reranker,
   });
 
   if (!source.indexed) {
@@ -388,10 +495,18 @@ function summarizeResults(
     totalTimeMs: number;
     minFileHitRate?: number;
     minNodeHitRate?: number;
+    semantic: ResolvedSemanticRetrieval;
+    reranker: ResolvedSemanticReranker;
   },
 ): RetrievalBenchmarkSummary {
   const files = aggregateEvaluations(results.map((result) => result.files));
   const nodes = aggregateEvaluations(results.map((result) => result.nodes));
+  const semanticFiles = aggregateEvaluations(
+    results.map((result) => result.semantic.files),
+  );
+  const rerankerFiles = aggregateEvaluations(
+    results.map((result) => result.reranker.files),
+  );
   const failed: string[] = [];
   if (
     input.minFileHitRate !== undefined &&
@@ -427,10 +542,40 @@ function summarizeResults(
       passed: failed.length === 0,
     },
     experimental: {
-      embeddings: "disabled",
-      reranking: "disabled",
+      embeddings: input.semantic.enabled ? "adapter" : "disabled",
+      reranking: input.reranker.enabled ? "adapter" : "disabled",
       reason:
-        "Task 048 measures current local retrieval first; embeddings and reranking stay off until benchmark misses justify them.",
+        "Semantic retrieval and reranking are disabled by default; adapter experiments must be explicit and benchmarked here before runtime use.",
+      semantic_retrieval: {
+        enabled: input.semantic.enabled,
+        provider: input.semantic.provider,
+        provider_kind: input.semantic.provider_kind,
+        average_latency_ms: average(
+          results.map((result) => result.semantic.latency_ms),
+        ),
+        files: semanticFiles,
+        warnings:
+          input.semantic.provider_kind === "cloud"
+            ? [
+                `Cloud semantic retrieval provider ${input.semantic.provider} is opt-in; default Codemap benchmark runs remain local-only.`,
+              ]
+            : [],
+      },
+      reranker: {
+        enabled: input.reranker.enabled,
+        provider: input.reranker.provider,
+        provider_kind: input.reranker.provider_kind,
+        average_latency_ms: average(
+          results.map((result) => result.reranker.latency_ms),
+        ),
+        files: rerankerFiles,
+        warnings:
+          input.reranker.provider_kind === "cloud"
+            ? [
+                `Cloud reranker provider ${input.reranker.provider} is opt-in; default Codemap benchmark runs remain local-only.`,
+              ]
+            : [],
+      },
     },
   };
 }
@@ -454,6 +599,18 @@ function aggregateEvaluations(
     precision_at_k: average(evaluated.map((entry) => entry.precision_at_k)),
     recall_at_k: average(evaluated.map((entry) => entry.recall_at_k)),
     mrr: average(evaluated.map((entry) => entry.reciprocal_rank)),
+  };
+}
+
+function toRerankCandidate(result: {
+  file_path: string;
+  score: number;
+  content?: string;
+}): SemanticRerankCandidate {
+  return {
+    file_path: normalizeRepoPath(result.file_path),
+    score: result.score,
+    content: result.content,
   };
 }
 

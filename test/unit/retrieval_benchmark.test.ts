@@ -5,6 +5,10 @@ import * as path from "node:path";
 
 import { GraphStore } from "../../src/graph.js";
 import { runRetrievalBenchmark } from "../../src/retrieval_benchmark.js";
+import type {
+  SemanticRerankAdapter,
+  SemanticRetrievalAdapter,
+} from "../../src/semantic_retrieval.js";
 import { scanSourceIndex } from "../../src/source_index.js";
 import { hashBuffer } from "../../src/staleness.js";
 import type { Node } from "../../src/types.js";
@@ -173,8 +177,195 @@ describe("retrieval benchmark", () => {
         reranking: "disabled",
       }),
     );
+    expect(response.summary.experimental.semantic_retrieval).toEqual(
+      expect.objectContaining({
+        enabled: false,
+        provider: "disabled",
+        provider_kind: "none",
+      }),
+    );
+    expect(response.results[0]?.semantic.files.evaluated).toBe(false);
     expect(response.results[0]?.files.returned).toContain("src/auth.ts");
     expect(response.results[0]?.nodes.returned).toContain("auth/active-user");
+  });
+
+  test("benchmarks an injected semantic file adapter independently from source hits", async () => {
+    await write(
+      "src/auth.ts",
+      "export function requireActiveUser(token: string) { return token; }\n",
+    );
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "semantic adapter suite",
+          queries: [
+            {
+              id: "semantic-auth",
+              query: "person access policy",
+              expected_files: ["src/auth.ts"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+    const adapter: SemanticRetrievalAdapter = {
+      name: "test-local-embedder",
+      kind: "local",
+      async searchFiles(input) {
+        expect(input.query).toBe("person access policy");
+        expect(input.limit).toBe(5);
+        return [
+          {
+            file_path: "src/auth.ts",
+            score: 0.91,
+            reason: "test semantic synonym match",
+          },
+        ];
+      },
+    };
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 5,
+      semantic: { fileAdapter: adapter },
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.summary.experimental.embeddings).toBe("adapter");
+    expect(response.summary.experimental.semantic_retrieval).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        provider: "test-local-embedder",
+        provider_kind: "local",
+        average_latency_ms: expect.any(Number),
+      }),
+    );
+    expect(
+      response.summary.experimental.semantic_retrieval.files.hit_rate_at_k,
+    ).toBe(1);
+    expect(response.results[0]?.semantic.files.returned).toEqual([
+      "src/auth.ts",
+    ]);
+    expect(response.results[0]?.semantic.files.hit).toBe(true);
+    expect(response.results[0]?.semantic.hits[0]).toEqual(
+      expect.objectContaining({
+        file_path: "src/auth.ts",
+        score: 0.91,
+        reason: "test semantic synonym match",
+      }),
+    );
+  });
+
+  test("visibly reports cloud semantic adapters as opt-in", async () => {
+    await write("src/auth.ts", "export const AUTH_SCOPE = 'active';\n");
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "cloud semantic adapter suite",
+          queries: [
+            {
+              id: "semantic-auth",
+              query: "active user",
+              expected_files: ["src/auth.ts"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      semantic: {
+        fileAdapter: {
+          name: "test-cloud-embedder",
+          kind: "cloud",
+          async searchFiles() {
+            return [{ file_path: "src/auth.ts", score: 0.8 }];
+          },
+        },
+      },
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.summary.experimental.semantic_retrieval.provider_kind).toBe(
+      "cloud",
+    );
+    expect(response.warnings.join("\n")).toContain(
+      "Cloud semantic retrieval provider test-cloud-embedder is opt-in",
+    );
+  });
+
+  test("benchmarks an injected reranker against source-search candidates", async () => {
+    await write(
+      "src/auth.ts",
+      "export function requireActiveUser(token: string) { return token; }\n",
+    );
+    await write(
+      "src/noise.ts",
+      "export function requireActiveInvoice(token: string) { return token; }\n",
+    );
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "reranker adapter suite",
+          queries: [
+            {
+              id: "rerank-auth",
+              query: "require active user token",
+              expected_files: ["src/auth.ts"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+    const reranker: SemanticRerankAdapter = {
+      name: "test-local-reranker",
+      kind: "local",
+      async rerankFiles(input) {
+        expect(input.candidates.map((candidate) => candidate.file_path)).toContain(
+          "src/auth.ts",
+        );
+        return [{ file_path: "src/auth.ts", score: 0.99 }];
+      },
+    };
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 5,
+      reranker: { fileReranker: reranker },
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.summary.experimental.reranking).toBe("adapter");
+    expect(response.summary.experimental.reranker).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        provider: "test-local-reranker",
+        provider_kind: "local",
+      }),
+    );
+    expect(response.summary.experimental.reranker.files.hit_rate_at_k).toBe(1);
+    expect(response.results[0]?.reranker.files.returned).toEqual([
+      "src/auth.ts",
+    ]);
   });
 
   test("calculates precision against actual returned targets", async () => {

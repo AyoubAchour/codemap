@@ -16,6 +16,8 @@ export interface BenchmarkRetrievalFlags {
   refreshIndex?: SourceRefreshMode;
   minFileHitRate?: number;
   minNodeHitRate?: number;
+  semanticProvider?: "disabled";
+  rerankerProvider?: "disabled";
 }
 
 export async function benchmarkRetrieval(
@@ -34,6 +36,12 @@ export async function benchmarkRetrieval(
       refreshIndex: flags.refreshIndex,
       minFileHitRate: flags.minFileHitRate,
       minNodeHitRate: flags.minNodeHitRate,
+      semantic: flags.semanticProvider
+        ? { provider: flags.semanticProvider }
+        : undefined,
+      reranker: flags.rerankerProvider
+        ? { provider: flags.rerankerProvider }
+        : undefined,
     };
     const response = await runRetrievalBenchmark(
       options.repoRoot,

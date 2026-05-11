@@ -1566,6 +1566,13 @@ describe("CLI: source index", () => {
     expect(out.ok).toBe(true);
     expect(out.summary.files.hit_rate_at_k).toBe(1);
     expect(out.summary.experimental.reranking).toBe("disabled");
+    expect(out.summary.experimental.semantic_retrieval).toEqual(
+      expect.objectContaining({
+        enabled: false,
+        provider: "disabled",
+        provider_kind: "none",
+      }),
+    );
   });
 
   test("bin benchmark-retrieval rejects invalid threshold values", async () => {
@@ -1577,6 +1584,19 @@ describe("CLI: source index", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("expected a number between 0 and 1");
+  });
+
+  test("bin benchmark-retrieval rejects unavailable semantic providers", async () => {
+    const result = await runCodemapBin([
+      "benchmark-retrieval",
+      "--semantic-provider",
+      "cloud-demo",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      "semantic provider must be \"disabled\" in this build",
+    );
   });
 });
 

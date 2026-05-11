@@ -1,6 +1,6 @@
 # Task 052 — Optional semantic retrieval layer
 
-Status: todo
+Status: done
 
 Phase: Phase 4 / retrieval
 
@@ -17,18 +17,21 @@ benchmark suite proves lexical/symbol retrieval misses real tasks.
 
 ## Deliverables
 
-- Define an adapter interface for embeddings and rerankers.
-- Keep all semantic retrieval disabled by default.
-- Support local-first providers before cloud providers.
-- Gate semantic/rerank experiments behind `benchmark-retrieval`.
+- Defined adapter interfaces for file-level semantic retrieval and reranking.
+- Kept semantic retrieval and reranking disabled by default.
+- Added programmatic benchmark support for injected local/cloud/custom file
+  retrieval adapters without adding provider dependencies.
+- Gated semantic/rerank provider selection behind `benchmark-retrieval`; the
+  current CLI build only accepts `disabled`.
 
 ## Exit Criteria
 
-- [ ] Default install remains local-only with no network calls.
-- [ ] Semantic retrieval can be benchmarked independently from BM25.
-- [ ] Any cloud provider integration is opt-in and visibly reported.
+- [x] Default install remains local-only with no network calls.
+- [x] Semantic retrieval can be benchmarked independently from BM25.
+- [x] Any cloud provider integration is opt-in and visibly reported.
 
 ## Notes
 
-Do not add hosted dependencies until task 055 exposes benchmark misses that
-justify them.
+No hosted dependencies were added. Future provider work should start with a
+local adapter and only add a cloud provider after benchmark evidence justifies
+the runtime and privacy tradeoff.
