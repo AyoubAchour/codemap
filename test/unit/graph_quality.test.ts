@@ -6,7 +6,9 @@ import * as path from "node:path";
 
 import { GraphStore } from "../../src/graph.js";
 import {
+	filterStalenessReportForNodes,
 	rankGraphResultByQuality,
+	scoreGraphMemoryQuality,
 	summarizeGraphMemoryQuality,
 } from "../../src/graph_quality.js";
 import { checkSourceStaleness } from "../../src/staleness.js";
@@ -57,6 +59,95 @@ function node(overrides: Partial<Node> & { id: string }): Node {
 }
 
 describe("graph memory quality", () => {
+	test("unrated utility metadata uses the neutral default quality factor", async () => {
+		await write("src/auth.ts", "export const auth = true;\n");
+		const hash = await fileHash("src/auth.ts");
+		const memory = node({
+			id: "auth/unrated",
+			sources: [
+				{ file_path: "src/auth.ts", line_range: [1, 1], content_hash: hash },
+			],
+		});
+		const staleness = await checkSourceStaleness(tmpRoot, [memory]);
+
+		const quality = scoreGraphMemoryQuality(memory, staleness, {
+			now: new Date("2026-05-06T00:00:00Z"),
+		});
+
+		expect(quality.signals.utility_score).toBeNull();
+		expect(quality.factors.utility).toBe(0.8);
+		expect(quality.trust).toBe("high");
+	});
+
+	test("filtered staleness reports preserve the original checked source count", () => {
+		const included = node({
+			id: "auth/included",
+			sources: [
+				{
+					file_path: "src/included.ts",
+					line_range: [1, 1],
+					content_hash: "sha256:old",
+				},
+			],
+		});
+		const excluded = node({
+			id: "auth/excluded",
+			sources: [
+				{
+					file_path: "src/excluded-a.ts",
+					line_range: [1, 1],
+					content_hash: "sha256:old",
+				},
+				{
+					file_path: "src/excluded-b.ts",
+					line_range: [1, 1],
+					content_hash: "sha256:old",
+				},
+			],
+		});
+		const filtered = filterStalenessReportForNodes(
+			{
+				checked_sources: 3,
+				stale_sources: [
+					{
+						node_id: included.id,
+						file_path: "src/included.ts",
+						stored_hash: "sha256:old",
+						current_hash: "sha256:new",
+						stale: true,
+						reason: "changed",
+					},
+					{
+						node_id: excluded.id,
+						file_path: "src/excluded-a.ts",
+						stored_hash: "sha256:old",
+						current_hash: "sha256:new",
+						stale: true,
+						reason: "changed",
+					},
+				],
+				range_fresh_sources: [
+					{
+						node_id: excluded.id,
+						file_path: "src/excluded-b.ts",
+						stored_hash: "sha256:old",
+						current_hash: "sha256:new",
+						range_hash: "sha256:range",
+						stale: false,
+						reason: "range_unchanged",
+					},
+				],
+			},
+			[included],
+		);
+
+		expect(filtered.checked_sources).toBe(3);
+		expect(filtered.stale_sources.map((source) => source.node_id)).toEqual([
+			included.id,
+		]);
+		expect(filtered.range_fresh_sources).toEqual([]);
+	});
+
 	test("fresh memory outranks stale memory with the same lexical score", async () => {
 		await write("src/fresh.ts", "export const fresh = true;\n");
 		await write("src/stale.ts", "export const stale = true;\n");
