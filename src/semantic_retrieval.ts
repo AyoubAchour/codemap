@@ -1,3 +1,5 @@
+import { normalizeRepoPath } from "./util/repo_path.js";
+
 export type SemanticProviderKind = "none" | "local" | "cloud" | "custom";
 
 export interface SemanticRetrievalFileHit {
@@ -88,7 +90,7 @@ export interface SemanticRerankRun {
 export function resolveSemanticRetrieval(
 	options?: SemanticRetrievalBenchmarkOptions,
 ): ResolvedSemanticRetrieval {
-	if (!options?.fileAdapter) {
+	if (options?.provider === "disabled" || !options?.fileAdapter) {
 		return {
 			enabled: false,
 			provider: "disabled",
@@ -106,7 +108,7 @@ export function resolveSemanticRetrieval(
 export function resolveSemanticReranker(
 	options?: SemanticRerankBenchmarkOptions,
 ): ResolvedSemanticReranker {
-	if (!options?.fileReranker) {
+	if (options?.provider === "disabled" || !options?.fileReranker) {
 		return {
 			enabled: false,
 			provider: "disabled",
@@ -213,8 +215,4 @@ function normalizeSemanticHits(
 		if (normalized.length >= limit) break;
 	}
 	return normalized;
-}
-
-function normalizeRepoPath(filePath: string): string {
-	return filePath.replace(/\\/g, "/").replace(/^\.\//, "");
 }

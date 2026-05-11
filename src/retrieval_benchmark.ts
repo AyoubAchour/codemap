@@ -23,6 +23,7 @@ import {
   type SemanticRetrievalBenchmarkOptions,
   type SemanticRetrievalFileHit,
 } from "./semantic_retrieval.js";
+import { normalizeRepoPath } from "./util/repo_path.js";
 
 const BENCHMARK_VERSION = 1 as const;
 const DEFAULT_LIMIT = 10;
@@ -300,7 +301,7 @@ export async function runRetrievalBenchmark(
         hits: semanticRun.hits,
         files: evaluateTargets(
           semanticRun.enabled ? expectedFiles : [],
-          semanticRun.hits.map((hit) => normalizeRepoPath(hit.file_path)),
+          semanticRun.hits.map((hit) => hit.file_path),
         ),
         warnings: semanticRun.warnings,
       },
@@ -312,7 +313,7 @@ export async function runRetrievalBenchmark(
         hits: rerankRun.hits,
         files: evaluateTargets(
           rerankRun.enabled ? expectedFiles : [],
-          rerankRun.hits.map((hit) => normalizeRepoPath(hit.file_path)),
+          rerankRun.hits.map((hit) => hit.file_path),
         ),
         warnings: rerankRun.warnings,
       },
@@ -641,8 +642,4 @@ function average(values: number[]): number {
 
 function round4(value: number): number {
   return Number(value.toFixed(4));
-}
-
-function normalizeRepoPath(filePath: string): string {
-  return filePath.replace(/\\/g, "/").replace(/^\.\//, "");
 }

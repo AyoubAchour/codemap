@@ -221,7 +221,7 @@ describe("retrieval benchmark", () => {
         expect(input.limit).toBe(5);
         return [
           {
-            file_path: "src/auth.ts",
+            file_path: ".\\src\\auth.ts",
             score: 0.91,
             reason: "test semantic synonym match",
           },
@@ -260,6 +260,66 @@ describe("retrieval benchmark", () => {
         reason: "test semantic synonym match",
       }),
     );
+  });
+
+  test("provider disabled prevents injected semantic and reranker adapters from running", async () => {
+    await write(
+      "src/auth.ts",
+      "export function requireActiveUser(token: string) { return token; }\n",
+    );
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "disabled provider suite",
+          queries: [
+            {
+              id: "disabled-auth",
+              query: "require active user token",
+              expected_files: ["src/auth.ts"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+    let semanticCalled = false;
+    let rerankerCalled = false;
+    const semanticAdapter: SemanticRetrievalAdapter = {
+      name: "should-not-run",
+      kind: "local",
+      async searchFiles() {
+        semanticCalled = true;
+        return [{ file_path: "src/auth.ts", score: 1 }];
+      },
+    };
+    const reranker: SemanticRerankAdapter = {
+      name: "should-not-rerank",
+      kind: "local",
+      async rerankFiles() {
+        rerankerCalled = true;
+        return [{ file_path: "src/auth.ts", score: 1 }];
+      },
+    };
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 5,
+      semantic: { provider: "disabled", fileAdapter: semanticAdapter },
+      reranker: { provider: "disabled", fileReranker: reranker },
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(semanticCalled).toBe(false);
+    expect(rerankerCalled).toBe(false);
+    expect(response.summary.experimental.embeddings).toBe("disabled");
+    expect(response.summary.experimental.reranking).toBe("disabled");
+    expect(response.results[0]?.semantic.enabled).toBe(false);
+    expect(response.results[0]?.reranker.enabled).toBe(false);
   });
 
   test("visibly reports cloud semantic adapters as opt-in", async () => {
