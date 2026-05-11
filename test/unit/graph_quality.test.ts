@@ -189,6 +189,76 @@ describe("graph memory quality", () => {
 		);
 	});
 
+	test("utility and lifecycle metadata demote superseded memory without hiding it", async () => {
+		await write("src/auth.ts", "export const auth = true;\n");
+		const hash = await fileHash("src/auth.ts");
+		const store = await GraphStore.load(tmpRoot);
+		store.upsertNode(
+			node({
+				id: "auth/current",
+				sources: [
+					{ file_path: "src/auth.ts", line_range: [1, 1], content_hash: hash },
+				],
+				quality: {
+					utility_score: 0.95,
+					maturity: "stable",
+					last_used_at: "2026-05-05T00:00:00Z",
+					confirmed_by_source: true,
+				},
+			}),
+		);
+		store.upsertNode(
+			node({
+				id: "auth/old",
+				sources: [
+					{ file_path: "src/auth.ts", line_range: [1, 1], content_hash: hash },
+				],
+				quality: {
+					utility_score: 0.1,
+					maturity: "superseded",
+					confirmed_by_source: true,
+					superseded_by: "auth/current",
+				},
+			}),
+		);
+
+		const candidates = store.query("auth", 10);
+		const staleness = await checkSourceStaleness(tmpRoot, candidates.nodes);
+		const ranked = rankGraphResultByQuality(candidates, staleness, {
+			limit: 10,
+			now: new Date("2026-05-06T00:00:00Z"),
+		});
+
+		expect(ranked.nodes.map((entry) => entry.id)).toEqual([
+			"auth/current",
+			"auth/old",
+		]);
+		expect(ranked.matches[0]?.quality).toEqual(
+			expect.objectContaining({
+				trust: "high",
+				signals: expect.objectContaining({
+					utility_score: 0.95,
+					maturity: "stable",
+					days_since_used: 1,
+					confirmed_by_source: true,
+				}),
+			}),
+		);
+		expect(ranked.matches[1]?.quality).toEqual(
+			expect.objectContaining({
+				trust: "low",
+				signals: expect.objectContaining({
+					utility_score: 0.1,
+					maturity: "superseded",
+					superseded_by: "auth/current",
+				}),
+			}),
+		);
+		expect(ranked.matches[1]?.quality?.reasons).toEqual(
+			expect.arrayContaining(["superseded by auth/current"]),
+		);
+	});
+
 	test("summarizes medium-trust separately from stale and low-trust ids", async () => {
 		await write("src/fresh.ts", "export const fresh = true;\n");
 		await write("src/medium.ts", "export const medium = true;\n");

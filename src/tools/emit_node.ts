@@ -13,7 +13,7 @@ import {
   SourceRefSchema,
 } from "../schema.js";
 import { hashBuffer, hashSourceRange } from "../staleness.js";
-import type { Node } from "../types.js";
+import type { Node, NodeKind, NodeQualityMetadata } from "../types.js";
 import {
   getActiveTopic,
   getEmissionsThisTurn,
@@ -327,6 +327,7 @@ export function registerEmitNode(
             structuredContent: record(result),
           };
         }
+        incoming.quality = emitQualityPatch(target.quality, incoming.kind);
         const upsertResult = store.upsertNode(incoming, {
           activeTopic,
           mergeWith: target.id,
@@ -380,6 +381,10 @@ export function registerEmitNode(
       }
 
       // ---------- 7. Write ----------
+      incoming.quality = emitQualityPatch(
+        store.getNode(incoming.id)?.quality,
+        incoming.kind,
+      );
       const upsertResult = store.upsertNode(incoming, { activeTopic });
       await store.save();
       incrementEmissionsThisTurn();
@@ -395,4 +400,41 @@ export function registerEmitNode(
       };
     },
   );
+}
+
+function emitQualityPatch(
+  existing: NodeQualityMetadata | undefined,
+  kind: NodeKind,
+): NodeQualityMetadata {
+  const quality: NodeQualityMetadata = {
+    utility_score: existing?.utility_score ?? defaultUtilityForKind(kind),
+    maturity: existing?.maturity ?? "confirmed",
+    confirmed_by_source: true,
+  };
+  if (existing?.last_used_at !== undefined) {
+    quality.last_used_at = existing.last_used_at;
+  }
+  if (existing?.superseded_by !== undefined) {
+    quality.superseded_by = existing.superseded_by;
+  }
+  return quality;
+}
+
+function defaultUtilityForKind(kind: NodeKind): number {
+  switch (kind) {
+    case "decision":
+    case "gotcha":
+    case "invariant":
+      return 0.85;
+    case "flow":
+      return 0.75;
+    case "concept":
+    case "integration":
+      return 0.65;
+    case "package":
+    case "symbol":
+      return 0.55;
+    case "file":
+      return 0.5;
+  }
 }

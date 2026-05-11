@@ -224,6 +224,31 @@ describe("GraphStore.upsertNode", () => {
     expect(merged.last_verified_at).toBe("2026-04-28T12:00:00Z");
   });
 
+  test("merges quality metadata without dropping existing lifecycle signals", async () => {
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode(makeNode({
+      id: "auth/x",
+      quality: {
+        utility_score: 0.95,
+        maturity: "stable",
+        last_used_at: "2026-05-01T00:00:00Z",
+      },
+    }));
+    store.upsertNode(makeNode({
+      id: "auth/x",
+      quality: {
+        confirmed_by_source: true,
+      },
+    }));
+
+    expect(store.getNode("auth/x")?.quality).toEqual({
+      utility_score: 0.95,
+      maturity: "stable",
+      last_used_at: "2026-05-01T00:00:00Z",
+      confirmed_by_source: true,
+    });
+  });
+
   test("replaces summary only if incoming confidence ≥ existing (replace case)", async () => {
     const store = await GraphStore.load(tmpRoot);
     store.upsertNode(makeNode({

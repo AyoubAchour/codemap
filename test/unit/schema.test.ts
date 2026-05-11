@@ -196,6 +196,48 @@ describe("NodeSchema", () => {
     expect(parsed.aliases).toEqual(["AuthMW", "middleware/auth"]);
   });
 
+  test("accepts optional quality metadata for agentic memory ranking", () => {
+    const parsed = NodeSchema.parse({
+      ...baseValid,
+      quality: {
+        utility_score: 0.82,
+        maturity: "stable",
+        last_used_at: "2026-05-01T12:00:00Z",
+        confirmed_by_source: true,
+        superseded_by: "auth/new-middleware",
+      },
+    });
+
+    expect(parsed.quality).toEqual({
+      utility_score: 0.82,
+      maturity: "stable",
+      last_used_at: "2026-05-01T12:00:00Z",
+      confirmed_by_source: true,
+      superseded_by: "auth/new-middleware",
+    });
+  });
+
+  test("rejects invalid quality metadata", () => {
+    expect(() =>
+      NodeSchema.parse({
+        ...baseValid,
+        quality: { utility_score: 1.5 },
+      }),
+    ).toThrow();
+    expect(() =>
+      NodeSchema.parse({
+        ...baseValid,
+        quality: { last_used_at: "last week" },
+      }),
+    ).toThrow();
+    expect(() =>
+      NodeSchema.parse({
+        ...baseValid,
+        quality: { superseded_by: "auth|bad" },
+      }),
+    ).toThrow();
+  });
+
   test("rejects confidence > 1", () => {
     expect(() => NodeSchema.parse({ ...baseValid, confidence: 1.5 })).toThrow();
   });

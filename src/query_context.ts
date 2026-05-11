@@ -3,6 +3,7 @@ import {
   filterStalenessReportForNodes,
   rankGraphResultByQuality,
   summarizeGraphMemoryQuality,
+  type GraphMemoryQuality,
   type GraphMemoryQualitySummary,
 } from "./graph_quality.js";
 import { checkSourceStaleness, type StalenessReport } from "./staleness.js";
@@ -47,6 +48,8 @@ export interface QueryContextGraphMemorySummary {
   score?: number;
   ranking_score?: number;
   match_reasons: string[];
+  quality_reasons: string[];
+  quality_signals?: GraphMemoryQuality["signals"];
 }
 
 export interface QueryContextSourceHitSummary {
@@ -412,6 +415,8 @@ function buildSummary(input: {
         match_reasons: (match?.match_reasons ?? []).slice(0, 3).map(
           (reason) => `${reason.field}:${reason.value}`,
         ),
+        quality_reasons: match?.quality?.reasons.slice(0, 3) ?? [],
+        quality_signals: match?.quality?.signals,
       };
     }),
     source_hits: sourceResults.slice(0, 5).map((result) => ({

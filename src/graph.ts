@@ -4,7 +4,14 @@ import { lock } from "proper-lockfile";
 
 import { edgeKey, GraphFileSchema, parseEdgeKey } from "./schema.js";
 import type { GraphMemoryQuality } from "./graph_quality.js";
-import type { Edge, EdgeKind, GraphFile, Node, StoredNode } from "./types.js";
+import type {
+  Edge,
+  EdgeKind,
+  GraphFile,
+  Node,
+  NodeQualityMetadata,
+  StoredNode,
+} from "./types.js";
 import { ensureSeedFile } from "./util/lock.js";
 import { applyRepairs, type ValidationResult, validate } from "./validator.js";
 
@@ -274,6 +281,7 @@ export class GraphStore {
         aliases: mergedAliases,
         status: incoming.status,
         last_verified_at: incoming.last_verified_at,
+        quality: mergeNodeQuality(existing.quality, incoming.quality),
       };
       this.data.nodes[targetId] = merged;
       return { merged: true, createdId: targetId };
@@ -461,6 +469,15 @@ function snippetForToken(value: string, token: string): string {
   const start = Math.max(0, index - 24);
   const end = Math.min(value.length, index + token.length + 56);
   return value.slice(start, end);
+}
+
+function mergeNodeQuality(
+  existing: NodeQualityMetadata | undefined,
+  incoming: NodeQualityMetadata | undefined,
+): NodeQualityMetadata | undefined {
+  if (existing === undefined) return incoming;
+  if (incoming === undefined) return existing;
+  return { ...existing, ...incoming };
 }
 
 /**

@@ -1,6 +1,6 @@
 # Task 054 — Agentic writeback quality signals
 
-Status: todo
+Status: done
 
 Phase: Phase 4 / memory quality
 
@@ -26,11 +26,23 @@ whether it has been confirmed, superseded, or needs review.
 
 ## Exit Criteria
 
-- [ ] Existing graph files load without migration failure.
-- [ ] Query results explain memory trust in agent-readable terms.
-- [ ] Low-utility or superseded memory is deprioritized without disappearing.
+- [x] Existing graph files load without migration failure.
+- [x] Query results explain memory trust in agent-readable terms.
+- [x] Low-utility or superseded memory is deprioritized without disappearing.
 
 ## Notes
 
 Prefer additive metadata over schema churn. The graph must stay reviewable and
 diffable.
+
+Implemented in this slice:
+
+- `NodeSchema` accepts optional `quality` metadata:
+  `utility_score`, `maturity`, `last_used_at`, `confirmed_by_source`, and
+  `superseded_by`.
+- `emit_node` auto-populates confirmed source-backed quality metadata for new
+  writes while preserving existing quality metadata on merges.
+- `query_graph` and `query_context` expose `quality.signals` and richer
+  `quality.reasons`.
+- `suggest_writeback` quality-ranks related memories before suggesting links or
+  new captures.

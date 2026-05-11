@@ -524,6 +524,11 @@ describe("MCP server — source index tools", () => {
       status: "active",
       confidence: 0.9,
       last_verified_at: new Date().toISOString(),
+      quality: {
+        utility_score: 0.85,
+        maturity: "confirmed",
+        confirmed_by_source: true,
+      },
     });
     await store.save();
 
@@ -540,6 +545,16 @@ describe("MCP server — source index tools", () => {
     expect(parsed.ok).toBe(true);
     expect(parsed.mode).toBe("standard");
     expect(parsed.summary.graph_memories[0].id).toBe("auth/active-user");
+    expect(parsed.summary.graph_memories[0].quality_signals).toEqual(
+      expect.objectContaining({
+        utility_score: 0.85,
+        maturity: "confirmed",
+        confirmed_by_source: true,
+      }),
+    );
+    expect(parsed.summary.graph_memories[0].quality_reasons).toEqual(
+      expect.arrayContaining([expect.stringContaining("confidence")]),
+    );
     expect(parsed.summary.source_hits[0].file_path).toBe(
       "src/auth/distinct.ts",
     );
@@ -1514,8 +1529,26 @@ describe("MCP server — emit_node", () => {
     const get = (await client.callTool({
       name: "get_node",
       arguments: { id: "auth/middleware" },
-    })) as { structuredContent?: { node: { tags: string[] } | null } };
+    })) as {
+      structuredContent?: {
+        node: {
+          tags: string[];
+          quality?: {
+            utility_score?: number;
+            maturity?: string;
+            confirmed_by_source?: boolean;
+          };
+        } | null;
+      };
+    };
     expect(get.structuredContent?.node?.tags).toContain("auth");
+    expect(get.structuredContent?.node?.quality).toEqual(
+      expect.objectContaining({
+        utility_score: 0.85,
+        maturity: "confirmed",
+        confirmed_by_source: true,
+      }),
+    );
   });
 
   test("fills range_hash on accepted source anchors", async () => {
