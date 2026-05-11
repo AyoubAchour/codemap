@@ -133,6 +133,7 @@ Maintained manually. Update status as tasks land.
 | 053 | Watch mode and freshness daemon | done | Phase 4 / performance | [task-053-watch-mode-freshness-daemon.md](task-053-watch-mode-freshness-daemon.md) |
 | 054 | Agentic writeback quality signals | done | Phase 4 / memory quality | [task-054-agentic-writeback-quality.md](task-054-agentic-writeback-quality.md) |
 | 055 | Larger retrieval benchmark suite | done | Phase 4 / evaluation | [task-055-retrieval-benchmark-suite.md](task-055-retrieval-benchmark-suite.md) |
+| 056 | Release v0.8.0 | in-progress | Phase 4 / release | [task-056-release-v0.8.0.md](task-056-release-v0.8.0.md) |
 
 ---
 

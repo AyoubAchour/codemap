@@ -52,13 +52,17 @@ The graph and the source index are intentionally separate:
 
 ## Latest Release
 
-Version `0.7.0` includes:
+Version `0.8.0` includes:
 
-- faster repeated source search with a persisted BM25 search index
-- AST-aware TypeScript/JavaScript indexing for more precise symbols, imports,
-  exports, and identifier references
-- diff-aware `changes_context` for impact analysis before commits and reviews
-- global `codemap setup` and versioned guidance checks for smoother onboarding
+- read-only graph repair planning for stale, missing, unsafe, and legacy source
+  anchors
+- source-index-derived repo map rankings for `query_context`,
+  `changes_context`, and generated guidance
+- `codemap watch` plus `watch_status` to keep the rebuildable source index fresh
+- richer graph memory quality signals for utility, maturity, usage,
+  source-confirmation, and supersession
+- a larger offline retrieval benchmark suite with optional semantic/reranker
+  adapter hooks disabled by default
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
