@@ -4,6 +4,14 @@ All notable user-facing changes to Codemap are documented here.
 
 ## Unreleased
 
+## 0.8.0 - 2026-05-11
+
+This release makes Codemap more agentic in everyday repository work. It adds
+repair planning for stale graph anchors, a source-derived repo map for better
+context selection, source-index watch mode, benchmark-only semantic retrieval
+adapters, richer graph-memory quality signals, and a larger retrieval
+benchmark suite.
+
 ### Added
 
 - `graph_repair` / `codemap repair-graph`, a read-only graph memory repair
@@ -13,6 +21,27 @@ All notable user-facing changes to Codemap are documented here.
   `changes_context`, and generated repo guidance. It scores files and symbols
   from local imports, references, query matches, and change seeds while keeping
   the result rebuildable and separate from curated graph memory.
+- `codemap watch`, `codemap watch --once`, `codemap watch --status`, and the
+  `watch_status` MCP tool for keeping the rebuildable source index fresh
+  without writing graph memory.
+- Optional benchmark-only semantic retrieval and reranking adapter contracts.
+  Providers remain disabled by default; experiments can be measured without
+  adding hosted dependencies to the runtime.
+- Richer graph memory quality metadata for utility, maturity, usage recency,
+  source confirmation, and supersession, surfaced in query results and
+  writeback suggestion ordering.
+- A larger retrieval benchmark suite covering semantic wording, typos,
+  cross-file impact, renamed symbols, stale graph cases, docs/tests discovery,
+  and a non-Codemap fixture repo.
+
+### Improved
+
+- Graph memory trust explanations now include explicit quality signals and
+  clearer scoring defaults for unrated utility.
+- Writeback suggestions rank related graph memories by quality and scope stale
+  related-memory evidence to the same ranked set.
+- `filterStalenessReportForNodes` preserves the original source-check count so
+  filtered reports do not misrepresent the check scope.
 
 ## 0.7.0 - 2026-05-10
 
