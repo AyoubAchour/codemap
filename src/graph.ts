@@ -477,7 +477,17 @@ function mergeNodeQuality(
 ): NodeQualityMetadata | undefined {
   if (existing === undefined) return incoming;
   if (incoming === undefined) return existing;
-  return { ...existing, ...incoming };
+  const merged: Record<string, unknown> = { ...existing };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === undefined) {
+      delete merged[key];
+    } else {
+      merged[key] = value;
+    }
+  }
+  return Object.keys(merged).length > 0
+    ? (merged as NodeQualityMetadata)
+    : undefined;
 }
 
 /**

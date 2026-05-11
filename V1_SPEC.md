@@ -219,9 +219,13 @@ through aliases.
 
 Resolves through aliases. Returns full node detail.
 
-### 7.3 `emit_node(id, kind, name, summary, sources, confidence, status?, aliases?) → { ok | collision }`
+### 7.3 `emit_node(id, kind, name, summary, sources, confidence, status?, aliases?, quality?) → { ok | collision }`
 
-Flat parameters (LLMs handle these more reliably than nested objects).
+Mostly flat parameters (LLMs handle these more reliably than nested objects).
+The optional `quality` object is a narrow lifecycle patch for memory ranking:
+agents may set utility, maturity, source-confirmation, and last-used signals,
+or pass `superseded_by: null` to clear a stale supersession after re-verifying
+the node from source.
 
 **Server-side collision detection.** Before creating a *new* `id`, the server computes a similarity score against existing nodes (fuzzy name match, source-file overlap, tag overlap, alias match). If similarity exceeds a threshold:
 

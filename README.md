@@ -279,6 +279,9 @@ Each graph match can include:
 
 New `emit_node` writes automatically mark source-verified memories as
 `confirmed` and assign a conservative utility score based on node kind.
+Agents can also pass an optional `quality` patch to update lifecycle signals;
+for example, set `maturity: "confirmed"` and `superseded_by: null` when a
+previously superseded memory is re-verified from source.
 Existing graph files without quality metadata continue to load normally.
 Low-utility or superseded memories are demoted, not hidden.
 
@@ -303,6 +306,8 @@ candidates.
 
 Related graph memories in suggestions are quality-ranked, so high-utility,
 fresh, source-confirmed memories appear before low-utility or superseded ones.
+Stale related-memory ids are reported from that same ranked evidence scope, so
+callers do not have to reconcile hidden stale candidates.
 Suggestions are intentionally not durable memory. Agents must still inspect the
 real files and call `emit_node` or `link` themselves.
 

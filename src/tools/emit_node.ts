@@ -9,6 +9,7 @@ import { recordMetric } from "../metrics.js";
 import {
   NodeIdSchema,
   NodeKindSchema,
+  NodeMaturitySchema,
   NodeStatusSchema,
   SourceRefSchema,
 } from "../schema.js";
@@ -23,9 +24,48 @@ import {
 import type { ToolOptions } from "./query_graph.js";
 
 const MAX_FUTURE_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
+const ISO_8601_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$/;
+
+const EmitQualityInputSchema = z.object({
+  utility_score: z.number().min(0).max(1).optional(),
+  maturity: NodeMaturitySchema.optional(),
+  // Plain string for the same OpenAI-class schema compatibility reason as
+  // last_verified_at; runtime validation below keeps stored graph data strict.
+  last_used_at: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("ISO 8601 UTC usage timestamp, or null to clear it."),
+  confirmed_by_source: z.boolean().optional(),
+  superseded_by: NodeIdSchema.nullable()
+    .optional()
+    .describe("Replacement node id, or null to clear an existing supersession."),
+});
+
+type EmitQualityInput = z.infer<typeof EmitQualityInputSchema>;
 
 function record(value: unknown): Record<string, unknown> {
   return value as unknown as Record<string, unknown>;
+}
+
+function validateUtcTimestamp(
+  fieldName: string,
+  value: string,
+): { ok: true } | { ok: false; message: string } {
+  const parsedTimestamp = Date.parse(value);
+  if (!ISO_8601_UTC.test(value) || Number.isNaN(parsedTimestamp)) {
+    return {
+      ok: false,
+      message: `${fieldName} must be ISO 8601 UTC (e.g. 2026-05-01T12:00:00Z), got: ${value}`,
+    };
+  }
+  if (parsedTimestamp - Date.now() > MAX_FUTURE_TIMESTAMP_SKEW_MS) {
+    return {
+      ok: false,
+      message: `${fieldName} appears to be in the future — use the current UTC time.`,
+    };
+  }
+  return { ok: true };
 }
 
 type SourceValidationResult =
@@ -180,6 +220,9 @@ export function registerEmitNode(
           .describe(
             "Force creation despite collision candidates. Reason is prepended to summary for audit. Mutually exclusive with merge_with.",
           ),
+        quality: EmitQualityInputSchema.optional().describe(
+          "Optional memory-quality metadata patch. Use maturity to rehabilitate or supersede a node, and superseded_by: null to clear an existing supersession.",
+        ),
       },
     },
     async (args) => {
@@ -234,17 +277,16 @@ export function registerEmitNode(
       //      "2026-13-45T12:00:00Z").
       //   3. A small future-skew guard catches fabricated round-number
       //      timestamps while tolerating ordinary clock drift.
-      const ISO_8601_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$/;
-      const parsedTimestamp = Date.parse(args.last_verified_at);
-      if (
-        !ISO_8601_UTC.test(args.last_verified_at) ||
-        Number.isNaN(parsedTimestamp)
-      ) {
+      const timestampValidation = validateUtcTimestamp(
+        "last_verified_at",
+        args.last_verified_at,
+      );
+      if (!timestampValidation.ok) {
         const result = {
           ok: false,
           error: {
             code: "INVALID_TIMESTAMP",
-            message: `last_verified_at must be ISO 8601 UTC (e.g. 2026-05-01T12:00:00Z), got: ${args.last_verified_at}`,
+            message: timestampValidation.message,
           },
         };
         return {
@@ -253,20 +295,28 @@ export function registerEmitNode(
           structuredContent: record(result),
         };
       }
-      if (parsedTimestamp - Date.now() > MAX_FUTURE_TIMESTAMP_SKEW_MS) {
-        const result = {
-          ok: false,
-          error: {
-            code: "INVALID_TIMESTAMP",
-            message:
-              "last_verified_at appears to be in the future — use the current UTC time at emission.",
-          },
-        };
-        return {
-          isError: true,
-          content: [{ type: "text", text: JSON.stringify(result) }],
-          structuredContent: record(result),
-        };
+      if (
+        args.quality?.last_used_at !== undefined &&
+        args.quality.last_used_at !== null
+      ) {
+        const qualityTimestampValidation = validateUtcTimestamp(
+          "quality.last_used_at",
+          args.quality.last_used_at,
+        );
+        if (!qualityTimestampValidation.ok) {
+          const result = {
+            ok: false,
+            error: {
+              code: "INVALID_TIMESTAMP",
+              message: qualityTimestampValidation.message,
+            },
+          };
+          return {
+            isError: true,
+            content: [{ type: "text", text: JSON.stringify(result) }],
+            structuredContent: record(result),
+          };
+        }
       }
 
       // ---------- 3. Build the incoming Node ----------
@@ -327,7 +377,11 @@ export function registerEmitNode(
             structuredContent: record(result),
           };
         }
-        incoming.quality = emitQualityPatch(target.quality, incoming.kind);
+        incoming.quality = emitQualityPatch(
+          target.quality,
+          incoming.kind,
+          args.quality,
+        );
         const upsertResult = store.upsertNode(incoming, {
           activeTopic,
           mergeWith: target.id,
@@ -384,6 +438,7 @@ export function registerEmitNode(
       incoming.quality = emitQualityPatch(
         store.getNode(incoming.id)?.quality,
         incoming.kind,
+        args.quality,
       );
       const upsertResult = store.upsertNode(incoming, { activeTopic });
       await store.save();
@@ -405,16 +460,26 @@ export function registerEmitNode(
 function emitQualityPatch(
   existing: NodeQualityMetadata | undefined,
   kind: NodeKind,
+  patch: EmitQualityInput | undefined,
 ): NodeQualityMetadata {
   const quality: NodeQualityMetadata = {
-    utility_score: existing?.utility_score ?? defaultUtilityForKind(kind),
-    maturity: existing?.maturity ?? "confirmed",
-    confirmed_by_source: true,
+    utility_score:
+      patch?.utility_score ?? existing?.utility_score ?? defaultUtilityForKind(kind),
+    maturity: patch?.maturity ?? existing?.maturity ?? "confirmed",
+    confirmed_by_source: patch?.confirmed_by_source ?? true,
   };
-  if (existing?.last_used_at !== undefined) {
+  if (patch?.last_used_at === null) {
+    quality.last_used_at = undefined;
+  } else if (patch?.last_used_at !== undefined) {
+    quality.last_used_at = patch.last_used_at;
+  } else if (existing?.last_used_at !== undefined) {
     quality.last_used_at = existing.last_used_at;
   }
-  if (existing?.superseded_by !== undefined) {
+  if (patch?.superseded_by === null) {
+    quality.superseded_by = undefined;
+  } else if (patch?.superseded_by !== undefined) {
+    quality.superseded_by = patch.superseded_by;
+  } else if (existing?.superseded_by !== undefined) {
     quality.superseded_by = existing.superseded_by;
   }
   return quality;

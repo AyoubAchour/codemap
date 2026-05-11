@@ -41,8 +41,11 @@ Implemented in this slice:
   `utility_score`, `maturity`, `last_used_at`, `confirmed_by_source`, and
   `superseded_by`.
 - `emit_node` auto-populates confirmed source-backed quality metadata for new
-  writes while preserving existing quality metadata on merges.
+  writes while preserving existing quality metadata on merges. Agents can pass
+  an optional `quality` patch to rehabilitate superseded memory and clear
+  `superseded_by` with `null`.
 - `query_graph` and `query_context` expose `quality.signals` and richer
   `quality.reasons`.
 - `suggest_writeback` quality-ranks related memories before suggesting links or
-  new captures.
+  new captures, and stale related-memory ids use that same ranked evidence
+  scope.

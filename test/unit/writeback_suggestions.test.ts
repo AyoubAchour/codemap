@@ -202,6 +202,79 @@ describe("writeback suggestions", () => {
 		);
 	});
 
+	test("scopes stale graph node ids to ranked related memories", async () => {
+		await write("src/auth.ts", "export const auth = true;\n");
+		await write("src/stale.ts", "export const stale = true;\n");
+		const authHash = await fileHash("src/auth.ts");
+		const staleHash = await fileHash("src/stale.ts");
+		const store = await GraphStore.load(tmpRoot);
+		for (let i = 0; i < 5; i++) {
+			store.upsertNode({
+				id: `auth/current-${i}`,
+				kind: "decision",
+				name: `Auth current memory ${i}`,
+				summary: "Auth writeback memory for future agents.",
+				sources: [
+					{
+						file_path: "src/auth.ts",
+						line_range: [1, 1],
+						content_hash: authHash,
+					},
+				],
+				tags: ["auth"],
+				aliases: [],
+				status: "active",
+				confidence: 0.95,
+				last_verified_at: "2026-05-01T00:00:00Z",
+				quality: {
+					utility_score: 0.95,
+					maturity: "stable",
+					confirmed_by_source: true,
+				},
+			});
+		}
+		store.upsertNode({
+			id: "auth/stale-low-trust",
+			kind: "decision",
+			name: "Auth stale low trust memory",
+			summary: "Auth writeback memory for future agents.",
+			sources: [
+				{
+					file_path: "src/stale.ts",
+					line_range: [1, 1],
+					content_hash: staleHash,
+				},
+			],
+			tags: ["auth"],
+			aliases: [],
+			status: "active",
+			confidence: 0.95,
+			last_verified_at: "2026-05-01T00:00:00Z",
+			quality: {
+				utility_score: 0.1,
+				maturity: "superseded",
+				confirmed_by_source: true,
+				superseded_by: "auth/current-0",
+			},
+		});
+		await store.save();
+		await write("src/stale.ts", "export const stale = false;\n");
+
+		const response = await buildWritebackSuggestions(tmpRoot, {
+			activeTopic: "auth",
+			inspectedFiles: ["src/auth.ts"],
+			workSummary: "Confirmed auth behavior invariant.",
+		});
+
+		expect(response.evidence.related_node_ids).not.toContain(
+			"auth/stale-low-trust",
+		);
+		expect(response.evidence.stale_graph_node_ids).not.toContain(
+			"auth/stale-low-trust",
+		);
+		expect(response.evidence.modified_files).not.toContain("src/stale.ts");
+	});
+
 	test("reports line ranges without trailing-newline inflation", async () => {
 		await write("src/auth.ts", ["one", "two", "three", ""].join("\n"));
 

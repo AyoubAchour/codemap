@@ -5,7 +5,10 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 
 import { GraphStore, type QueryResult } from "./graph.js";
-import { rankGraphResultByQuality } from "./graph_quality.js";
+import {
+	filterStalenessReportForNodes,
+	rankGraphResultByQuality,
+} from "./graph_quality.js";
 import { checkSourceStaleness } from "./staleness.js";
 import type { SourceRef } from "./types.js";
 
@@ -136,10 +139,14 @@ export async function buildWritebackSuggestions(
 		limit: 5,
 	});
 	const relatedNodeIds = related.nodes.map((node) => node.id);
-	const staleGraphNodeIds = unique(
-		staleness.stale_sources.map((source) => source.node_id),
+	const relatedStaleness = filterStalenessReportForNodes(
+		staleness,
+		related.nodes,
 	);
-	for (const staleSource of staleness.stale_sources) {
+	const staleGraphNodeIds = unique(
+		relatedStaleness.stale_sources.map((source) => source.node_id),
+	);
+	for (const staleSource of relatedStaleness.stale_sources) {
 		addFileReason(
 			repoRoot,
 			fileReasons,
