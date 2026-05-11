@@ -11,6 +11,7 @@ import {
   loadSourceIndex,
   scanSourceIndex,
   searchSourceIndex,
+  type SourceIndex,
   type SourceIndexStatus,
   type SourceSearchResponse,
 } from "./source_index.js";
@@ -269,23 +270,42 @@ export async function buildQueryContext(
   }
 
   let sourceSearch: SourceSearchResponse | null = null;
-  const sourceIndex = sourceStatus.indexed
-    ? await loadSourceIndex(repoRoot)
-    : null;
+  let sourceIndex: SourceIndex | null = null;
+  let sourceIndexLoadError: unknown = null;
+  if (sourceStatus.indexed) {
+    try {
+      sourceIndex = await loadSourceIndex(repoRoot);
+    } catch (err) {
+      sourceIndexLoadError = err;
+    }
+  }
   const repoMap = buildRepoMap(sourceIndex, {
     query: trimmedQuestion,
     fileLimit: Math.max(sourceLimit, 5),
     symbolLimit: 12,
   });
   if (sourceStatus.indexed && sourceStatus.fresh) {
-    sourceSearch = await searchSourceIndex(repoRoot, trimmedQuestion, {
-      limit: sourceLimit,
-      maxContentChars,
-      dependencyLimit,
-      includeImpact,
-      impactLimit,
-      sourceIndex: sourceIndex ?? undefined,
-    });
+    sourceSearch = sourceIndexLoadError
+      ? {
+          ok: false,
+          query: trimmedQuestion,
+          index_updated_at: sourceStatus.updated_at,
+          search_time_ms: 0,
+          total_results: 0,
+          results: [],
+          error: {
+            code: "INDEX_INVALID",
+            message: String(sourceIndexLoadError),
+          },
+        }
+      : await searchSourceIndex(repoRoot, trimmedQuestion, {
+          limit: sourceLimit,
+          maxContentChars,
+          dependencyLimit,
+          includeImpact,
+          impactLimit,
+          sourceIndex: sourceIndex ?? undefined,
+        });
     if (!sourceSearch.ok && sourceSearch.error) {
       warnings.push(`Source search failed: ${sourceSearch.error.message}`);
     } else if (sourceSearch.ok && sourceSearch.results.length > 0) {

@@ -940,6 +940,43 @@ describe("CLI: source index", () => {
     );
   });
 
+  test("context reports source-index load failures as warnings", async () => {
+    const scanResult = await scan({}, { repoRoot: tmpRoot });
+    expect(scanResult.exitCode).toBe(0);
+
+    const indexPath = path.join(tmpRoot, ".codemap", "index", "source.json");
+    const originalReadFile = fs.readFile;
+    let indexReads = 0;
+    fs.readFile = (async (...args: Parameters<typeof fs.readFile>) => {
+      if (String(args[0]) === indexPath) {
+        indexReads += 1;
+        if (indexReads === 2) {
+          throw new Error("simulated source index read failure");
+        }
+      }
+      return originalReadFile(...args);
+    }) as typeof fs.readFile;
+
+    try {
+      const result = await context(
+        "active user",
+        { sourceLimit: 1, refreshIndex: "never" },
+        { repoRoot: tmpRoot },
+      );
+
+      expect(result.exitCode).toBe(0);
+      const out = JSON.parse(result.stdout!);
+      expect(out.ok).toBe(true);
+      expect(out.source.search.ok).toBe(false);
+      expect(out.source.search.error.code).toBe("INDEX_INVALID");
+      expect(out.warnings).toContain(
+        "Source search failed: Error: simulated source index read failure",
+      );
+    } finally {
+      fs.readFile = originalReadFile;
+    }
+  });
+
   test("context compact mode keeps summaries and expansion hints while trimming source detail", async () => {
     await fs.writeFile(
       path.join(tmpRoot, "src", "auth.ts"),
