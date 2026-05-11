@@ -9,6 +9,10 @@ All notable user-facing changes to Codemap are documented here.
 - `graph_repair` / `codemap repair-graph`, a read-only graph memory repair
   planner that turns stale, range-fresh, missing, unsafe, unreadable, and
   legacy source anchors into concrete replacement or review proposals.
+- Source-index-derived repo map ranking for `query_context`,
+  `changes_context`, and generated repo guidance. It scores files and symbols
+  from local imports, references, query matches, and change seeds while keeping
+  the result rebuildable and separate from curated graph memory.
 
 ## 0.7.0 - 2026-05-10
 

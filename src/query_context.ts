@@ -8,11 +8,20 @@ import {
 import { checkSourceStaleness, type StalenessReport } from "./staleness.js";
 import {
   getSourceIndexStatus,
+  loadSourceIndex,
   scanSourceIndex,
   searchSourceIndex,
+  type SourceIndex,
   type SourceIndexStatus,
   type SourceSearchResponse,
 } from "./source_index.js";
+import {
+  buildRepoMap,
+  repoMapFileSummary,
+  type RepoMapFileSummary,
+  type RepoMapSymbolRank,
+  type RepoMapSummary,
+} from "./repo_map.js";
 import type { Node } from "./types.js";
 
 export type SourceRefreshMode = "never" | "if_missing" | "if_stale";
@@ -52,9 +61,16 @@ export interface QueryContextSourceHitSummary {
   has_impact_context: boolean;
 }
 
+export interface QueryContextRepoMapSummary {
+  summary: RepoMapSummary;
+  files: RepoMapFileSummary[];
+  symbols: RepoMapSymbolRank[];
+}
+
 export interface QueryContextSummary {
   graph_memories: QueryContextGraphMemorySummary[];
   source_hits: QueryContextSourceHitSummary[];
+  repo_map: QueryContextRepoMapSummary;
   source_index: Pick<
     SourceIndexStatus,
     | "chunks_indexed"
@@ -69,6 +85,7 @@ export interface QueryContextSummary {
   totals: {
     graph_nodes: number;
     related_nodes: number;
+    repo_map_files: number;
     source_results: number;
     stale_graph_sources: number;
     warnings: number;
@@ -124,6 +141,7 @@ export interface QueryContextResponse {
     refreshed: boolean;
     search: SourceSearchResponse | null;
   };
+  repo_map: QueryContextRepoMapSummary;
   related_nodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
 }
 
@@ -132,6 +150,8 @@ const DEFAULT_SOURCE_LIMIT = 5;
 const DEFAULT_DEPENDENCY_LIMIT = 3;
 const DEFAULT_REFRESH_INDEX: SourceRefreshMode = "if_missing";
 const DEFAULT_MODE: QueryContextMode = "standard";
+const REPO_MAP_CAVEAT =
+  "Repo map rankings are rebuildable source-index signals; use them to choose files to inspect, not as durable memory.";
 
 const MODE_DEFAULTS: Record<
   QueryContextMode,
@@ -250,14 +270,42 @@ export async function buildQueryContext(
   }
 
   let sourceSearch: SourceSearchResponse | null = null;
+  let sourceIndex: SourceIndex | null = null;
+  let sourceIndexLoadError: unknown = null;
+  if (sourceStatus.indexed) {
+    try {
+      sourceIndex = await loadSourceIndex(repoRoot);
+    } catch (err) {
+      sourceIndexLoadError = err;
+    }
+  }
+  const repoMap = buildRepoMap(sourceIndex, {
+    query: trimmedQuestion,
+    fileLimit: Math.max(sourceLimit, 5),
+    symbolLimit: 12,
+  });
   if (sourceStatus.indexed && sourceStatus.fresh) {
-    sourceSearch = await searchSourceIndex(repoRoot, trimmedQuestion, {
-      limit: sourceLimit,
-      maxContentChars,
-      dependencyLimit,
-      includeImpact,
-      impactLimit,
-    });
+    sourceSearch = sourceIndexLoadError
+      ? {
+          ok: false,
+          query: trimmedQuestion,
+          index_updated_at: sourceStatus.updated_at,
+          search_time_ms: 0,
+          total_results: 0,
+          results: [],
+          error: {
+            code: "INDEX_INVALID",
+            message: String(sourceIndexLoadError),
+          },
+        }
+      : await searchSourceIndex(repoRoot, trimmedQuestion, {
+          limit: sourceLimit,
+          maxContentChars,
+          dependencyLimit,
+          includeImpact,
+          impactLimit,
+          sourceIndex: sourceIndex ?? undefined,
+        });
     if (!sourceSearch.ok && sourceSearch.error) {
       warnings.push(`Source search failed: ${sourceSearch.error.message}`);
     } else if (sourceSearch.ok && sourceSearch.results.length > 0) {
@@ -271,6 +319,9 @@ export async function buildQueryContext(
         );
       }
     }
+    if (repoMap.files.length > 0) {
+      warnings.push(REPO_MAP_CAVEAT);
+    }
   } else if (!sourceStatus.indexed) {
     warnings.push(
       "Source index is missing; use refresh_index: if_missing or run index_codebase before source search.",
@@ -279,6 +330,9 @@ export async function buildQueryContext(
     warnings.push(
       "Source index is stale; use refresh_index: if_stale or run index_codebase before relying on source hits.",
     );
+    if (repoMap.files.length > 0) {
+      warnings.push(REPO_MAP_CAVEAT);
+    }
   }
 
   const relatedNodes = dedupeRelatedNodes(sourceSearch);
@@ -293,6 +347,7 @@ export async function buildQueryContext(
     relatedNodes,
     sourceSearch,
     sourceStatus,
+    repoMap,
     refreshed,
     staleness,
     warnings,
@@ -306,6 +361,7 @@ export async function buildQueryContext(
     sourceSearch,
     staleness,
   });
+  const repoMapSummary = summarizeRepoMap(repoMap);
 
   return {
     ok: true,
@@ -321,6 +377,7 @@ export async function buildQueryContext(
       refreshed,
       search: sourceSearch,
     },
+    repo_map: repoMapSummary,
     related_nodes: relatedNodes,
   };
 }
@@ -330,6 +387,7 @@ function buildSummary(input: {
   relatedNodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
   sourceSearch: SourceSearchResponse | null;
   sourceStatus: SourceIndexStatus;
+  repoMap: ReturnType<typeof buildRepoMap>;
   refreshed: boolean;
   staleness: StalenessReport;
   warnings: string[];
@@ -369,6 +427,7 @@ function buildSummary(input: {
       has_dependency_context: result.dependency_context.length > 0,
       has_impact_context: result.impact_context !== undefined,
     })),
+    repo_map: summarizeRepoMap(input.repoMap),
     source_index: {
       indexed: input.sourceStatus.indexed,
       fresh: input.sourceStatus.fresh,
@@ -383,10 +442,21 @@ function buildSummary(input: {
     totals: {
       graph_nodes: input.graphResult.nodes.length,
       related_nodes: input.relatedNodes.length,
+      repo_map_files: input.repoMap.summary.files,
       source_results: sourceResults.length,
       stale_graph_sources: input.staleness.stale_sources.length,
       warnings: input.warnings.length,
     },
+  };
+}
+
+function summarizeRepoMap(
+  repoMap: ReturnType<typeof buildRepoMap>,
+): QueryContextRepoMapSummary {
+  return {
+    summary: repoMap.summary,
+    files: repoMap.files.slice(0, 5).map(repoMapFileSummary),
+    symbols: repoMap.symbols.slice(0, 8),
   };
 }
 

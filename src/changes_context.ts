@@ -20,6 +20,13 @@ import {
   type SourceSearchResult,
   type SourceSymbol,
 } from "./source_index.js";
+import {
+  buildRepoMap,
+  repoMapFileSummary,
+  type RepoMapFileRank,
+  type RepoMapFileSummary,
+  type RepoMapSummary,
+} from "./repo_map.js";
 import type { Node } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -61,7 +68,15 @@ export interface ChangedFileContext {
   related_graph_nodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
   dependency_context: SourceDependencyContext[];
   impact_context?: SourceImpactContext;
+  repo_map?: RepoMapFileSummary;
   warnings: string[];
+}
+
+export interface ChangesRepoMapContext {
+  summary: RepoMapSummary;
+  changed_files: RepoMapFileSummary[];
+  likely_affected_files: RepoMapFileSummary[];
+  top_files: RepoMapFileSummary[];
 }
 
 export interface ChangesContextOptions {
@@ -107,6 +122,7 @@ export interface ChangesContextResponse {
   likely_affected_files: string[];
   likely_tests: AffectedPath[];
   likely_docs: AffectedPath[];
+  repo_map: ChangesRepoMapContext;
   writeback: WritebackSuggestionResponse | null;
   warnings: string[];
   next_steps: string[];
@@ -179,6 +195,12 @@ export async function buildChangesContext(
   }
 
   const index = await loadSourceIndex(resolvedRoot);
+  const changedFilePaths = limitedChangedFiles.map((file) => file.file_path);
+  const repoMap = buildRepoMap(index, {
+    seedFiles: changedFilePaths,
+    fileLimit: Math.max(fileLimit, 10),
+    symbolLimit: 8,
+  });
   const graphStore = await GraphStore.load(resolvedRoot);
   const graphNodesByFile = graphNodesBySourceFile(graphStore);
   const files: ChangedFileContext[] = [];
@@ -221,11 +243,11 @@ export async function buildChangesContext(
       related_graph_nodes: graphNodesByFile.get(changed.file_path) ?? [],
       dependency_context: sourceHit?.dependency_context ?? [],
       impact_context: impact,
+      repo_map: summarizeRepoMapFile(repoMap.files_by_path[changed.file_path]),
       warnings: fileWarnings(changed, indexedFile !== undefined, sourceHit),
     });
   }
 
-  const changedFilePaths = limitedChangedFiles.map((file) => file.file_path);
   const staleGraphNodes = await staleGraphNodesForFiles(
     resolvedRoot,
     graphStore,
@@ -290,6 +312,20 @@ export async function buildChangesContext(
     likely_affected_files: [...likelyAffectedFiles].sort(),
     likely_tests: testCandidates,
     likely_docs: docCandidates,
+    repo_map: {
+      summary: repoMap.summary,
+      changed_files: changedFilePaths
+        .map((filePath) => summarizeRepoMapFile(repoMap.files_by_path[filePath]))
+        .filter((file): file is RepoMapFileSummary => file !== undefined),
+      likely_affected_files: [...likelyAffectedFiles]
+        .sort()
+        .map((filePath) => summarizeRepoMapFile(repoMap.files_by_path[filePath]))
+        .filter((file): file is RepoMapFileSummary => file !== undefined),
+      top_files: repoMap.files
+        .slice(0, 5)
+        .map((file) => summarizeRepoMapFile(file))
+        .filter((file): file is RepoMapFileSummary => file !== undefined),
+    },
     writeback,
     warnings,
     next_steps: nextSteps({
@@ -299,6 +335,13 @@ export async function buildChangesContext(
       writebackSuggestions: writeback?.total_suggestions ?? 0,
     }),
   };
+}
+
+function summarizeRepoMapFile(
+  file: RepoMapFileRank | undefined,
+): RepoMapFileSummary | undefined {
+  if (!file) return undefined;
+  return repoMapFileSummary(file);
 }
 
 async function assertGitRepo(repoRoot: string): Promise<void> {

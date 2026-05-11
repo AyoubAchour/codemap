@@ -269,6 +269,7 @@ export interface SourceSearchOptions {
   includeImpact?: boolean;
   impactLimit?: number;
   impactContentChars?: number;
+  sourceIndex?: SourceIndex;
 }
 
 interface CandidateFile {
@@ -549,9 +550,9 @@ export async function searchSourceIndex(
     };
   }
 
-  let index: SourceIndex | null;
+  let index: SourceIndex | null = options.sourceIndex ?? null;
   try {
-    index = await loadSourceIndex(repoRoot);
+    index ??= await loadSourceIndex(repoRoot);
   } catch (err) {
     return {
       ok: false,

@@ -896,10 +896,85 @@ describe("CLI: source index", () => {
     expect(out.ok).toBe(true);
     expect(out.mode).toBe("standard");
     expect(out.summary.source_hits[0].file_path).toBe("src/auth.ts");
+    expect(out.summary.repo_map.files[0]).toEqual(
+      expect.objectContaining({
+        file_path: "src/auth.ts",
+        role: "source",
+      }),
+    );
     expect(out.expansion.source_files[0].file_path).toBe("src/auth.ts");
     expect(out.source.refreshed).toBe(true);
     expect(out.source.status.indexed).toBe(true);
     expect(out.source.search.results[0].file_path).toBe("src/auth.ts");
+  });
+
+  test("context warns when repo map rankings come from a stale source index", async () => {
+    const scanResult = await scan({}, { repoRoot: tmpRoot });
+    expect(scanResult.exitCode).toBe(0);
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      [
+        "export interface SessionUser { id: string }",
+        "export function requireActiveUser(token: string): SessionUser {",
+        "  if (!token) throw new Error('missing token');",
+        "  return { id: token };",
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await context(
+      "active user",
+      { sourceLimit: 1, refreshIndex: "never" },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.source.status.fresh).toBe(false);
+    expect(out.repo_map.files[0].file_path).toBe("src/auth.ts");
+    expect(out.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Source index is stale"),
+        expect.stringContaining("Repo map rankings are rebuildable"),
+      ]),
+    );
+  });
+
+  test("context reports source-index load failures as warnings", async () => {
+    const scanResult = await scan({}, { repoRoot: tmpRoot });
+    expect(scanResult.exitCode).toBe(0);
+
+    const indexPath = path.join(tmpRoot, ".codemap", "index", "source.json");
+    const originalReadFile = fs.readFile;
+    let indexReads = 0;
+    fs.readFile = (async (...args: Parameters<typeof fs.readFile>) => {
+      if (String(args[0]) === indexPath) {
+        indexReads += 1;
+        if (indexReads === 2) {
+          throw new Error("simulated source index read failure");
+        }
+      }
+      return originalReadFile(...args);
+    }) as typeof fs.readFile;
+
+    try {
+      const result = await context(
+        "active user",
+        { sourceLimit: 1, refreshIndex: "never" },
+        { repoRoot: tmpRoot },
+      );
+
+      expect(result.exitCode).toBe(0);
+      const out = JSON.parse(result.stdout!);
+      expect(out.ok).toBe(true);
+      expect(out.source.search.ok).toBe(false);
+      expect(out.source.search.error.code).toBe("INDEX_INVALID");
+      expect(out.warnings).toContain(
+        "Source search failed: Error: simulated source index read failure",
+      );
+    } finally {
+      fs.readFile = originalReadFile;
+    }
   });
 
   test("context compact mode keeps summaries and expansion hints while trimming source detail", async () => {
@@ -1193,6 +1268,13 @@ describe("CLI: source index", () => {
       }),
     );
     expect(out.files[0].related_graph_nodes[0].id).toBe("auth/active-user");
+    expect(out.files[0].repo_map).toEqual(
+      expect.objectContaining({
+        file_path: "src/auth.ts",
+        rank: expect.any(Number),
+      }),
+    );
+    expect(out.repo_map.changed_files[0].file_path).toBe("src/auth.ts");
     expect(out.stale_graph_nodes[0].id).toBe("auth/active-user");
     expect(out.likely_tests).toEqual(
       expect.arrayContaining([
@@ -1352,6 +1434,7 @@ describe("CLI: source index", () => {
     expect(body).toContain("Repo Area Slices");
     expect(body).toContain("areas/root.md");
     expect(body).toContain("areas/src.md");
+    expect(body).toContain("top_repo_rank");
     expect(body).toContain("changes_context");
     const rootArea = await fs.readFile(
       path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", "root.md"),
@@ -1371,6 +1454,7 @@ describe("CLI: source index", () => {
       "utf8",
     );
     expect(srcArea).toContain("Codemap Area: src");
+    expect(srcArea).toContain("repo_rank");
     expect(srcArea).toContain("auth/active-user");
     expect(srcArea).toContain("area_hash");
 
