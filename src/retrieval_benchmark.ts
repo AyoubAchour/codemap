@@ -17,7 +17,7 @@ const DEFAULT_MODE: QueryContextMode = "standard";
 const DEFAULT_MAX_CONTENT_CHARS = 300;
 const DEFAULT_DEPENDENCY_LIMIT = 0;
 const DEFAULT_IMPACT_LIMIT = 3;
-const DEFAULT_REFRESH_INDEX: SourceRefreshMode = "if_missing";
+const DEFAULT_REFRESH_INDEX: SourceRefreshMode = "if_stale";
 const DEFAULT_SUITE_PATHS = [
   "benchmarks/retrieval.codemap.json",
   ".codemap/retrieval-benchmark.json",

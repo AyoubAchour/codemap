@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "name": "Taskflow fixture retrieval suite",
+  "description": "Small non-Codemap repository used to benchmark semantic wording, typos, docs, tests, renamed exports, and cross-file impact.",
+  "queries": [
+    {
+      "id": "semantic-session-policy",
+      "query": "who checks whether a person can manage workspace project tasks before work starts",
+      "expected_files": [
+        "src/auth/session.ts"
+      ],
+      "tags": ["semantic", "auth"]
+    },
+    {
+      "id": "typo-task-creation",
+      "query": "creat prject tsk owner assignmnt createProjectTask",
+      "expected_files": [
+        "src/projects/tasks.ts",
+        "src/projects/rename.ts"
+      ],
+      "tags": ["typo", "renamed-symbol"]
+    },
+    {
+      "id": "cross-file-impact",
+      "query": "changing task assignment touches creator notifications and tests",
+      "expected_files": [
+        "src/projects/tasks.ts",
+        "src/projects/rename.ts",
+        "src/notifications/email.ts",
+        "test/tasks.fixture.ts"
+      ],
+      "tags": ["impact", "tests"]
+    },
+    {
+      "id": "docs-runbook",
+      "query": "handoff queue service level operations documentation overdue digest policy",
+      "expected_files": [
+        "docs/operations.md"
+      ],
+      "tags": ["docs", "semantic"]
+    },
+    {
+      "id": "notification-digest",
+      "query": "email digest overdue tasks owner notification",
+      "expected_files": [
+        "src/notifications/email.ts"
+      ],
+      "tags": ["semantic", "notifications"]
+    },
+    {
+      "id": "test-discovery",
+      "query": "assignment behaviour test assert owner field",
+      "expected_files": [
+        "test/tasks.fixture.ts"
+      ],
+      "tags": ["tests"]
+    }
+  ]
+}

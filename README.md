@@ -228,7 +228,10 @@ By default, commands operate on the current working directory. Use
 `codemap benchmark-retrieval` looks for `benchmarks/retrieval.codemap.json` or
 `.codemap/retrieval-benchmark.json` and reports offline baseline metrics for
 the current retrieval stack: hit rate, precision/recall@K, MRR, diversity,
-latency, and response size. Use it before adding heavier retrieval machinery.
+latency, and response size. The bundled suite includes semantic, typo,
+cross-file impact, renamed-symbol, stale-graph, docs, and tests cases, plus a
+small non-Codemap fixture under `benchmarks/fixtures/`. Use it before adding
+heavier retrieval machinery.
 
 ## Graph Health
 

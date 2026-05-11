@@ -20,6 +20,8 @@ const SUPPORTED_EXTENSIONS = new Map<string, string>([
   [".cts", "typescript"],
   [".js", "javascript"],
   [".jsx", "javascript"],
+  [".md", "markdown"],
+  [".mdx", "markdown"],
   [".mjs", "javascript"],
   [".mts", "typescript"],
   [".ts", "typescript"],
@@ -809,6 +811,10 @@ function extractAstSourceFacts(
   candidate: CandidateFile,
   content: string,
 ): ExtractedSourceFacts | null {
+  if (candidate.language === "markdown") {
+    return null;
+  }
+
   try {
     if (hasSyntacticErrors(candidate.file_path, content)) {
       return null;

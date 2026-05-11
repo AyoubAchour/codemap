@@ -1,6 +1,6 @@
 # Task 055 — Larger retrieval benchmark suite
 
-Status: todo
+Status: done
 
 Phase: Phase 4 / evaluation
 
@@ -26,12 +26,24 @@ discovery, or multi-repo fixtures.
 
 ## Exit Criteria
 
-- [ ] Benchmark failures point to specific retrieval weaknesses.
-- [ ] Optional semantic/rerank experiments can be compared against the same
+- [x] Benchmark failures point to specific retrieval weaknesses.
+- [x] Optional semantic/rerank experiments can be compared against the same
       suite.
-- [ ] The suite is documented enough for contributors to add new cases.
+- [x] The suite is documented enough for contributors to add new cases.
 
 ## Notes
 
 This task should happen before task 052 so retrieval complexity follows
 evidence rather than taste.
+
+## Implementation Notes
+
+- Expanded `benchmarks/retrieval.codemap.json` from six happy-path Codemap
+  queries to a harder suite covering semantic wording, typos, cross-file impact,
+  renamed symbols, stale graph repair, docs, and tests.
+- Added `benchmarks/fixtures/taskflow-app`, a small non-Codemap fixture repo
+  with TypeScript source, Markdown docs, tests, and its own retrieval suite.
+- Markdown files are now indexed as rebuildable source-index content so docs
+  discovery is measured directly instead of treated as an external expectation.
+- `benchmark-retrieval` now refreshes stale source indexes by default so
+  benchmark comparisons use the current source surface.
