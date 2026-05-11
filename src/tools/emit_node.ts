@@ -466,7 +466,8 @@ function emitQualityPatch(
     utility_score:
       patch?.utility_score ?? existing?.utility_score ?? defaultUtilityForKind(kind),
     maturity: patch?.maturity ?? existing?.maturity ?? "confirmed",
-    confirmed_by_source: patch?.confirmed_by_source ?? true,
+    confirmed_by_source:
+      patch?.confirmed_by_source ?? existing?.confirmed_by_source ?? true,
   };
   if (patch?.last_used_at === null) {
     quality.last_used_at = undefined;
