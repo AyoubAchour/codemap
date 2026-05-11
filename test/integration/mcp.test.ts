@@ -524,6 +524,11 @@ describe("MCP server — source index tools", () => {
       status: "active",
       confidence: 0.9,
       last_verified_at: new Date().toISOString(),
+      quality: {
+        utility_score: 0.85,
+        maturity: "confirmed",
+        confirmed_by_source: true,
+      },
     });
     await store.save();
 
@@ -540,6 +545,16 @@ describe("MCP server — source index tools", () => {
     expect(parsed.ok).toBe(true);
     expect(parsed.mode).toBe("standard");
     expect(parsed.summary.graph_memories[0].id).toBe("auth/active-user");
+    expect(parsed.summary.graph_memories[0].quality_signals).toEqual(
+      expect.objectContaining({
+        utility_score: 0.85,
+        maturity: "confirmed",
+        confirmed_by_source: true,
+      }),
+    );
+    expect(parsed.summary.graph_memories[0].quality_reasons).toEqual(
+      expect.arrayContaining([expect.stringContaining("confidence")]),
+    );
     expect(parsed.summary.source_hits[0].file_path).toBe(
       "src/auth/distinct.ts",
     );
@@ -1514,8 +1529,164 @@ describe("MCP server — emit_node", () => {
     const get = (await client.callTool({
       name: "get_node",
       arguments: { id: "auth/middleware" },
-    })) as { structuredContent?: { node: { tags: string[] } | null } };
+    })) as {
+      structuredContent?: {
+        node: {
+          tags: string[];
+          quality?: {
+            utility_score?: number;
+            maturity?: string;
+            confirmed_by_source?: boolean;
+          };
+        } | null;
+      };
+    };
     expect(get.structuredContent?.node?.tags).toContain("auth");
+    expect(get.structuredContent?.node?.quality).toEqual(
+      expect.objectContaining({
+        utility_score: 0.85,
+        maturity: "confirmed",
+        confirmed_by_source: true,
+      }),
+    );
+  });
+
+  test("allows emit_node to override and clear quality lifecycle metadata", async () => {
+    const { GraphStore } = await import("../../src/graph.js");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode({
+      id: "quality/superseded",
+      kind: "decision",
+      name: "Superseded quality memory",
+      summary: "Old summary",
+      sources: [
+        {
+          file_path: "src/x.ts",
+          line_range: [1, 1],
+          content_hash: seededFileHash("src/x.ts"),
+        },
+      ],
+      tags: ["quality"],
+      aliases: [],
+      status: "active",
+      confidence: 0.9,
+      last_verified_at: "2026-04-28T00:00:00Z",
+      quality: {
+        utility_score: 0.1,
+        maturity: "superseded",
+        confirmed_by_source: true,
+        superseded_by: "quality/current",
+      },
+    });
+    await store.save();
+
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: emitArgs({
+        id: "quality/superseded",
+        name: "Superseded quality memory",
+        merge_with: "quality/superseded",
+        quality: {
+          utility_score: 0.9,
+          maturity: "confirmed",
+          superseded_by: null,
+        },
+      }),
+    })) as {
+      structuredContent?: { ok: boolean; createdId: string; merged: boolean };
+    };
+    expect(r.structuredContent?.ok).toBe(true);
+    expect(r.structuredContent?.merged).toBe(true);
+
+    const get = (await client.callTool({
+      name: "get_node",
+      arguments: { id: "quality/superseded" },
+    })) as {
+      structuredContent?: {
+        node: {
+          quality?: {
+            utility_score?: number;
+            maturity?: string;
+            confirmed_by_source?: boolean;
+            superseded_by?: string;
+          };
+        } | null;
+      };
+    };
+    expect(get.structuredContent?.node?.quality).toEqual(
+      expect.objectContaining({
+        utility_score: 0.9,
+        maturity: "confirmed",
+        confirmed_by_source: true,
+      }),
+    );
+    expect(get.structuredContent?.node?.quality).not.toHaveProperty(
+      "superseded_by",
+    );
+  });
+
+  test("preserves existing unconfirmed quality state when re-emitting without a quality patch", async () => {
+    const { GraphStore } = await import("../../src/graph.js");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode({
+      id: "quality/unconfirmed",
+      kind: "decision",
+      name: "Unconfirmed quality memory",
+      summary: "Old summary",
+      sources: [
+        {
+          file_path: "src/x.ts",
+          line_range: [1, 1],
+          content_hash: seededFileHash("src/x.ts"),
+        },
+      ],
+      tags: ["quality"],
+      aliases: [],
+      status: "active",
+      confidence: 0.9,
+      last_verified_at: "2026-04-28T00:00:00Z",
+      quality: {
+        utility_score: 0.4,
+        maturity: "draft",
+        confirmed_by_source: false,
+      },
+    });
+    await store.save();
+
+    const r = (await client.callTool({
+      name: "emit_node",
+      arguments: emitArgs({
+        id: "quality/unconfirmed",
+        name: "Unconfirmed quality memory",
+        merge_with: "quality/unconfirmed",
+      }),
+    })) as {
+      structuredContent?: { ok: boolean; createdId: string; merged: boolean };
+    };
+    expect(r.structuredContent?.ok).toBe(true);
+    expect(r.structuredContent?.merged).toBe(true);
+
+    const get = (await client.callTool({
+      name: "get_node",
+      arguments: { id: "quality/unconfirmed" },
+    })) as {
+      structuredContent?: {
+        node: {
+          quality?: {
+            utility_score?: number;
+            maturity?: string;
+            confirmed_by_source?: boolean;
+          };
+        } | null;
+      };
+    };
+    expect(get.structuredContent?.node?.quality).toEqual(
+      expect.objectContaining({
+        utility_score: 0.4,
+        maturity: "draft",
+        confirmed_by_source: false,
+      }),
+    );
   });
 
   test("fills range_hash on accepted source anchors", async () => {

@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 
+import { GraphStore } from "../../src/graph.js";
 import { buildWritebackSuggestions } from "../../src/writeback_suggestions.js";
 
 const execFileAsync = promisify(execFile);
@@ -23,6 +25,11 @@ async function write(filePath: string, content: string): Promise<void> {
 	const absolutePath = path.join(tmpRoot, filePath);
 	await fs.mkdir(path.dirname(absolutePath), { recursive: true });
 	await fs.writeFile(absolutePath, content);
+}
+
+async function fileHash(filePath: string): Promise<string> {
+	const content = await fs.readFile(path.join(tmpRoot, filePath));
+	return `sha256:${createHash("sha256").update(content).digest("hex")}`;
 }
 
 async function git(args: string[]): Promise<void> {
@@ -135,6 +142,137 @@ describe("writeback suggestions", () => {
 		expect(candidates[0].reasons).toEqual(
 			expect.arrayContaining(["git_changed", "inspected"]),
 		);
+	});
+
+	test("orders related graph memories by quality for writeback decisions", async () => {
+		await write("src/auth.ts", "export const auth = true;\n");
+		const hash = await fileHash("src/auth.ts");
+		const store = await GraphStore.load(tmpRoot);
+		const baseNode = {
+			kind: "decision" as const,
+			name: "Auth writeback memory",
+			summary: "Auth writeback memory for future agents.",
+			sources: [
+				{
+					file_path: "src/auth.ts",
+					line_range: [1, 1] as [number, number],
+					content_hash: hash,
+				},
+			],
+			tags: ["auth"],
+			aliases: [],
+			status: "active" as const,
+			confidence: 0.9,
+			last_verified_at: "2026-05-01T00:00:00Z",
+		};
+		store.upsertNode({
+			id: "auth/a-old-memory",
+			...baseNode,
+			quality: {
+				utility_score: 0.1,
+				maturity: "superseded",
+				confirmed_by_source: true,
+				superseded_by: "auth/z-current-memory",
+			},
+		});
+		store.upsertNode({
+			id: "auth/z-current-memory",
+			...baseNode,
+			quality: {
+				utility_score: 0.95,
+				maturity: "stable",
+				last_used_at: "2026-05-05T00:00:00Z",
+				confirmed_by_source: true,
+			},
+		});
+		await store.save();
+
+		const response = await buildWritebackSuggestions(tmpRoot, {
+			activeTopic: "auth",
+			inspectedFiles: ["src/auth.ts"],
+			workSummary: "Confirmed auth behavior invariant.",
+		});
+
+		expect(response.evidence.related_node_ids.slice(0, 2)).toEqual([
+			"auth/z-current-memory",
+			"auth/a-old-memory",
+		]);
+		expect(response.suggestions.invariants[0].related_node_ids.slice(0, 2)).toEqual(
+			["auth/z-current-memory", "auth/a-old-memory"],
+		);
+	});
+
+	test("scopes stale graph node ids to ranked related memories", async () => {
+		await write("src/auth.ts", "export const auth = true;\n");
+		await write("src/stale.ts", "export const stale = true;\n");
+		const authHash = await fileHash("src/auth.ts");
+		const staleHash = await fileHash("src/stale.ts");
+		const store = await GraphStore.load(tmpRoot);
+		for (let i = 0; i < 5; i++) {
+			store.upsertNode({
+				id: `auth/current-${i}`,
+				kind: "decision",
+				name: `Auth current memory ${i}`,
+				summary: "Auth writeback memory for future agents.",
+				sources: [
+					{
+						file_path: "src/auth.ts",
+						line_range: [1, 1],
+						content_hash: authHash,
+					},
+				],
+				tags: ["auth"],
+				aliases: [],
+				status: "active",
+				confidence: 0.95,
+				last_verified_at: "2026-05-01T00:00:00Z",
+				quality: {
+					utility_score: 0.95,
+					maturity: "stable",
+					confirmed_by_source: true,
+				},
+			});
+		}
+		store.upsertNode({
+			id: "auth/stale-low-trust",
+			kind: "decision",
+			name: "Auth stale low trust memory",
+			summary: "Auth writeback memory for future agents.",
+			sources: [
+				{
+					file_path: "src/stale.ts",
+					line_range: [1, 1],
+					content_hash: staleHash,
+				},
+			],
+			tags: ["auth"],
+			aliases: [],
+			status: "active",
+			confidence: 0.95,
+			last_verified_at: "2026-05-01T00:00:00Z",
+			quality: {
+				utility_score: 0.1,
+				maturity: "superseded",
+				confirmed_by_source: true,
+				superseded_by: "auth/current-0",
+			},
+		});
+		await store.save();
+		await write("src/stale.ts", "export const stale = false;\n");
+
+		const response = await buildWritebackSuggestions(tmpRoot, {
+			activeTopic: "auth",
+			inspectedFiles: ["src/auth.ts"],
+			workSummary: "Confirmed auth behavior invariant.",
+		});
+
+		expect(response.evidence.related_node_ids).not.toContain(
+			"auth/stale-low-trust",
+		);
+		expect(response.evidence.stale_graph_node_ids).not.toContain(
+			"auth/stale-low-trust",
+		);
+		expect(response.evidence.modified_files).not.toContain("src/stale.ts");
 	});
 
 	test("reports line ranges without trailing-newline inflation", async () => {

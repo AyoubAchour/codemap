@@ -4,7 +4,11 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
 
-import { GraphStore } from "./graph.js";
+import { GraphStore, type QueryResult } from "./graph.js";
+import {
+	filterStalenessReportForNodes,
+	rankGraphResultByQuality,
+} from "./graph_quality.js";
 import { checkSourceStaleness } from "./staleness.js";
 import type { SourceRef } from "./types.js";
 
@@ -94,6 +98,10 @@ interface BuildContext {
 	limit: number;
 }
 
+function emptyQueryResult(): QueryResult {
+	return { nodes: [], edges: [], matches: [] };
+}
+
 export async function buildWritebackSuggestions(
 	repoRoot: string,
 	options: WritebackSuggestionOptions = {},
@@ -122,13 +130,23 @@ export async function buildWritebackSuggestions(
 
 	const query = [activeTopic, workSummary].filter(Boolean).join(" ").trim();
 	const store = await GraphStore.load(repoRoot);
-	const related = query ? store.query(query, 5) : { nodes: [] };
-	const relatedNodeIds = related.nodes.map((node) => node.id);
-	const staleness = await checkSourceStaleness(repoRoot, related.nodes);
-	const staleGraphNodeIds = unique(
-		staleness.stale_sources.map((source) => source.node_id),
+	const relatedCandidates = query ? store.query(query, 15) : emptyQueryResult();
+	const staleness = await checkSourceStaleness(
+		repoRoot,
+		relatedCandidates.nodes,
 	);
-	for (const staleSource of staleness.stale_sources) {
+	const related = rankGraphResultByQuality(relatedCandidates, staleness, {
+		limit: 5,
+	});
+	const relatedNodeIds = related.nodes.map((node) => node.id);
+	const relatedStaleness = filterStalenessReportForNodes(
+		staleness,
+		related.nodes,
+	);
+	const staleGraphNodeIds = unique(
+		relatedStaleness.stale_sources.map((source) => source.node_id),
+	);
+	for (const staleSource of relatedStaleness.stale_sources) {
 		addFileReason(
 			repoRoot,
 			fileReasons,

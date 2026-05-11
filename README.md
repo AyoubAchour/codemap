@@ -264,16 +264,26 @@ range-aware source anchors.
 ## Memory Quality
 
 Graph search results include query-time trust metadata. Codemap keeps the graph
-schema stable and computes quality from existing fields: lexical match score,
-confidence, node kind, verification age, deprecated status, and source-anchor
-freshness.
+schema backward-compatible and computes quality from lexical match score,
+confidence, node kind, verification age, deprecated status, source-anchor
+freshness, and optional lifecycle metadata.
 
 Each graph match can include:
 
 - `ranking_score` — match score adjusted by memory quality
 - `quality.trust` — `high`, `medium`, or `low`
 - `quality.freshness` — `fresh`, `stale`, `unchecked`, or `no_sources`
+- `quality.signals` — utility, maturity, last-used, source-confirmation, and
+  supersession metadata when present
 - `quality.reasons` — short hints explaining why the memory ranked that way
+
+New `emit_node` writes automatically mark source-verified memories as
+`confirmed` and assign a conservative utility score based on node kind.
+Agents can also pass an optional `quality` patch to update lifecycle signals;
+for example, set `maturity: "confirmed"` and `superseded_by: null` when a
+previously superseded memory is re-verified from source.
+Existing graph files without quality metadata continue to load normally.
+Low-utility or superseded memories are demoted, not hidden.
 
 New graph writes store both a full-file hash and a cited-line-range hash. That
 lets Codemap keep a memory fresh when unrelated code in the same file changes,
@@ -294,6 +304,10 @@ active topic, and, on the CLI by default, git changed files. It returns possible
 `decision`, `invariant`, `gotcha`, or `link` prompts with source-anchor
 candidates.
 
+Related graph memories in suggestions are quality-ranked, so high-utility,
+fresh, source-confirmed memories appear before low-utility or superseded ones.
+Stale related-memory ids are reported from that same ranked evidence scope, so
+callers do not have to reconcile hidden stale candidates.
 Suggestions are intentionally not durable memory. Agents must still inspect the
 real files and call `emit_node` or `link` themselves.
 

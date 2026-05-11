@@ -131,7 +131,7 @@ Maintained manually. Update status as tasks land.
 | 051 | Repo map and symbol graph ranking | done | Phase 4 / retrieval | [task-051-repo-map-symbol-ranking.md](task-051-repo-map-symbol-ranking.md) |
 | 052 | Optional semantic retrieval layer | done | Phase 4 / retrieval | [task-052-semantic-retrieval-layer.md](task-052-semantic-retrieval-layer.md) |
 | 053 | Watch mode and freshness daemon | done | Phase 4 / performance | [task-053-watch-mode-freshness-daemon.md](task-053-watch-mode-freshness-daemon.md) |
-| 054 | Agentic writeback quality signals | todo | Phase 4 / memory quality | [task-054-agentic-writeback-quality.md](task-054-agentic-writeback-quality.md) |
+| 054 | Agentic writeback quality signals | done | Phase 4 / memory quality | [task-054-agentic-writeback-quality.md](task-054-agentic-writeback-quality.md) |
 | 055 | Larger retrieval benchmark suite | done | Phase 4 / evaluation | [task-055-retrieval-benchmark-suite.md](task-055-retrieval-benchmark-suite.md) |
 
 ---

@@ -40,6 +40,12 @@ export const NodeKindSchema = z.enum([
 ]);
 
 export const NodeStatusSchema = z.enum(["active", "deprecated"]);
+export const NodeMaturitySchema = z.enum([
+  "draft",
+  "confirmed",
+  "stable",
+  "superseded",
+]);
 
 /**
  * Node id format: non-empty, no `|` (which is reserved as the edge-key
@@ -50,6 +56,14 @@ export const NodeIdSchema = z
   .string()
   .min(1)
   .regex(/^[^|]+$/, "node id cannot contain '|'");
+
+export const NodeQualityMetadataSchema = z.object({
+  utility_score: z.number().min(0).max(1).optional(),
+  maturity: NodeMaturitySchema.optional(),
+  last_used_at: z.iso.datetime().optional(),
+  confirmed_by_source: z.boolean().optional(),
+  superseded_by: NodeIdSchema.optional(),
+});
 
 export const NodeSchema = z.object({
   id: NodeIdSchema,
@@ -62,6 +76,7 @@ export const NodeSchema = z.object({
   status: NodeStatusSchema.default("active"),
   confidence: z.number().min(0).max(1),
   last_verified_at: z.iso.datetime(),
+  quality: NodeQualityMetadataSchema.optional(),
 });
 
 export const EdgeKindSchema = z.enum([

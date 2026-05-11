@@ -3,7 +3,9 @@ import type {
   EdgeKindSchema,
   EdgeSchema,
   GraphFileSchema,
+  NodeMaturitySchema,
   NodeKindSchema,
+  NodeQualityMetadataSchema,
   NodeSchema,
   NodeStatusSchema,
   SourceRefSchema,
@@ -14,6 +16,8 @@ import type {
 export type SourceRef = z.infer<typeof SourceRefSchema>;
 export type NodeKind = z.infer<typeof NodeKindSchema>;
 export type NodeStatus = z.infer<typeof NodeStatusSchema>;
+export type NodeMaturity = z.infer<typeof NodeMaturitySchema>;
+export type NodeQualityMetadata = z.infer<typeof NodeQualityMetadataSchema>;
 export type Node = z.infer<typeof NodeSchema>;
 /**
  * Storage shape for an entry in `GraphFile.nodes`: a `Node` with `id`

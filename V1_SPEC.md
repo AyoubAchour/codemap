@@ -182,12 +182,14 @@ V1 explicitly addresses pains 1 and 2. Pain 3 is v2.
 Preferred pre-planning read path for codebase tasks. It composes `query_graph`,
 source staleness checks, source-index status, source search, and related graph
 nodes into one response. Graph matches are quality-ranked at query time using
-lexical score, confidence, node kind, verification age, deprecated status, and
-source-anchor freshness; `graph.memory_quality` separates high-trust ids,
-medium-trust review ids, and diagnostic stale/low-trust ids that need
-inspection. It never writes graph memory and never auto-generates nodes from
-the source index; source hits are still a rebuildable discovery cache that must
-be inspected in real files before `emit_node`. Source search results may
+lexical score, confidence, node kind, verification age, deprecated status,
+source-anchor freshness, and optional node quality metadata (`utility_score`,
+`maturity`, `last_used_at`, `confirmed_by_source`, `superseded_by`);
+`graph.memory_quality` separates high-trust ids, medium-trust review ids, and
+diagnostic stale/low-trust ids that need inspection. It never writes graph
+memory and never auto-generates nodes from the source index; source hits are
+still a rebuildable discovery cache that must be inspected in real files before
+`emit_node`. Source search results may
 include bounded dependency context (`imports` / `imported_by`) and bounded
 symbol/file impact context to help the agent inspect nearby files before
 forming a durable finding. Impact context distinguishes exact indexed
@@ -217,9 +219,13 @@ through aliases.
 
 Resolves through aliases. Returns full node detail.
 
-### 7.3 `emit_node(id, kind, name, summary, sources, confidence, status?, aliases?) → { ok | collision }`
+### 7.3 `emit_node(id, kind, name, summary, sources, confidence, status?, aliases?, quality?) → { ok | collision }`
 
-Flat parameters (LLMs handle these more reliably than nested objects).
+Mostly flat parameters (LLMs handle these more reliably than nested objects).
+The optional `quality` object is a narrow lifecycle patch for memory ranking:
+agents may set utility, maturity, source-confirmation, and last-used signals,
+or pass `superseded_by: null` to clear a stale supersession after re-verifying
+the node from source.
 
 **Server-side collision detection.** Before creating a *new* `id`, the server computes a similarity score against existing nodes (fuzzy name match, source-file overlap, tag overlap, alias match). If similarity exceeds a threshold:
 
