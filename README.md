@@ -183,6 +183,7 @@ per turn to prevent graph spam.
 | `index_codebase` | Build the rebuildable local source index. |
 | `search_source` | Search indexed source chunks with score breakdowns, match reasons, and optional import/importer plus symbol/file impact context. |
 | `get_index_status` | Check whether the source index exists and looks fresh. |
+| `watch_status` | Check source-index watcher state and freshness without refreshing or writing graph memory. |
 | `clear_index` | Delete the source-index cache without touching graph memory. |
 
 Supported edge kinds:
@@ -208,6 +209,9 @@ codemap doctor --json                 # Full structured health report
 codemap repair-graph                  # Read-only source-anchor repair proposals
 codemap repair-graph --json           # Full structured repair report
 codemap scan                          # Build the local source index
+codemap watch                         # Keep the source index fresh by polling
+codemap watch --once                  # Refresh once if the index is stale/missing
+codemap watch --status                # Report watcher/source-index freshness
 codemap context "auth guard"          # Graph + source context for planning
 codemap context "auth guard" --mode compact
 codemap benchmark-retrieval           # Evaluate local retrieval against a suite

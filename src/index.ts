@@ -15,6 +15,7 @@ import { registerQueryGraph } from "./tools/query_graph.js";
 import { registerSearchSource } from "./tools/search_source.js";
 import { registerSetActiveTopic } from "./tools/set_active_topic.js";
 import { registerSuggestWriteback } from "./tools/suggest_writeback.js";
+import { registerWatchStatus } from "./tools/watch_status.js";
 
 export interface RegisterToolsOptions {
   /** Path to the repo root; `<repoRoot>/.codemap/graph.json` is the store. */
@@ -35,6 +36,7 @@ export interface RegisterToolsOptions {
  *  - changes_context (git diff impact + writeback planning context)
  *  - search_source   (chunk search with optional dependency + impact context)
  *  - get_index_status
+ *  - watch_status
  *  - clear_index
  *
  * Curated memory graph:
@@ -57,6 +59,7 @@ export function registerTools(
   registerChangesContext(server, options);
   registerSearchSource(server, options);
   registerGetIndexStatus(server, options);
+  registerWatchStatus(server, options);
   registerClearIndex(server, options);
   registerGraphHealth(server, options);
   registerGraphRepair(server, options);

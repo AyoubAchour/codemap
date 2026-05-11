@@ -189,6 +189,7 @@ describe("MCP server — tools/list", () => {
       "search_source",
       "set_active_topic",
       "suggest_writeback",
+      "watch_status",
     ]);
   });
 
@@ -414,6 +415,28 @@ describe("MCP server — source index tools", () => {
     );
     expect(after.indexed).toBe(true);
     expect(after.fresh).toBe(true);
+  });
+
+  test("watch_status reports watcher and source freshness without writing graph memory", async () => {
+    await client.callTool({ name: "index_codebase", arguments: {} });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "watch-status.ts"),
+      "export const WATCH_STATUS = true;\n",
+    );
+
+    const result = parseToolText(
+      (await client.callTool({
+        name: "watch_status",
+        arguments: {},
+      })) as never,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.source.new_files).toBe(1);
+    expect(result.watcher.active).toBe(false);
+    await expect(
+      fs.stat(path.join(tmpRoot, ".codemap", "graph.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   test("clear_index removes the source cache without touching graph memory", async () => {

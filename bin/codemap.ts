@@ -2,7 +2,7 @@
 /**
  * `codemap` CLI entry. Subcommands: init, show, correct, deprecate,
  * validate, doctor, repair-graph, rollup, setup, scan, context, changes-context,
- * generate-skills, benchmark-retrieval, search-source, index-status,
+ * generate-skills, watch, benchmark-retrieval, search-source, index-status,
  * clear-index.
  *
  * Each subcommand's logic lives in src/cli/<name>.ts as a pure function
@@ -51,6 +51,11 @@ import {
   type SuggestWritebackFlags,
 } from "../src/cli/suggest_writeback.js";
 import { validate } from "../src/cli/validate.js";
+import {
+  watch,
+  type WatchFlags,
+  watchLive,
+} from "../src/cli/watch.js";
 import type { CommandResult, GlobalOptions } from "../src/cli/_types.js";
 import type { ChangesRefreshMode } from "../src/changes_context.js";
 import type {
@@ -342,6 +347,43 @@ program
       maxFileBytes: cmdOpts.maxFileBytes as number | undefined,
     };
     emit(await scan(flags, { repoRoot: opts.repo }));
+  });
+
+program
+  .command("watch")
+  .description(
+    "Keep the rebuildable source index fresh with a polling watcher. Use --once for a single refresh check.",
+  )
+  .option("--once", "Run one freshness check and refresh if needed, then exit.")
+  .option("--status", "Report watcher and source-index status without refreshing.")
+  .option(
+    "--interval-ms <n>",
+    "Polling interval in milliseconds for long-running watch mode.",
+    parsePositiveInteger,
+  )
+  .option(
+    "--max-file-bytes <n>",
+    "Skip source files larger than this many bytes when refreshing.",
+    parsePositiveInteger,
+  )
+  .action(async (cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: WatchFlags = {
+      once: cmdOpts.once as boolean | undefined,
+      status: cmdOpts.status as boolean | undefined,
+      intervalMs: cmdOpts.intervalMs as number | undefined,
+      maxFileBytes: cmdOpts.maxFileBytes as number | undefined,
+    };
+    if (!flags.once && !flags.status) {
+      emit(
+        await watchLive(flags, {
+          repoRoot: opts.repo,
+          write: (text) => process.stdout.write(text),
+        }),
+      );
+    } else {
+      emit(await watch(flags, { repoRoot: opts.repo }));
+    }
   });
 
 program
