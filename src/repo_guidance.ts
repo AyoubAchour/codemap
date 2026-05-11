@@ -355,10 +355,7 @@ function buildAreas(input: {
           b.exports.length - a.exports.length ||
           a.file_path.localeCompare(b.file_path),
       );
-      const topRank = Math.max(
-        ...files.map((file) => input.repoMap.files_by_path[file.file_path]?.rank ?? 0),
-        0,
-      );
+      const topRank = topRepoRankForFiles(files, input.repoMap);
       const fileRanks = Object.fromEntries(
         files.map((file) => [
           file.file_path,
@@ -496,6 +493,15 @@ function summarizeExports(
         a.name.localeCompare(b.name),
     )
     .slice(0, limit);
+}
+
+function topRepoRankForFiles(files: IndexedSourceFile[], repoMap: RepoMap): number {
+  let topRank = 0;
+  for (const file of files) {
+    const rank = repoMap.files_by_path[file.file_path]?.rank ?? 0;
+    if (rank > topRank) topRank = rank;
+  }
+  return topRank;
 }
 
 async function generatedFileStatus(
