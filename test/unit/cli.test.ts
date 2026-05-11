@@ -33,6 +33,7 @@ import { hashBuffer, hashSourceRange } from "../../src/staleness.js";
 import type { Node } from "../../src/types.js";
 
 let tmpRoot: string;
+const projectRoot = path.resolve(import.meta.dir, "../..");
 const execFileAsync = promisify(execFile);
 
 beforeEach(async () => {
@@ -80,7 +81,6 @@ async function runCodemapBin(args: string[]): Promise<{
   stdout: string;
   stderr: string;
 }> {
-  const projectRoot = path.resolve(import.meta.dir, "../..");
   const child = spawn(
     process.execPath,
     [
@@ -108,6 +108,10 @@ async function runCodemapBin(args: string[]): Promise<{
     child.on("close", (code) => resolve(code ?? 1));
   });
   return { exitCode, stdout, stderr };
+}
+
+async function readProjectSource(relativePath: string): Promise<string> {
+  return fs.readFile(path.join(projectRoot, relativePath), "utf8");
 }
 
 async function runGit(args: string[]): Promise<void> {
@@ -1574,12 +1578,21 @@ describe("CLI: source index", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("expected a number between 0 and 1");
   });
+});
 
-  test("generate-skills builds content and response metadata from one repo snapshot", async () => {
-    const source = await fs.readFile(
-      path.join(process.cwd(), "src", "repo_guidance.ts"),
-      "utf8",
-    );
+// =============================================================
+// source integrity
+// =============================================================
+
+describe("source integrity", () => {
+  test("generated repo guidance area ranking avoids spread-based max calls", async () => {
+    const source = await readProjectSource("src/repo_guidance.ts");
+
+    expect(source).not.toMatch(/Math\.max\(\s*\.\.\.files\.map/s);
+  });
+
+  test("generated repo guidance builds content and response metadata from one repo snapshot", async () => {
+    const source = await readProjectSource("src/repo_guidance.ts");
     const countCallSites = (pattern: RegExp) =>
       source.match(pattern)?.length ?? 0;
 
