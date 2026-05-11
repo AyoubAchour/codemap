@@ -61,7 +61,7 @@ disabled by default.
 - [x] Version is bumped to `0.8.0`.
 - [x] Changelog and README describe the `0.8.0` release.
 - [x] Local release gates pass.
-- [ ] Release PR is opened.
+- [x] Release PR is opened.
 - [ ] Release PR is merged.
 - [ ] `codemap-mcp@0.8.0` is published to npm.
 - [ ] Global install reports `codemap --version` as `0.8.0`.
@@ -83,3 +83,5 @@ Local release gates passed on 2026-05-11:
 - `npx --yes @arethetypeswrong/cli --pack --ignore-rules cjs-resolves-to-esm`
 - `bun run bin/codemap.ts --version` (`0.8.0`)
 - `bun run bin/codemap.ts init --check`
+
+Release PR: https://github.com/AyoubAchour/codemap/pull/55
