@@ -12,6 +12,7 @@ import { registerIndexCodebase } from "./tools/index_codebase.js";
 import { registerLink } from "./tools/link.js";
 import { registerQueryContext } from "./tools/query_context.js";
 import { registerQueryGraph } from "./tools/query_graph.js";
+import { registerRecallContext } from "./tools/recall_context.js";
 import { registerSearchSource } from "./tools/search_source.js";
 import { registerSetActiveTopic } from "./tools/set_active_topic.js";
 import { registerSuggestWriteback } from "./tools/suggest_writeback.js";
@@ -33,6 +34,7 @@ export interface RegisterToolsOptions {
  * Source discovery:
  *  - index_codebase
  *  - query_context   (fused graph/source/dependency/impact planning context)
+ *  - recall_context  (compact budgeted graph/source recall packet)
  *  - changes_context (git diff impact + writeback planning context)
  *  - search_source   (chunk search with optional dependency + impact context)
  *  - get_index_status
@@ -56,6 +58,7 @@ export function registerTools(
   registerAgenticSurfaces(server, options);
   registerIndexCodebase(server, options);
   registerQueryContext(server, options);
+  registerRecallContext(server, options);
   registerChangesContext(server, options);
   registerSearchSource(server, options);
   registerGetIndexStatus(server, options);

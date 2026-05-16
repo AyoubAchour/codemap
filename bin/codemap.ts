@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * `codemap` CLI entry. Subcommands: init, show, correct, deprecate,
- * validate, doctor, repair-graph, rollup, setup, scan, context, changes-context,
- * generate-skills, watch, benchmark-retrieval, search-source, index-status,
- * clear-index.
+ * validate, doctor, repair-graph, rollup, setup, scan, context, recall-context,
+ * changes-context, generate-skills, watch, benchmark-retrieval, search-source,
+ * index-status, clear-index.
  *
  * Each subcommand's logic lives in src/cli/<name>.ts as a pure function
  * returning { exitCode, stdout?, stderr? }; this entry file is the thin
@@ -32,6 +32,10 @@ import {
 } from "../src/cli/generate_skills.js";
 import { indexStatus } from "../src/cli/index_status.js";
 import { init, type InitFlags } from "../src/cli/init.js";
+import {
+  recallContext,
+  type RecallContextFlags,
+} from "../src/cli/recall_context.js";
 import { rollup } from "../src/cli/rollup.js";
 import {
   repairGraph,
@@ -63,6 +67,10 @@ import type {
   QueryContextMode,
   SourceRefreshMode,
 } from "../src/query_context.js";
+import type {
+  RecallContextMode,
+  RecallRefreshMode,
+} from "../src/recall_context.js";
 import type { SetupClient } from "../src/setup.js";
 
 class CommandCompleted extends Error {
@@ -125,6 +133,13 @@ function parseRefreshIndex(value: string): SourceRefreshMode {
 function parseQueryContextMode(value: string): QueryContextMode {
   if (value !== "compact" && value !== "standard" && value !== "full") {
     throw new InvalidArgumentError("expected one of compact, standard, full");
+  }
+  return value;
+}
+
+function parseRecallContextMode(value: string): RecallContextMode {
+  if (value !== "mixed" && value !== "graph" && value !== "source") {
+    throw new InvalidArgumentError("expected one of mixed, graph, source");
   }
   return value;
 }
@@ -482,6 +497,56 @@ program
       impactLimit: cmdOpts.impactLimit as number | undefined,
     };
     emit(await context(question, flags, { repoRoot: opts.repo }));
+  });
+
+program
+  .command("recall-context <question>")
+  .description(
+    "Return a compact budgeted recall packet with graph/source provenance, warnings, anchors, and omitted-result counts.",
+  )
+  .option(
+    "--mode <mode>",
+    "Recall mode: mixed, graph, or source.",
+    parseRecallContextMode,
+  )
+  .option("-l, --limit <n>", "Maximum recall results to return.", parsePositiveInteger)
+  .option(
+    "--budget <n>",
+    "Maximum response bytes for the recall packet.",
+    parsePositiveInteger,
+  )
+  .option(
+    "--max-content-chars <n>",
+    "Maximum characters of source snippet or graph summary per result.",
+    parsePositiveInteger,
+  )
+  .option(
+    "--file <path>",
+    "Prefer recall anchored to this repo-relative file. Repeatable.",
+    repeatable,
+  )
+  .option(
+    "--symbol <name>",
+    "Prefer recall related to this symbol or term. Repeatable.",
+    repeatable,
+  )
+  .option(
+    "--refresh-index <mode>",
+    "Source index refresh mode: never, if_missing, or if_stale.",
+    parseRefreshIndex,
+  )
+  .action(async (question: string, cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: RecallContextFlags = {
+      mode: cmdOpts.mode as RecallContextMode | undefined,
+      limit: cmdOpts.limit as number | undefined,
+      budgetBytes: cmdOpts.budget as number | undefined,
+      maxContentChars: cmdOpts.maxContentChars as number | undefined,
+      refreshIndex: cmdOpts.refreshIndex as RecallRefreshMode | undefined,
+      file: cmdOpts.file as string[] | undefined,
+      symbol: cmdOpts.symbol as string[] | undefined,
+    };
+    emit(await recallContext(question, flags, { repoRoot: opts.repo }));
   });
 
 program

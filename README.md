@@ -176,6 +176,7 @@ per turn to prevent graph spam.
 | --- | --- |
 | `set_active_topic` | Mark the current task and reset the per-turn emit budget. |
 | `query_context` | Preferred planning tool. Combines quality-ranked graph memory, source search, repo map rankings, staleness, match reasons, dependencies, impact context, and next steps. Supports `compact`, `standard`, and `full` response modes. |
+| `recall_context` | Compact recall tool. Returns a byte-budgeted packet with explicit graph/source provenance, trust/freshness warnings, source anchors, and omitted-result counts. |
 | `changes_context` | Diff-aware planning tool. Maps git changes to source impact context, repo map rankings, stale graph anchors, likely tests/docs, and read-only writeback prompts. |
 | `query_graph` | Search curated graph memory for relevant nodes, edges, match reasons, and trust metadata. |
 | `get_node` | Fetch one node by id or alias. |
@@ -218,6 +219,8 @@ codemap watch --once                  # Refresh once if the index is stale/missi
 codemap watch --status                # Report watcher/source-index freshness
 codemap context "auth guard"          # Graph + source context for planning
 codemap context "auth guard" --mode compact
+codemap recall-context "auth guard" --budget 2000
+codemap recall-context "auth guard" --file src/auth.ts --symbol requireActiveUser
 codemap benchmark-retrieval           # Evaluate local retrieval against a suite
 codemap changes-context               # Diff impact, stale graph anchors, tests/docs
 codemap suggest-writeback --summary "what changed"
@@ -232,6 +235,11 @@ codemap --help                        # Full command reference
 
 By default, commands operate on the current working directory. Use
 `--repo <path>` to target a different repository.
+
+Use `codemap recall-context` when an agent needs a small top-K packet rather
+than full planning context. It supports `--mode mixed|graph|source`, `--limit`,
+`--budget`, `--file`, `--symbol`, and `--refresh-index`. Every result says
+whether it came from curated graph memory or the rebuildable source index.
 
 `codemap benchmark-retrieval` looks for `benchmarks/retrieval.codemap.json` or
 `.codemap/retrieval-benchmark.json` and reports offline baseline metrics for

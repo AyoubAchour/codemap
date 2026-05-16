@@ -34,17 +34,17 @@ repo memory — query before exploring, WRITE AFTER.
 
 USE CODEMAP ONLY when the task touches this repository's code, docs,
 architecture, roadmap, tests, or build/release behavior. Do not call
-query_context, changes_context, query_graph, get_node, graph_health,
+query_context, recall_context, changes_context, query_graph, get_node, graph_health,
 graph_repair, suggest_writeback, emit_node, link, index_codebase, search_source,
 get_index_status, watch_status, or clear_index for unrelated Q&A, general web
 research, installs, recommendations, or tasks not anchored to this repo.
 
 Source discovery tools are a rebuildable cache, not memory:
-query_context/changes_context/index_codebase/search_source/get_index_status/
-watch_status/clear_index may help find code faster or check freshness, but they
-must not be treated as durable conclusions and must not auto-generate graph
-nodes. Dependency and impact context are navigation hints, not durable
-relationships unless confirmed from real files.
+query_context/recall_context/changes_context/index_codebase/search_source/
+get_index_status/watch_status/clear_index may help find code faster or check
+freshness, but they must not be treated as durable conclusions and must not
+auto-generate graph nodes. Dependency and impact context are navigation hints,
+not durable relationships unless confirmed from real files.
 
 LIFECYCLE for any task that touches this codebase:
 
@@ -54,7 +54,8 @@ LIFECYCLE for any task that touches this codebase:
    returned, read via get_node before re-deriving from source.
 3. SOURCE DISCOVERY (optional): query_context includes source-index status and
    source hits, including nearby imports/importers and bounded impact context
-   when available. If using
+   when available. recall_context returns a smaller budgeted packet when full
+   planning context is too large. If using
    query_graph directly, use search_source for source chunks after query_graph;
    if the index is missing/stale, use index_codebase, get_index_status, or
    watch_status. If graph memory looks stale or duplicated, use graph_health.
