@@ -33,14 +33,14 @@ existing source index, existing retrieval benchmark harness.
 
 ## Phase 2 - Compact Recall Surface
 
-- [ ] Implement task 059.
-- [ ] Add core recall logic in `src/recall_context.ts`.
-- [ ] Add MCP wrapper in `src/tools/recall_context.ts`.
-- [ ] Add CLI wrapper in `src/cli/recall_context.ts`.
-- [ ] Register the tool in `src/index.ts` and the command in `bin/codemap.ts`.
-- [ ] Add tests for token/byte budget compliance, trust/freshness warnings,
+- [x] Implement task 059.
+- [x] Add core recall logic in `src/recall_context.ts`.
+- [x] Add MCP wrapper in `src/tools/recall_context.ts`.
+- [x] Add CLI wrapper in `src/cli/recall_context.ts`.
+- [x] Register the tool in `src/index.ts` and the command in `bin/codemap.ts`.
+- [x] Add tests for token/byte budget compliance, trust/freshness warnings,
       source anchors, and empty-result behavior.
-- [ ] Verify with:
+- [x] Verify with:
       - `bun run typecheck`
       - `bun test`
       - `bun run bin/codemap.ts recall-context "how does writeback stay explicit?" --budget 2000`

@@ -146,7 +146,7 @@ Inputs:
 - optional files/symbols
 - token or byte budget
 - desired result count
-- mode: `memory`, `source`, or `mixed`
+- mode: `graph`, `source`, or `mixed`
 
 Outputs:
 

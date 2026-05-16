@@ -1,6 +1,6 @@
 # Task 059: Token-Budgeted Recall Context
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 4 / retrieval
 **Estimate:** 3-5 days
 **Depends on:** task-058
@@ -36,11 +36,11 @@ token budget.
 
 ## Exit Criteria
 
-- [ ] Recall output respects the configured budget in tests.
-- [ ] Output never hides whether a result came from curated graph memory or
+- [x] Recall output respects the configured budget in tests.
+- [x] Output never hides whether a result came from curated graph memory or
       rebuildable source/capture evidence.
-- [ ] Empty and stale-result cases are explicit.
-- [ ] CLI and MCP paths share the same core implementation.
+- [x] Empty and stale-result cases are explicit.
+- [x] CLI and MCP paths share the same core implementation.
 
 ## Notes
 

@@ -16,6 +16,7 @@ import { doctor } from "../../src/cli/doctor.js";
 import { generateSkills } from "../../src/cli/generate_skills.js";
 import { indexStatus } from "../../src/cli/index_status.js";
 import { init } from "../../src/cli/init.js";
+import { recallContext } from "../../src/cli/recall_context.js";
 import { rollup } from "../../src/cli/rollup.js";
 import { repairGraph } from "../../src/cli/repair_graph.js";
 import { scan } from "../../src/cli/scan.js";
@@ -1059,6 +1060,53 @@ describe("CLI: source index", () => {
     expect(out.source.refreshed).toBe(true);
     expect(out.source.status.indexed).toBe(true);
     expect(out.source.search.results[0].file_path).toBe("src/auth.ts");
+  });
+
+  test("recall-context returns a compact budgeted packet from shared core", async () => {
+    const result = await recallContext(
+      "active user",
+      { budgetBytes: 1800, limit: 2, refreshIndex: "if_missing" },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.ok).toBe(true);
+    expect(out.budget.budget_bytes).toBe(1800);
+    expect(Buffer.byteLength(JSON.stringify(out), "utf8")).toBeLessThanOrEqual(
+      1800,
+    );
+    expect(out.results[0]).toEqual(
+      expect.objectContaining({
+        kind: "source",
+        provenance: "rebuildable_source_index",
+        file_path: "src/auth.ts",
+      }),
+    );
+  });
+
+  test("bin recall-context wires budget and filters", async () => {
+    const result = await runCodemapBin([
+      "recall-context",
+      "active user",
+      "--budget",
+      "1800",
+      "--limit",
+      "2",
+      "--file",
+      "src/auth.ts",
+      "--symbol",
+      "requireActiveUser",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout);
+    expect(out.filters).toEqual({
+      files: ["src/auth.ts"],
+      symbols: ["requireActiveUser"],
+    });
+    expect(out.results[0].file_path).toBe("src/auth.ts");
+    expect(out.budget.used_bytes).toBeLessThanOrEqual(1800);
   });
 
   test("context warns when repo map rankings come from a stale source index", async () => {

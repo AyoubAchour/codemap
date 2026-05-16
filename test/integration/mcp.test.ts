@@ -145,6 +145,7 @@ describe("MCP server — initialize / instructions", () => {
     for (const toolName of [
       "set_active_topic",
       "query_context",
+      "recall_context",
       "query_graph",
       "get_node",
       "graph_health",
@@ -186,6 +187,7 @@ describe("MCP server — tools/list", () => {
       "link",
       "query_context",
       "query_graph",
+      "recall_context",
       "search_source",
       "set_active_topic",
       "suggest_writeback",
@@ -613,6 +615,81 @@ describe("MCP server — source index tools", () => {
         expect.stringContaining("Source hits come from the rebuildable local index"),
         expect.stringContaining("Impact context is bounded planning context"),
       ]),
+    );
+  });
+
+  test("recall_context returns structured budgeted provenance", async () => {
+    await fs.writeFile(
+      path.join(tmpRoot, "src/auth/distinct.ts"),
+      [
+        "export interface AuthenticatedActor { id: string }",
+        "export function requireActiveUser(token: string): AuthenticatedActor {",
+        "  return { id: token };",
+        "}",
+      ].join("\n"),
+    );
+    const { GraphStore } = await import("../../src/graph.js");
+    const store = await GraphStore.load(tmpRoot);
+    store.upsertNode({
+      id: "auth/recall-active-user",
+      kind: "invariant",
+      name: "Active user recall invariant",
+      summary: "Recall should explain requireActiveUser as curated graph memory.",
+      sources: [
+        {
+          file_path: "src/auth/distinct.ts",
+          line_range: [2, 4],
+          content_hash: await repoFileHash("src/auth/distinct.ts"),
+        },
+      ],
+      tags: ["auth", "recall"],
+      aliases: ["require active user"],
+      status: "active",
+      confidence: 0.9,
+      last_verified_at: new Date().toISOString(),
+      quality: {
+        utility_score: 0.85,
+        maturity: "confirmed",
+        confirmed_by_source: true,
+      },
+    });
+    await store.save();
+
+    const result = (await client.callTool({
+      name: "recall_context",
+      arguments: {
+        question: "requireActiveUser auth",
+        limit: 3,
+        budget_bytes: 2600,
+        refresh_index: "if_missing",
+      },
+    })) as {
+      structuredContent?: {
+        budget?: { budget_bytes?: number; used_bytes?: number };
+        results?: Array<{ provenance?: string }>;
+      };
+      content: { type: string; text?: string }[];
+    };
+    const parsed = parseToolText(result);
+
+    expect(parsed.ok).toBe(true);
+    expect(result.structuredContent?.budget?.budget_bytes).toBe(2600);
+    expect(result.structuredContent?.budget?.used_bytes).toBeLessThanOrEqual(
+      2600,
+    );
+    expect(
+      result.structuredContent?.results?.map((entry) => entry.provenance),
+    ).toEqual(
+      expect.arrayContaining([
+        "curated_graph",
+        "rebuildable_source_index",
+      ]),
+    );
+    expect(parsed.warnings).toContain(
+      "Graph results are curated repo memory; source results are rebuildable index hits and must be inspected before writeback.",
+    );
+    expect(parsed.results[0].anchors[0].file_path).toBe(
+      "src/auth/distinct.ts",
     );
   });
 

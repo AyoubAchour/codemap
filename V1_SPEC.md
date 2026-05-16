@@ -206,6 +206,17 @@ token cost while preserving summaries and expansion hints. `full` raises
 defaults for deeper source, dependency, and impact context when the agent is
 already in a broad investigation.
 
+### 7.0a `recall_context(question: string, mode?: "mixed" | "graph" | "source", budget_bytes?: number) → { budget, results, warnings, source_index }`
+
+Compact recall path for small context packets. It shares the same graph quality
+ranking and source-index search stack as `query_context`, but returns only a
+budgeted top-K packet. Each result carries explicit provenance:
+`curated_graph` for durable graph memory or `rebuildable_source_index` for
+source discovery hits. Responses include byte-budget accounting, omitted-result
+counts, trust/freshness warnings, and source anchors. This is not a replacement
+for `query_context`; use it when an agent needs fast recall before deciding
+whether a broader planning query is worth the tokens.
+
 ### 7.1 `query_graph(question: string) → { nodes, edges }`
 
 Called by the agent **before planning** any task involving code understanding.
