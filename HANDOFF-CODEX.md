@@ -19,8 +19,8 @@ Three docs are the real source of truth:
 | --- | --- |
 | Published | `codemap-mcp@0.8.0` on npm (https://www.npmjs.com/package/codemap-mcp); GitHub release `v0.8.0` is live |
 | Releases shipped | 0.1.0 -> 0.1.1 -> 0.1.2 -> 0.2.0 -> 0.2.1 -> 0.2.2 -> 0.3.0 -> 0.4.0 -> 0.5.0 -> 0.5.1 -> 0.5.2 -> 0.6.0 -> 0.7.0 -> 0.8.0 |
-| MCP tools | Graph memory: `set_active_topic`, `query_context`, `query_graph`, `get_node`, `graph_health`, `suggest_writeback`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index`; diff context: `changes_context` |
-| CLI subcommands | `init`, `setup`, `show`, `correct`, `deprecate`, `validate`, `doctor`, `rollup`, `scan`, `context`, `changes-context`, `suggest-writeback`, `generate-skills`, `search-source`, `index-status`, `clear-index` |
+| MCP tools | Graph memory: `set_active_topic`, `query_context`, `recall_context`, `query_graph`, `get_node`, `graph_health`, `suggest_writeback`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index`; diff context: `changes_context` |
+| CLI subcommands | `init`, `setup`, `show`, `correct`, `deprecate`, `validate`, `doctor`, `rollup`, `scan`, `context`, `recall-context`, `capture-event`, `capture-session`, `changes-context`, `suggest-writeback`, `generate-skills`, `search-source`, `index-status`, `clear-index` |
 | M3 trial result | 9 turns on voice2work → 27 nodes / 29 edges across 6 problem domains, 5 of 8 edge kinds + 4 of 9 node kinds exercised. **Codemap thesis validated.** |
 | Test suite | Run `bun test` before shipping; integration tests pin the MCP lifecycle contract |
 | CI | green on every PR; `publish-dryrun` job is the strict gate |
@@ -120,9 +120,11 @@ The sequence is:
 Keep the principle crisp: Codemap may capture evidence automatically, but graph
 memory stays explicit, curated, and anchored to real repo files.
 
-Task 058 is now implemented. `benchmark-retrieval` has a `recall` profile for
-compact benchmark defaults plus payload/latency gates. The next implementation
-slice is task 059, `recall_context`.
+Tasks 058-060 are now implemented. `benchmark-retrieval` has a `recall` profile
+for compact benchmark defaults plus payload/latency gates, `recall_context`
+provides compact budgeted recall, and `capture-event` / `capture-session` store
+rebuildable evidence under `.codemap/index/capture/` without touching graph
+memory. The next implementation slice is task 061, capture hook onboarding.
 
 ## How to work in this repo (the conventions)
 

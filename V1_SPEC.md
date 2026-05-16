@@ -37,10 +37,11 @@ V1 explicitly addresses pains 1 and 2. Pain 3 is v2.
 
 - An **MCP server** exposing the curated graph-memory tools to any MCP-capable agent.
 - A rebuildable **local source index** for cold-start source discovery, kept separate from the curated graph.
+- A rebuildable **capture event log** for session evidence, kept under `.codemap/index/capture/` and separate from curated graph memory.
 - A **graph schema** stored as a single JSON file at `<repo_root>/.codemap/graph.json`.
 - An **agent instruction document** organized around **explicit enforcement checkpoints** (not ad-hoc directives).
 - **Server-side enforcement** of collision detection, schema validation, and per-turn emission caps.
-- A **basic CLI** (`codemap show / correct / deprecate / validate / doctor`) so humans can inspect and fix graph issues without a UI, plus source-index commands (`scan / search-source / index-status / clear-index`) for local code discovery.
+- A **basic CLI** (`codemap show / correct / deprecate / validate / doctor`) so humans can inspect and fix graph issues without a UI, plus source-index commands (`scan / search-source / index-status / clear-index`) for local code discovery and capture commands (`capture-event / capture-session`) for rebuildable session evidence.
 - Tested end-to-end against **Claude Code** as the reference agent.
 
 ### Out of scope (V1)
@@ -416,11 +417,15 @@ CONFIDENCE
 - **Atomic writes:** write to `graph.json.tmp`, fsync, then rename over `graph.json`. Avoids partial-write corruption on crash. Also makes concurrent reads safe — readers always see a complete file.
 - **Concurrent writers:** coordinated by `proper-lockfile` (file-level lock held only during the write critical section, ~50 ms). Multiple agent processes can use the same graph safely. See TECH_SPEC §3.4.
 - **Validator on load:** schema check, dangling-edge removal, alias uniqueness check. Repairs are written back atomically. Protects against manual JSON edits gone wrong.
+- **Capture evidence:** `.codemap/index/capture/events.jsonl` is append-only,
+  rebuildable session evidence. Capture paths never write `.codemap/graph.json`.
 - **CLI commands** (also v1):
   - `codemap show <id>` — print one node.
   - `codemap correct <id> --field <name> --value <new>` — manual override.
   - `codemap deprecate <id> [--reason ...]` — set status.
   - `codemap validate` — run validator dry-run.
+  - `codemap capture-event <kind>` — append redacted capture evidence.
+  - `codemap capture-session [session]` — inspect captured session evidence.
 
 ## 11. Observability
 

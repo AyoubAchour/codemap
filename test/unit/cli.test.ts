@@ -7,6 +7,14 @@ import { promisify } from "node:util";
 
 import { GraphStore } from "../../src/graph.js";
 import { benchmarkRetrieval } from "../../src/cli/benchmark_retrieval.js";
+import {
+  captureEvent,
+  type CaptureEventFlags,
+} from "../../src/cli/capture_event.js";
+import {
+  captureSession,
+  type CaptureSessionFlags,
+} from "../../src/cli/capture_session.js";
 import { changesContext } from "../../src/cli/changes_context.js";
 import { clearIndex } from "../../src/cli/clear_index.js";
 import { context } from "../../src/cli/context.js";
@@ -1876,6 +1884,97 @@ describe("CLI: source index", () => {
     expect(result.stderr).toContain(
       "semantic provider must be \"disabled\" in this build",
     );
+  });
+});
+
+// =============================================================
+// capture events CLI
+// =============================================================
+
+describe("CLI: capture events", () => {
+  test("capture-event appends a redacted event without writing graph memory", async () => {
+    const result = await captureEvent(
+      "file_inspected",
+      {
+        session: "session-a",
+        anchor: ["src/auth.ts:1:3"],
+        text: "read auth guard with token=abc123456789",
+      } satisfies CaptureEventFlags,
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.ok).toBe(true);
+    expect(out.event.kind).toBe("file_inspected");
+    expect(out.event.session_id).toBe("session-a");
+    expect(out.event.anchors).toEqual([
+      { file_path: "src/auth.ts", line_range: [1, 3] },
+    ]);
+    expect(out.event.payload.text).toContain("token=[redacted]");
+    await expect(
+      fs.stat(path.join(tmpRoot, ".codemap", "graph.json")),
+    ).rejects.toThrow();
+  });
+
+  test("capture-session reports kind counts for one session", async () => {
+    await captureEvent(
+      "prompt",
+      { session: "session-a", text: "plan the fix" },
+      { repoRoot: tmpRoot },
+    );
+    await captureEvent(
+      "codemap_call",
+      { session: "session-a", tool: "query_context" },
+      { repoRoot: tmpRoot },
+    );
+    await captureEvent(
+      "file_modified",
+      { session: "session-b", anchor: ["src/other.ts:1:1"] },
+      { repoRoot: tmpRoot },
+    );
+
+    const result = await captureSession(
+      { session: "session-a" } satisfies CaptureSessionFlags,
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.ok).toBe(true);
+    expect(out.session_id).toBe("session-a");
+    expect(out.total_events).toBe(2);
+    expect(out.counts_by_kind.prompt).toBe(1);
+    expect(out.counts_by_kind.codemap_call).toBe(1);
+  });
+
+  test("bin capture-event and capture-session wire command flags", async () => {
+    const captured = await runCodemapBin([
+      "capture-event",
+      "file_modified",
+      "--session",
+      "session-a",
+      "--anchor",
+      "src/auth.ts:1:2",
+      "--data",
+      '{"reason":"dogfood"}',
+    ]);
+
+    expect(captured.exitCode).toBe(0);
+    const eventOut = JSON.parse(captured.stdout);
+    expect(eventOut.event.payload.reason).toBe("dogfood");
+
+    const summarized = await runCodemapBin([
+      "capture-session",
+      "session-a",
+      "--kind",
+      "file_modified",
+    ]);
+
+    expect(summarized.exitCode).toBe(0);
+    const sessionOut = JSON.parse(summarized.stdout);
+    expect(sessionOut.total_events).toBe(1);
+    expect(sessionOut.events[0].kind).toBe("file_modified");
   });
 });
 

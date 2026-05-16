@@ -136,8 +136,8 @@ Maintained manually. Update status as tasks land.
 | 056 | Release v0.8.0 | done | Phase 4 / release | [task-056-release-v0.8.0.md](task-056-release-v0.8.0.md) |
 | 057 | Agentmemory catch-up planning | done | Phase 4 / strategy | [task-057-agentmemory-catchup-planning.md](task-057-agentmemory-catchup-planning.md) |
 | 058 | Recall benchmark parity | done | Phase 4 / evaluation | [task-058-recall-benchmark-parity.md](task-058-recall-benchmark-parity.md) |
-| 059 | Token-budgeted recall context | todo | Phase 4 / retrieval | [task-059-token-budgeted-recall-context.md](task-059-token-budgeted-recall-context.md) |
-| 060 | Capture event log | todo | Phase 4 / capture | [task-060-capture-event-log.md](task-060-capture-event-log.md) |
+| 059 | Token-budgeted recall context | done | Phase 4 / retrieval | [task-059-token-budgeted-recall-context.md](task-059-token-budgeted-recall-context.md) |
+| 060 | Capture event log | done | Phase 4 / capture | [task-060-capture-event-log.md](task-060-capture-event-log.md) |
 | 061 | Capture hook onboarding | todo | Phase 4 / onboarding | [task-061-capture-hook-onboarding.md](task-061-capture-hook-onboarding.md) |
 | 062 | Capture-backed writeback suggestions | todo | Phase 4 / memory quality | [task-062-capture-backed-writeback-suggestions.md](task-062-capture-backed-writeback-suggestions.md) |
 | 063 | Recall profiles and session summaries | todo | Phase 4 / recall | [task-063-recall-profile-and-session-summaries.md](task-063-recall-profile-and-session-summaries.md) |
