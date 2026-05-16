@@ -16,6 +16,7 @@ import {
   benchmarkRetrieval,
   type BenchmarkRetrievalFlags,
 } from "../src/cli/benchmark_retrieval.js";
+import type { RetrievalBenchmarkProfile } from "../src/retrieval_benchmark.js";
 import {
   changesContext,
   type ChangesContextFlags,
@@ -124,6 +125,15 @@ function parseRefreshIndex(value: string): SourceRefreshMode {
 function parseQueryContextMode(value: string): QueryContextMode {
   if (value !== "compact" && value !== "standard" && value !== "full") {
     throw new InvalidArgumentError("expected one of compact, standard, full");
+  }
+  return value;
+}
+
+function parseRetrievalBenchmarkProfile(
+  value: string,
+): RetrievalBenchmarkProfile {
+  if (value !== "planning" && value !== "recall") {
+    throw new InvalidArgumentError("expected one of planning, recall");
   }
   return value;
 }
@@ -481,6 +491,11 @@ program
   )
   .option("-l, --limit <n>", "Maximum graph/source results per query.", parsePositiveInteger)
   .option(
+    "--profile <profile>",
+    "Benchmark profile: planning uses full query_context defaults; recall uses compact, smaller-payload defaults.",
+    parseRetrievalBenchmarkProfile,
+  )
+  .option(
     "--mode <mode>",
     "query_context detail mode: compact, standard, or full.",
     parseQueryContextMode,
@@ -520,6 +535,26 @@ program
     parseUnitInterval,
   )
   .option(
+    "--response-budget-bytes <n>",
+    "Maximum allowed response bytes per query; exits 1 if any query exceeds it unless --min-payload-budget-compliance lowers the gate.",
+    parsePositiveInteger,
+  )
+  .option(
+    "--min-payload-budget-compliance <n>",
+    "Exit 1 if the share of budget-compliant queries is below this 0..1 threshold.",
+    parseUnitInterval,
+  )
+  .option(
+    "--max-average-response-bytes <n>",
+    "Exit 1 if average response bytes exceed this threshold.",
+    parsePositiveInteger,
+  )
+  .option(
+    "--max-average-latency-ms <n>",
+    "Exit 1 if average query latency exceeds this threshold.",
+    parsePositiveInteger,
+  )
+  .option(
     "--semantic-provider <provider>",
     "Semantic retrieval provider for benchmark experiments. Current CLI build supports: disabled.",
     parseDisabledProvider,
@@ -533,6 +568,7 @@ program
     const opts = program.opts() as { repo: string };
     const flags: BenchmarkRetrievalFlags = {
       suite,
+      profile: cmdOpts.profile as RetrievalBenchmarkProfile | undefined,
       limit: cmdOpts.limit as number | undefined,
       mode: cmdOpts.mode as QueryContextMode | undefined,
       maxContentChars: cmdOpts.maxContentChars as number | undefined,
@@ -542,6 +578,14 @@ program
       refreshIndex: cmdOpts.refreshIndex as SourceRefreshMode | undefined,
       minFileHitRate: cmdOpts.minFileHitRate as number | undefined,
       minNodeHitRate: cmdOpts.minNodeHitRate as number | undefined,
+      responseBudgetBytes: cmdOpts.responseBudgetBytes as number | undefined,
+      minPayloadBudgetCompliance: cmdOpts.minPayloadBudgetCompliance as
+        | number
+        | undefined,
+      maxAverageResponseBytes: cmdOpts.maxAverageResponseBytes as
+        | number
+        | undefined,
+      maxAverageLatencyMs: cmdOpts.maxAverageLatencyMs as number | undefined,
       semanticProvider: cmdOpts.semanticProvider as "disabled" | undefined,
       rerankerProvider: cmdOpts.rerankerProvider as "disabled" | undefined,
     };
