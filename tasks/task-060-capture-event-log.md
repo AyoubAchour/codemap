@@ -1,6 +1,6 @@
 # Task 060: Capture Event Log
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 4 / capture
 **Estimate:** 3-5 days
 **Depends on:** task-057
@@ -34,10 +34,10 @@ work, but keep graph memory curated and source-anchored.
 
 ## Exit Criteria
 
-- [ ] Capture storage is separate from curated graph storage.
-- [ ] Capture events can be deleted without corrupting graph memory.
-- [ ] Invalid or out-of-repo source anchors are rejected or warned on.
-- [ ] Tests prove no capture path writes `.codemap/graph.json`.
+- [x] Capture storage is separate from curated graph storage.
+- [x] Capture events can be deleted without corrupting graph memory.
+- [x] Invalid or out-of-repo source anchors are rejected or warned on.
+- [x] Tests prove no capture path writes `.codemap/graph.json`.
 
 ## Notes
 

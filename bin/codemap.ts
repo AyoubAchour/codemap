@@ -2,8 +2,8 @@
 /**
  * `codemap` CLI entry. Subcommands: init, show, correct, deprecate,
  * validate, doctor, repair-graph, rollup, setup, scan, context, recall-context,
- * changes-context, generate-skills, watch, benchmark-retrieval, search-source,
- * index-status, clear-index.
+ * capture-event, capture-session, changes-context, generate-skills, watch,
+ * benchmark-retrieval, search-source, index-status, clear-index.
  *
  * Each subcommand's logic lives in src/cli/<name>.ts as a pure function
  * returning { exitCode, stdout?, stderr? }; this entry file is the thin
@@ -17,6 +17,14 @@ import {
   type BenchmarkRetrievalFlags,
 } from "../src/cli/benchmark_retrieval.js";
 import type { RetrievalBenchmarkProfile } from "../src/retrieval_benchmark.js";
+import {
+  captureEvent,
+  type CaptureEventFlags,
+} from "../src/cli/capture_event.js";
+import {
+  captureSession,
+  type CaptureSessionFlags,
+} from "../src/cli/capture_session.js";
 import {
   changesContext,
   type ChangesContextFlags,
@@ -547,6 +555,55 @@ program
       symbol: cmdOpts.symbol as string[] | undefined,
     };
     emit(await recallContext(question, flags, { repoRoot: opts.repo }));
+  });
+
+program
+  .command("capture-event <kind>")
+  .description(
+    "Append a rebuildable capture event under .codemap/index/capture without writing graph memory.",
+  )
+  .option("--session <id>", "Capture session id. Defaults to manual.")
+  .option(
+    "--anchor <path:start:end>",
+    "Repo-relative source anchor for the event. Repeatable.",
+    repeatable,
+  )
+  .option("--text <text>", "Prompt, output, or note text to redact and store.")
+  .option("--data <json>", "Additional JSON object payload for the event.")
+  .option("--agent <name>", "Agent/client name that produced the event.")
+  .option("--command <cmd>", "Command or hook name that produced the event.")
+  .option("--tool <name>", "Tool name for codemap_call or related events.")
+  .option("--node <id>", "Graph node id for graph_write or related events.")
+  .action(async (kind: string, cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: CaptureEventFlags = {
+      session: cmdOpts.session as string | undefined,
+      anchor: cmdOpts.anchor as string[] | undefined,
+      text: cmdOpts.text as string | undefined,
+      data: cmdOpts.data as string | undefined,
+      agent: cmdOpts.agent as string | undefined,
+      command: cmdOpts.command as string | undefined,
+      tool: cmdOpts.tool as string | undefined,
+      node: cmdOpts.node as string | undefined,
+    };
+    emit(await captureEvent(kind, flags, { repoRoot: opts.repo }));
+  });
+
+program
+  .command("capture-session [session]")
+  .description(
+    "Summarize capture events for a session from .codemap/index/capture.",
+  )
+  .option("--kind <kind>", "Filter to a capture event kind. Repeatable.", repeatable)
+  .option("--limit <n>", "Maximum recent events to include.", parsePositiveInteger)
+  .action(async (session: string | undefined, cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: CaptureSessionFlags = {
+      session,
+      kind: cmdOpts.kind as string[] | undefined,
+      limit: cmdOpts.limit as number | undefined,
+    };
+    emit(await captureSession(flags, { repoRoot: opts.repo }));
   });
 
 program

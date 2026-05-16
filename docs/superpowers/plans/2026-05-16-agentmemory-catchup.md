@@ -47,16 +47,16 @@ existing source index, existing retrieval benchmark harness.
 
 ## Phase 3 - Rebuildable Capture Evidence
 
-- [ ] Implement task 060.
-- [ ] Add event types and validation in `src/capture_events.ts`.
-- [ ] Store events under `.codemap/index/capture/` so they are separate from
+- [x] Implement task 060.
+- [x] Add event types and validation in `src/capture_events.ts`.
+- [x] Store events under `.codemap/index/capture/` so they are separate from
       curated graph memory.
-- [ ] Add CLI commands such as `codemap capture-event` and
+- [x] Add CLI commands such as `codemap capture-event` and
       `codemap capture-session`.
-- [ ] Add tests that prove capture events never write `.codemap/graph.json`.
-- [ ] Verify with:
+- [x] Add tests that prove capture events never write `.codemap/graph.json`.
+- [x] Verify with:
       - `bun run typecheck`
-      - `bun test`
+      - `bun test test/unit/capture_events.test.ts test/unit/cli.test.ts --grep "capture events"`
       - `git diff --check`
 
 ## Phase 4 - Hook Setup and Checks

@@ -133,6 +133,17 @@ Events should describe observed work, not curated memory:
 Events must be safe to delete and rebuild where possible. They must never be
 treated as trusted graph memory.
 
+Task 060 implements the first slice with JSONL event storage and CLI commands:
+
+- `codemap capture-event <kind>` appends redacted evidence.
+- `codemap capture-session [session]` summarizes captured evidence for a
+  session.
+
+Supported event kinds cover session lifecycle, prompts, files inspected, files
+modified, Codemap calls, recall hits, writeback suggestions, and graph writes.
+Capture paths write only under `.codemap/index/capture/` and do not modify
+`.codemap/graph.json`.
+
 ### Recall context
 
 Add a smaller surface than `query_context`:

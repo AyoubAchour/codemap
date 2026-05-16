@@ -47,6 +47,9 @@ The graph and the source index are intentionally separate:
   relationships.
 - `.codemap/index/source.json` is a disposable cache for code discovery. It can
   be rebuilt at any time and never creates graph nodes by itself.
+- `.codemap/index/capture/events.jsonl` is rebuildable session evidence for
+  audit and future suggestions. It can be deleted without corrupting graph
+  memory.
 - Repo map rankings are rebuildable source-index signals: they help agents pick
   high-value files and symbols to inspect, but they are not durable memory.
 
@@ -213,6 +216,7 @@ codemap doctor                        # Compact graph health summary
 codemap doctor --json                 # Full structured health report
 codemap repair-graph                  # Read-only source-anchor repair proposals
 codemap repair-graph --json           # Full structured repair report
+codemap rollup                        # Compute the current weekly metrics rollup
 codemap scan                          # Build the local source index
 codemap watch                         # Keep the source index fresh by polling
 codemap watch --once                  # Refresh once if the index is stale/missing
@@ -221,6 +225,8 @@ codemap context "auth guard"          # Graph + source context for planning
 codemap context "auth guard" --mode compact
 codemap recall-context "auth guard" --budget 2000
 codemap recall-context "auth guard" --file src/auth.ts --symbol requireActiveUser
+codemap capture-event file_inspected --session s1 --anchor src/auth.ts:1:12
+codemap capture-session s1            # Summarize rebuildable capture evidence
 codemap benchmark-retrieval           # Evaluate local retrieval against a suite
 codemap changes-context               # Diff impact, stale graph anchors, tests/docs
 codemap suggest-writeback --summary "what changed"
@@ -240,6 +246,13 @@ Use `codemap recall-context` when an agent needs a small top-K packet rather
 than full planning context. It supports `--mode mixed|graph|source`, `--limit`,
 `--budget`, `--file`, `--symbol`, and `--refresh-index`. Every result says
 whether it came from curated graph memory or the rebuildable source index.
+
+Use `codemap capture-event` to append auditable session evidence such as prompts,
+files inspected, files modified, Codemap calls, recall hits, suggestions, and
+graph writes. Capture events live under `.codemap/index/capture/`, redact common
+secret/token text before storage, and never modify `.codemap/graph.json`.
+`codemap capture-session` summarizes one session for debugging and later
+hook-driven capture work.
 
 `codemap benchmark-retrieval` looks for `benchmarks/retrieval.codemap.json` or
 `.codemap/retrieval-benchmark.json` and reports offline baseline metrics for
