@@ -2143,6 +2143,40 @@ describe("CLI: setup", () => {
     expect(await fs.readFile(hooksPath, "utf8")).toBe(staleHooks);
   });
 
+  test("setup capture hooks check reports stale when only the script is stale", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    const hooksPath = path.join(homeDir, ".codex", "hooks.json");
+    const scriptPath = path.join(
+      homeDir,
+      ".codex",
+      "codemap",
+      "capture-hook.mjs",
+    );
+    const staleScript = "console.log('old capture hook');\n";
+
+    await fs.mkdir(path.dirname(scriptPath), { recursive: true });
+    await fs.writeFile(scriptPath, staleScript, "utf8");
+
+    const stale = await setupCodemap({
+      clients: ["codex"],
+      homeDir,
+      command: process.execPath,
+      captureHooks: true,
+      captureCommand: "codemap",
+      check: true,
+    });
+
+    expect(stale.capture_hooks[0]).toEqual(
+      expect.objectContaining({
+        client: "codex",
+        status: "stale",
+        changed: false,
+      }),
+    );
+    await expect(fs.access(hooksPath)).rejects.toThrow();
+    expect(await fs.readFile(scriptPath, "utf8")).toBe(staleScript);
+  });
+
   test("setup capture hooks preserves unrelated Codex hooks and backs up stale config", async () => {
     const homeDir = path.join(tmpRoot, "home");
     const hooksPath = path.join(homeDir, ".codex", "hooks.json");

@@ -62,7 +62,7 @@ existing source index, existing retrieval benchmark harness.
 ## Phase 4 - Hook Setup and Checks
 
 - [x] Implement task 061.
-- [x] Extend setup logic in `src/setup.ts` or add `src/capture_setup.ts` for
+- [x] Extend setup logic in `src/setup.ts` or add `src/capture_hook_setup.ts` for
       client-specific capture hook setup.
 - [x] Start with Codex hook instructions/config because this repo is dogfooded
       in Codex.

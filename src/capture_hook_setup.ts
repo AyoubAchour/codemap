@@ -90,7 +90,9 @@ async function setupCodexCaptureHooks(
 		return errorResult("codex", hooksPath, existingHooks.error);
 	}
 
-	const scriptCurrent = (await readIfExists(scriptPath)) === expectedScript;
+	const existingScript = await readIfExists(scriptPath);
+	const scriptFound = existingScript !== null;
+	const scriptCurrent = existingScript === expectedScript;
 	const hooksFound = existingHooks.found;
 	const hooksCurrent =
 		hooksFound && hasExpectedCodexHooks(existingHooks.value, hookCommand);
@@ -101,7 +103,7 @@ async function setupCodexCaptureHooks(
 			client: "codex",
 			status: current
 				? "current"
-				: hooksFound || scriptCurrent
+				: hooksFound || scriptFound
 					? "stale"
 					: "missing",
 			path: hooksPath,
@@ -125,8 +127,7 @@ async function setupCodexCaptureHooks(
 	}
 
 	const nextHooks = mergeCodexHooks(existingHooks.value, hookCommand);
-	const status =
-		hooksFound || (await exists(scriptPath)) ? "updated" : "installed";
+	const status = hooksFound || scriptFound ? "updated" : "installed";
 	if (options.dryRun) {
 		return {
 			client: "codex",
@@ -284,21 +285,6 @@ async function backupFile(filePath: string): Promise<string> {
 	const backupPath = `${filePath}.codemap-backup`;
 	await fs.copyFile(filePath, backupPath);
 	return backupPath;
-}
-
-async function exists(filePath: string): Promise<boolean> {
-	try {
-		await fs.access(filePath);
-		return true;
-	} catch (err) {
-		if (
-			err instanceof Error &&
-			(err as NodeJS.ErrnoException).code === "ENOENT"
-		) {
-			return false;
-		}
-		throw err;
-	}
 }
 
 async function readIfExists(filePath: string): Promise<string | null> {
