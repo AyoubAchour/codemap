@@ -91,13 +91,23 @@ describe("capture events", () => {
 			session_id: "session-a",
 			kind: "prompt",
 			payload: {
+				api_key: "plain-secret-value",
+				nested: { password: "another-secret-value" },
 				text: "Use token=abc123456789 and key sk-abc123456789SECRET",
 			},
 		});
 
 		const [event] = await readCaptureEvents(tmpRoot);
+		expect(event?.payload.api_key).toBe("[redacted]");
+		expect((event?.payload.nested as { password?: string }).password).toBe(
+			"[redacted]",
+		);
 		expect(event?.payload.text).toContain("token=[redacted]");
 		expect(event?.payload.text).toContain("sk-[redacted]");
+		expect(JSON.stringify(event?.payload)).not.toContain("plain-secret-value");
+		expect(JSON.stringify(event?.payload)).not.toContain(
+			"another-secret-value",
+		);
 		expect(event?.payload.text).not.toContain("abc123456789SECRET");
 	});
 
@@ -163,5 +173,26 @@ describe("capture events", () => {
 		expect(summary.counts_by_kind.prompt).toBe(1);
 		expect(summary.counts_by_kind.codemap_call).toBe(1);
 		expect(summary.events.map((event) => event.id)).toEqual(["evt-1", "evt-3"]);
+	});
+
+	test("returns no events when a read limit is zero or negative", async () => {
+		await appendCaptureEvent(tmpRoot, {
+			id: "evt-1",
+			session_id: "session-a",
+			kind: "prompt",
+		});
+
+		expect(await readCaptureEvents(tmpRoot, { limit: 0 })).toEqual([]);
+		expect(await readCaptureEvents(tmpRoot, { limit: -1 })).toEqual([]);
+		expect(
+			await summarizeCaptureSession(tmpRoot, {
+				sessionId: "session-a",
+				limit: 0,
+			}),
+		).toMatchObject({
+			session_id: "session-a",
+			total_events: 0,
+			events: [],
+		});
 	});
 });

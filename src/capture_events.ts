@@ -8,6 +8,8 @@ import { normalizeRepoPath } from "./util/repo_path.js";
 const CAPTURE_EVENT_VERSION = 1 as const;
 const CAPTURE_INDEX_DIR = ".codemap/index/capture";
 const CAPTURE_EVENTS_FILE = "events.jsonl";
+const CAPTURE_REDACTED = "[redacted]";
+const SENSITIVE_CAPTURE_KEY = /^(token|api[_-]?key|secret|password)$/i;
 
 export const CAPTURE_EVENT_KINDS = [
 	"session_start",
@@ -147,11 +149,7 @@ export async function readCaptureEvents(
 			options.kinds === undefined ? true : options.kinds.includes(event.kind),
 		);
 
-	if (options.limit !== undefined && events.length > options.limit) {
-		return events.slice(-options.limit);
-	}
-
-	return events;
+	return limitCaptureEvents(events, options.limit);
 }
 
 export async function summarizeCaptureSession(
@@ -166,10 +164,7 @@ export async function summarizeCaptureSession(
 		sessionId === undefined
 			? []
 			: allEvents.filter((event) => event.session_id === sessionId);
-	const events =
-		options.limit !== undefined && sessionEvents.length > options.limit
-			? sessionEvents.slice(-options.limit)
-			: sessionEvents;
+	const events = limitCaptureEvents(sessionEvents, options.limit);
 
 	const counts: Partial<Record<CaptureEventKind, number>> = {};
 	for (const event of events) {
@@ -189,11 +184,11 @@ export async function summarizeCaptureSession(
 
 export function redactCaptureText(text: string): string {
 	return text
-		.replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "sk-[redacted]")
+		.replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, `sk-${CAPTURE_REDACTED}`)
 		.replace(
 			/\b(token|api[_-]?key|secret|password)\s*([:=])\s*["']?[^"'\s,}]+["']?/gi,
 			(_match, key: string, separator: string) =>
-				`${key}${separator}[redacted]`,
+				`${key}${separator}${CAPTURE_REDACTED}`,
 		);
 }
 
@@ -247,6 +242,15 @@ function normalizeCaptureEvent(
 		),
 		payload: normalizePayload(input.payload),
 	};
+}
+
+function limitCaptureEvents(
+	events: CaptureEvent[],
+	limit: number | undefined,
+): CaptureEvent[] {
+	if (limit === undefined) return events;
+	if (limit <= 0) return [];
+	return events.length > limit ? events.slice(-limit) : events;
 }
 
 function valueOrGenerated(
@@ -345,7 +349,10 @@ function redactJson(value: unknown): unknown {
 	if (value && typeof value === "object") {
 		const out: Record<string, unknown> = {};
 		for (const [key, entry] of Object.entries(value)) {
-			if (entry !== undefined) out[key] = redactJson(entry);
+			if (entry === undefined) continue;
+			out[key] = SENSITIVE_CAPTURE_KEY.test(key)
+				? CAPTURE_REDACTED
+				: redactJson(entry);
 		}
 		return out;
 	}

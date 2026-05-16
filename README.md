@@ -216,6 +216,7 @@ codemap doctor                        # Compact graph health summary
 codemap doctor --json                 # Full structured health report
 codemap repair-graph                  # Read-only source-anchor repair proposals
 codemap repair-graph --json           # Full structured repair report
+codemap rollup                        # Compute the current weekly metrics rollup
 codemap scan                          # Build the local source index
 codemap watch                         # Keep the source index fresh by polling
 codemap watch --once                  # Refresh once if the index is stale/missing
