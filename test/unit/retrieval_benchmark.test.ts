@@ -189,6 +189,54 @@ describe("retrieval benchmark", () => {
     expect(response.results[0]?.nodes.returned).toContain("auth/active-user");
   });
 
+  test("recall profile uses compact defaults without changing planning defaults", async () => {
+    await write(
+      "src/auth.ts",
+      "export function requireActiveUser(token: string) { return token; }\n",
+    );
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "recall profile suite",
+          queries: [
+            {
+              id: "auth-recall",
+              query: "require active user token",
+              expected_files: ["src/auth.ts"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+
+    const planning = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+    });
+    const recall = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      profile: "recall",
+    });
+
+    expect(planning.ok).toBe(true);
+    expect(recall.ok).toBe(true);
+    if (!planning.ok) throw new Error(planning.error.message);
+    if (!recall.ok) throw new Error(recall.error.message);
+    expect(planning.summary.profile).toBe("planning");
+    expect(planning.summary.limit).toBe(10);
+    expect(planning.summary.mode).toBe("standard");
+    expect(recall.summary.profile).toBe("recall");
+    expect(recall.summary.limit).toBe(5);
+    expect(recall.summary.mode).toBe("compact");
+    expect(recall.summary.average_response_bytes).toBeLessThanOrEqual(
+      planning.summary.average_response_bytes,
+    );
+  });
+
   test("benchmarks an injected semantic file adapter independently from source hits", async () => {
     await write(
       "src/auth.ts",
@@ -579,6 +627,95 @@ describe("retrieval benchmark", () => {
     if (!response.ok) throw new Error(response.error.message);
     expect(response.summary.thresholds.passed).toBe(false);
     expect(response.summary.thresholds.failed).toEqual(["files.hit_rate_at_k"]);
+  });
+
+  test("reports payload budget compliance and threshold failures", async () => {
+    await write(
+      "src/auth.ts",
+      [
+        "export function requireActiveUser(token: string) {",
+        "  return { id: token, scope: 'active' };",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "payload budget suite",
+          queries: [
+            {
+              id: "auth-budget",
+              query: "require active user token scope",
+              expected_files: ["src/auth.ts"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 3,
+      responseBudgetBytes: 10,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.results[0]?.payload.response_budget_bytes).toBe(10);
+    expect(response.results[0]?.payload.within_budget).toBe(false);
+    expect(response.results[0]?.payload.over_budget_bytes).toBeGreaterThan(0);
+    expect(response.summary.payload_budget.evaluated_queries).toBe(1);
+    expect(response.summary.payload_budget.compliance_rate).toBe(0);
+    expect(response.summary.thresholds.passed).toBe(false);
+    expect(response.summary.thresholds.failed).toContain(
+      "payload_budget.compliance_rate",
+    );
+  });
+
+  test("reports average response budgets and latency metrics", async () => {
+    await write("src/auth.ts", "export const AUTH_SCOPE = 'active';\n");
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "average budget suite",
+          queries: [
+            {
+              id: "auth-average-budget",
+              query: "active auth scope",
+              expected_files: ["src/auth.ts"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 3,
+      maxAverageResponseBytes: 1,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.summary.latency.average_latency_ms).toEqual(
+      expect.any(Number),
+    );
+    expect(response.summary.latency.max_latency_ms).toEqual(expect.any(Number));
+    expect(response.summary.thresholds.passed).toBe(false);
+    expect(response.summary.thresholds.failed).toEqual(
+      expect.arrayContaining(["payload_budget.average_response_bytes"]),
+    );
   });
 
   test("reports node threshold failures", async () => {

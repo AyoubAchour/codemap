@@ -271,6 +271,31 @@ The next incremental sequence is intentionally one task per PR:
 - Task 048: retrieval benchmark and optional hybrid-reranking evaluation, only
   after local lexical/symbol misses are measured.
 
+Task 049 shipped `0.7.0`; tasks 050-056 then shipped the `0.8.0` line with
+graph repair, repo-map ranking, adapter-gated semantic retrieval, watch mode,
+agentic writeback quality, a larger benchmark suite, and the release itself.
+
+The next Agentmemory catch-up sequence keeps Codemap's curated graph model while
+closing the strongest competitive gaps: automatic capture, compact recall,
+replay/observability, setup polish, and benchmarked retrieval quality.
+
+- Task 057: write the catch-up spec, implementation plan, and task sequence.
+- Task 058: add recall-focused benchmark parity and payload-budget gates.
+- Task 059: add token-budgeted `recall_context` as a compact alternative to
+  full `query_context`.
+- Task 060: add a rebuildable capture event log under the source-index side of
+  `.codemap`, never the curated graph.
+- Task 061: add capture hook onboarding, starting with Codex.
+- Task 062: feed capture evidence into read-only writeback suggestions.
+- Task 063: add recall profiles and session summaries as rebuildable evidence.
+- Task 064: add local observability/replay reports before any full viewer.
+- Task 065: benchmark a local semantic provider before deciding whether it
+  earns opt-in runtime support.
+
+This order is intentional: benchmark the gap, ship compact recall, then add
+capture and observability. Automatic capture must improve suggestions and
+recall, not bypass explicit graph writeback.
+
 ## Cumulative timeline (single dev, half-time)
 
 

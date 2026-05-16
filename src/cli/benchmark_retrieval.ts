@@ -1,12 +1,14 @@
 import {
   runRetrievalBenchmark,
   type RetrievalBenchmarkOptions,
+  type RetrievalBenchmarkProfile,
 } from "../retrieval_benchmark.js";
 import type { QueryContextMode, SourceRefreshMode } from "../query_context.js";
 import type { CommandResult, GlobalOptions } from "./_types.js";
 
 export interface BenchmarkRetrievalFlags {
   suite?: string;
+  profile?: RetrievalBenchmarkProfile;
   limit?: number;
   mode?: QueryContextMode;
   maxContentChars?: number;
@@ -16,6 +18,10 @@ export interface BenchmarkRetrievalFlags {
   refreshIndex?: SourceRefreshMode;
   minFileHitRate?: number;
   minNodeHitRate?: number;
+  responseBudgetBytes?: number;
+  minPayloadBudgetCompliance?: number;
+  maxAverageResponseBytes?: number;
+  maxAverageLatencyMs?: number;
   semanticProvider?: "disabled";
   rerankerProvider?: "disabled";
 }
@@ -27,6 +33,7 @@ export async function benchmarkRetrieval(
   try {
     const benchmarkOptions: RetrievalBenchmarkOptions = {
       suitePath: flags.suite,
+      profile: flags.profile,
       limit: flags.limit,
       mode: flags.mode,
       maxContentChars: flags.maxContentChars,
@@ -36,6 +43,10 @@ export async function benchmarkRetrieval(
       refreshIndex: flags.refreshIndex,
       minFileHitRate: flags.minFileHitRate,
       minNodeHitRate: flags.minNodeHitRate,
+      responseBudgetBytes: flags.responseBudgetBytes,
+      minPayloadBudgetCompliance: flags.minPayloadBudgetCompliance,
+      maxAverageResponseBytes: flags.maxAverageResponseBytes,
+      maxAverageLatencyMs: flags.maxAverageLatencyMs,
       semantic: flags.semanticProvider
         ? { provider: flags.semanticProvider }
         : undefined,

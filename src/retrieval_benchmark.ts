@@ -27,8 +27,11 @@ import { normalizeRepoPath } from "./util/repo_path.js";
 
 const BENCHMARK_VERSION = 1 as const;
 const DEFAULT_LIMIT = 10;
+const DEFAULT_RECALL_LIMIT = 5;
 const DEFAULT_MODE: QueryContextMode = "standard";
+const DEFAULT_RECALL_MODE: QueryContextMode = "compact";
 const DEFAULT_MAX_CONTENT_CHARS = 300;
+const DEFAULT_RECALL_MAX_CONTENT_CHARS = 120;
 const DEFAULT_DEPENDENCY_LIMIT = 0;
 const DEFAULT_IMPACT_LIMIT = 3;
 const DEFAULT_REFRESH_INDEX: SourceRefreshMode = "if_stale";
@@ -42,8 +45,11 @@ export interface RetrievalBenchmarkQuery {
   query: string;
   expected_files?: string[];
   expected_nodes?: string[];
+  response_budget_bytes?: number;
   tags?: string[];
 }
+
+export type RetrievalBenchmarkProfile = "planning" | "recall";
 
 export interface RetrievalBenchmarkSuite {
   version: typeof BENCHMARK_VERSION;
@@ -54,6 +60,7 @@ export interface RetrievalBenchmarkSuite {
 
 export interface RetrievalBenchmarkOptions {
   suitePath?: string;
+  profile?: RetrievalBenchmarkProfile;
   limit?: number;
   mode?: QueryContextMode;
   maxContentChars?: number;
@@ -63,6 +70,10 @@ export interface RetrievalBenchmarkOptions {
   refreshIndex?: SourceRefreshMode;
   minFileHitRate?: number;
   minNodeHitRate?: number;
+  responseBudgetBytes?: number;
+  minPayloadBudgetCompliance?: number;
+  maxAverageResponseBytes?: number;
+  maxAverageLatencyMs?: number;
   semantic?: SemanticRetrievalBenchmarkOptions;
   reranker?: SemanticRerankBenchmarkOptions;
 }
@@ -85,6 +96,7 @@ export interface RetrievalBenchmarkQueryResult {
   tags: string[];
   latency_ms: number;
   response_bytes: number;
+  payload: RetrievalPayloadBudgetResult;
   source_result_count: number;
   source_file_diversity: number;
   files: RetrievalTargetEvaluation;
@@ -102,19 +114,47 @@ export interface RetrievalBenchmarkAggregate {
   mrr: number;
 }
 
+export interface RetrievalPayloadBudgetResult {
+  response_bytes: number;
+  response_budget_bytes?: number;
+  within_budget: boolean | null;
+  over_budget_bytes: number;
+}
+
+export interface RetrievalPayloadBudgetSummary {
+  evaluated_queries: number;
+  within_budget_queries: number;
+  compliance_rate: number;
+  average_response_bytes: number;
+  max_response_bytes: number;
+  max_over_budget_bytes: number;
+}
+
+export interface RetrievalLatencySummary {
+  average_latency_ms: number;
+  max_latency_ms: number;
+}
+
 export interface RetrievalBenchmarkSummary {
   query_count: number;
+  profile: RetrievalBenchmarkProfile;
   limit: number;
   mode: QueryContextMode;
   total_time_ms: number;
   average_latency_ms: number;
   average_response_bytes: number;
+  latency: RetrievalLatencySummary;
+  payload_budget: RetrievalPayloadBudgetSummary;
   average_source_file_diversity: number;
   files: RetrievalBenchmarkAggregate;
   nodes: RetrievalBenchmarkAggregate;
   thresholds: {
     min_file_hit_rate?: number;
     min_node_hit_rate?: number;
+    response_budget_bytes?: number;
+    min_payload_budget_compliance?: number;
+    max_average_response_bytes?: number;
+    max_average_latency_ms?: number;
     failed: string[];
     passed: boolean;
   };
@@ -224,9 +264,17 @@ export async function runRetrievalBenchmark(
     };
   }
 
-  const limit = options.limit ?? DEFAULT_LIMIT;
-  const mode = options.mode ?? DEFAULT_MODE;
-  const maxContentChars = options.maxContentChars ?? DEFAULT_MAX_CONTENT_CHARS;
+  const profile = options.profile ?? "planning";
+  const limit =
+    options.limit ??
+    (profile === "recall" ? DEFAULT_RECALL_LIMIT : DEFAULT_LIMIT);
+  const mode =
+    options.mode ?? (profile === "recall" ? DEFAULT_RECALL_MODE : DEFAULT_MODE);
+  const maxContentChars =
+    options.maxContentChars ??
+    (profile === "recall"
+      ? DEFAULT_RECALL_MAX_CONTENT_CHARS
+      : DEFAULT_MAX_CONTENT_CHARS);
   const dependencyLimit = options.dependencyLimit ?? DEFAULT_DEPENDENCY_LIMIT;
   const includeImpact = options.includeImpact ?? false;
   const impactLimit = options.impactLimit ?? DEFAULT_IMPACT_LIMIT;
@@ -258,6 +306,9 @@ export async function runRetrievalBenchmark(
     const sourceFileDiversity =
       sourceResults.length === 0 ? 0 : returnedFiles.length / sourceResults.length;
     const expectedFiles = (benchmarkQuery.expected_files ?? []).map(normalizeRepoPath);
+    const responseBytes = Buffer.byteLength(JSON.stringify(context), "utf8");
+    const responseBudgetBytes =
+      options.responseBudgetBytes ?? benchmarkQuery.response_budget_bytes;
     const semanticRun = await runSemanticFileRetrieval(semantic, {
       repoRoot: resolvedRepoRoot,
       suitePath: suiteResolution.relativePath,
@@ -285,7 +336,8 @@ export async function runRetrievalBenchmark(
       query: benchmarkQuery.query,
       tags: benchmarkQuery.tags ?? [],
       latency_ms: latencyMs,
-      response_bytes: Buffer.byteLength(JSON.stringify(context), "utf8"),
+      response_bytes: responseBytes,
+      payload: evaluatePayloadBudget(responseBytes, responseBudgetBytes),
       source_result_count: sourceResults.length,
       source_file_diversity: round4(sourceFileDiversity),
       files: evaluateTargets(
@@ -325,10 +377,15 @@ export async function runRetrievalBenchmark(
   const totalTimeMs = Date.now() - startedAt;
   const summary = summarizeResults(results, {
     limit,
+    profile,
     mode,
     totalTimeMs,
     minFileHitRate: options.minFileHitRate,
     minNodeHitRate: options.minNodeHitRate,
+    responseBudgetBytes: options.responseBudgetBytes,
+    minPayloadBudgetCompliance: options.minPayloadBudgetCompliance,
+    maxAverageResponseBytes: options.maxAverageResponseBytes,
+    maxAverageLatencyMs: options.maxAverageLatencyMs,
     semantic,
     reranker,
   });
@@ -425,6 +482,10 @@ function parseQuery(value: unknown, label: string): RetrievalBenchmarkQuery {
     entry.expected_nodes,
     `${label}.expected_nodes`,
   );
+  const responseBudgetBytes = parseOptionalPositiveInteger(
+    entry.response_budget_bytes,
+    `${label}.response_budget_bytes`,
+  );
   if (expectedFiles.length === 0 && expectedNodes.length === 0) {
     throw new Error(
       `${label} must include expected_files, expected_nodes, or both.`,
@@ -435,6 +496,7 @@ function parseQuery(value: unknown, label: string): RetrievalBenchmarkQuery {
     query: entry.query,
     expected_files: expectedFiles.map(normalizeRepoPath),
     expected_nodes: expectedNodes,
+    response_budget_bytes: responseBudgetBytes,
     tags: parseOptionalStringArray(entry.tags, `${label}.tags`),
   };
 }
@@ -458,6 +520,21 @@ function parseStringArray(value: unknown, label: string): string[] {
     throw new Error(`${label} must be an array of non-empty strings.`);
   }
   return strings;
+}
+
+function parseOptionalPositiveInteger(
+  value: unknown,
+  label: string,
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value <= 0
+  ) {
+    throw new Error(`${label} must be a positive integer.`);
+  }
+  return value;
 }
 
 function evaluateTargets(
@@ -492,16 +569,28 @@ function summarizeResults(
   results: RetrievalBenchmarkQueryResult[],
   input: {
     limit: number;
+    profile: RetrievalBenchmarkProfile;
     mode: QueryContextMode;
     totalTimeMs: number;
     minFileHitRate?: number;
     minNodeHitRate?: number;
+    responseBudgetBytes?: number;
+    minPayloadBudgetCompliance?: number;
+    maxAverageResponseBytes?: number;
+    maxAverageLatencyMs?: number;
     semantic: ResolvedSemanticRetrieval;
     reranker: ResolvedSemanticReranker;
   },
 ): RetrievalBenchmarkSummary {
   const files = aggregateEvaluations(results.map((result) => result.files));
   const nodes = aggregateEvaluations(results.map((result) => result.nodes));
+  const averageLatencyMs = average(results.map((result) => result.latency_ms));
+  const averageResponseBytes = average(
+    results.map((result) => result.response_bytes),
+  );
+  const payloadBudget = aggregatePayloadBudgets(
+    results.map((result) => result.payload),
+  );
   const semanticFiles = aggregateEvaluations(
     results.map((result) => result.semantic.files),
   );
@@ -523,14 +612,45 @@ function summarizeResults(
   ) {
     failed.push("nodes.hit_rate_at_k");
   }
+  const minPayloadBudgetCompliance =
+    input.minPayloadBudgetCompliance ??
+    (input.responseBudgetBytes !== undefined ||
+    payloadBudget.evaluated_queries > 0
+      ? 1
+      : undefined);
+  if (
+    minPayloadBudgetCompliance !== undefined &&
+    (payloadBudget.evaluated_queries === 0 ||
+      payloadBudget.compliance_rate < minPayloadBudgetCompliance)
+  ) {
+    failed.push("payload_budget.compliance_rate");
+  }
+  if (
+    input.maxAverageResponseBytes !== undefined &&
+    averageResponseBytes > input.maxAverageResponseBytes
+  ) {
+    failed.push("payload_budget.average_response_bytes");
+  }
+  if (
+    input.maxAverageLatencyMs !== undefined &&
+    averageLatencyMs > input.maxAverageLatencyMs
+  ) {
+    failed.push("latency.average_latency_ms");
+  }
 
   return {
     query_count: results.length,
+    profile: input.profile,
     limit: input.limit,
     mode: input.mode,
     total_time_ms: input.totalTimeMs,
-    average_latency_ms: average(results.map((result) => result.latency_ms)),
-    average_response_bytes: average(results.map((result) => result.response_bytes)),
+    average_latency_ms: averageLatencyMs,
+    average_response_bytes: averageResponseBytes,
+    latency: {
+      average_latency_ms: averageLatencyMs,
+      max_latency_ms: max(results.map((result) => result.latency_ms)),
+    },
+    payload_budget: payloadBudget,
     average_source_file_diversity: average(
       results.map((result) => result.source_file_diversity),
     ),
@@ -539,6 +659,10 @@ function summarizeResults(
     thresholds: {
       min_file_hit_rate: input.minFileHitRate,
       min_node_hit_rate: input.minNodeHitRate,
+      response_budget_bytes: input.responseBudgetBytes,
+      min_payload_budget_compliance: minPayloadBudgetCompliance,
+      max_average_response_bytes: input.maxAverageResponseBytes,
+      max_average_latency_ms: input.maxAverageLatencyMs,
       failed,
       passed: failed.length === 0,
     },
@@ -578,6 +702,47 @@ function summarizeResults(
             : [],
       },
     },
+  };
+}
+
+function evaluatePayloadBudget(
+  responseBytes: number,
+  responseBudgetBytes?: number,
+): RetrievalPayloadBudgetResult {
+  return {
+    response_bytes: responseBytes,
+    response_budget_bytes: responseBudgetBytes,
+    within_budget:
+      responseBudgetBytes === undefined ? null : responseBytes <= responseBudgetBytes,
+    over_budget_bytes:
+      responseBudgetBytes === undefined
+        ? 0
+        : Math.max(0, responseBytes - responseBudgetBytes),
+  };
+}
+
+function aggregatePayloadBudgets(
+  payloads: RetrievalPayloadBudgetResult[],
+): RetrievalPayloadBudgetSummary {
+  const evaluated = payloads.filter(
+    (payload) => payload.response_budget_bytes !== undefined,
+  );
+  return {
+    evaluated_queries: evaluated.length,
+    within_budget_queries: evaluated.filter(
+      (payload) => payload.within_budget === true,
+    ).length,
+    compliance_rate:
+      evaluated.length === 0
+        ? 0
+        : average(evaluated.map((payload) => (payload.within_budget ? 1 : 0))),
+    average_response_bytes: average(
+      payloads.map((payload) => payload.response_bytes),
+    ),
+    max_response_bytes: max(payloads.map((payload) => payload.response_bytes)),
+    max_over_budget_bytes: max(
+      evaluated.map((payload) => payload.over_budget_bytes),
+    ),
   };
 }
 
@@ -638,6 +803,11 @@ function unique(values: string[]): string[] {
 function average(values: number[]): number {
   if (values.length === 0) return 0;
   return round4(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function max(values: number[]): number {
+  if (values.length === 0) return 0;
+  return Math.max(...values);
 }
 
 function round4(value: number): number {

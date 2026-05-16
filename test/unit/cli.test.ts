@@ -1724,6 +1724,88 @@ describe("CLI: source index", () => {
     );
   });
 
+  test("benchmark-retrieval supports the recall profile", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      "export function requireActiveUser() { return true; }\n",
+    );
+    await fs.writeFile(
+      path.join(tmpRoot, "retrieval-suite.json"),
+      JSON.stringify({
+        version: 1,
+        name: "CLI recall profile suite",
+        queries: [
+          {
+            id: "auth",
+            query: "require active user auth",
+            expected_files: ["src/auth.ts"],
+          },
+        ],
+      }),
+    );
+    await scan({}, { repoRoot: tmpRoot });
+
+    const result = await benchmarkRetrieval(
+      {
+        suite: "retrieval-suite.json",
+        profile: "recall",
+      },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.summary.profile).toBe("recall");
+    expect(out.summary.mode).toBe("compact");
+    expect(out.summary.limit).toBe(5);
+  });
+
+  test("benchmark-retrieval accepts payload and latency budget flags", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      "export const AUTH_SCOPE = 'active';\n",
+    );
+    await fs.writeFile(
+      path.join(tmpRoot, "retrieval-suite.json"),
+      JSON.stringify({
+        version: 1,
+        name: "CLI budget suite",
+        queries: [
+          {
+            id: "auth-budget",
+            query: "active auth scope",
+            expected_files: ["src/auth.ts"],
+          },
+        ],
+      }),
+    );
+    await scan({}, { repoRoot: tmpRoot });
+
+    const result = await benchmarkRetrieval(
+      {
+        suite: "retrieval-suite.json",
+        responseBudgetBytes: 10,
+        minPayloadBudgetCompliance: 1,
+        maxAverageResponseBytes: 1,
+        maxAverageLatencyMs: 0,
+      },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(1);
+    const out = JSON.parse(result.stdout!);
+    expect(out.summary.payload_budget.evaluated_queries).toBe(1);
+    expect(out.summary.payload_budget.compliance_rate).toBe(0);
+    expect(out.summary.thresholds.failed).toEqual(
+      expect.arrayContaining([
+        "payload_budget.compliance_rate",
+        "payload_budget.average_response_bytes",
+      ]),
+    );
+  });
+
   test("bin benchmark-retrieval rejects invalid threshold values", async () => {
     const result = await runCodemapBin([
       "benchmark-retrieval",
