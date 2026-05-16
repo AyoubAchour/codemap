@@ -6,6 +6,9 @@ export interface SuggestWritebackFlags {
 	modifiedFile?: string[];
 	summary?: string;
 	git?: boolean;
+	captureSession?: string;
+	latestCaptureSession?: boolean;
+	captureLimit?: number;
 	limit?: number;
 }
 
@@ -18,6 +21,9 @@ export async function suggestWriteback(
 		modifiedFiles: flags.modifiedFile,
 		workSummary: flags.summary,
 		includeGit: flags.git ?? true,
+		captureSessionId: flags.captureSession,
+		includeLatestCaptureSession: flags.latestCaptureSession,
+		captureLimit: flags.captureLimit,
 		limit: flags.limit,
 	});
 

@@ -4,6 +4,10 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
 
+import {
+	type CaptureEventKind,
+	summarizeCaptureSession,
+} from "./capture_events.js";
 import { GraphStore, type QueryResult } from "./graph.js";
 import {
 	filterStalenessReportForNodes,
@@ -26,7 +30,10 @@ export type WritebackFileReason =
 	| "git_changed"
 	| "inspected"
 	| "modified"
-	| "stale_graph_source";
+	| "stale_graph_source"
+	| "captured_inspected"
+	| "captured_modified"
+	| "captured_recall_hit";
 
 export interface WritebackFileCandidate extends SourceRef {
 	reasons: WritebackFileReason[];
@@ -56,7 +63,18 @@ export interface WritebackSuggestionOptions {
 	modifiedFiles?: string[];
 	workSummary?: string;
 	includeGit?: boolean;
+	captureSessionId?: string;
+	includeLatestCaptureSession?: boolean;
+	captureLimit?: number;
 	limit?: number;
+}
+
+export interface WritebackCaptureEvidence {
+	requested: string;
+	session_id?: string;
+	total_events: number;
+	used_events: number;
+	captured_files: string[];
 }
 
 export interface WritebackSuggestionResponse {
@@ -66,6 +84,7 @@ export interface WritebackSuggestionResponse {
 		inspected_files: string[];
 		modified_files: string[];
 		git_changed_files: string[];
+		capture_session: WritebackCaptureEvidence | null;
 		work_summary: string | null;
 		related_node_ids: string[];
 		stale_graph_node_ids: string[];
@@ -128,6 +147,12 @@ export async function buildWritebackSuggestions(
 		addInputFiles(repoRoot, fileReasons, gitChangedFiles, "git_changed");
 	}
 
+	const captureEvidence = await loadCaptureEvidence(
+		repoRoot,
+		options,
+		fileReasons,
+	);
+
 	const query = [activeTopic, workSummary].filter(Boolean).join(" ").trim();
 	const store = await GraphStore.load(repoRoot);
 	const relatedCandidates = query ? store.query(query, 15) : emptyQueryResult();
@@ -179,6 +204,7 @@ export async function buildWritebackSuggestions(
 			inspected_files: filesWithReason(files, "inspected"),
 			modified_files: filesWithReason(files, "modified"),
 			git_changed_files: filesWithReason(files, "git_changed"),
+			capture_session: captureEvidence,
 			work_summary: workSummary || null,
 			related_node_ids: relatedNodeIds,
 			stale_graph_node_ids: staleGraphNodeIds,
@@ -190,6 +216,54 @@ export async function buildWritebackSuggestions(
 	};
 }
 
+async function loadCaptureEvidence(
+	repoRoot: string,
+	options: WritebackSuggestionOptions,
+	fileReasons: Map<string, FileAccumulator>,
+): Promise<WritebackCaptureEvidence | null> {
+	if (!options.captureSessionId && !options.includeLatestCaptureSession) {
+		return null;
+	}
+	const requested = options.captureSessionId ?? "latest";
+	const summary = await summarizeCaptureSession(repoRoot, {
+		sessionId: options.captureSessionId,
+		limit: clampCaptureLimit(options.captureLimit),
+	});
+	const capturedFiles = new Set<string>();
+	let usedEvents = 0;
+
+	for (const event of summary.events) {
+		const reason = captureReasonForKind(event.kind);
+		if (!reason || event.anchors.length === 0) continue;
+		let usedEvent = false;
+		for (const anchor of event.anchors) {
+			const key = evidenceFileKey(repoRoot, anchor.file_path);
+			if (!key || shouldIgnoreFile(key)) continue;
+			addFileReason(repoRoot, fileReasons, key, reason);
+			capturedFiles.add(key);
+			usedEvent = true;
+		}
+		if (usedEvent) usedEvents += 1;
+	}
+
+	return {
+		requested,
+		session_id: summary.session_id,
+		total_events: summary.total_events,
+		used_events: usedEvents,
+		captured_files: [...capturedFiles].sort(),
+	};
+}
+
+function captureReasonForKind(
+	kind: CaptureEventKind,
+): WritebackFileReason | null {
+	if (kind === "file_inspected") return "captured_inspected";
+	if (kind === "file_modified") return "captured_modified";
+	if (kind === "recall_hit") return "captured_recall_hit";
+	return null;
+}
+
 function buildSuggestions(input: BuildContext): WritebackSuggestionGroups {
 	const suggestions: WritebackSuggestionGroups = {
 		decisions: [],
@@ -199,13 +273,20 @@ function buildSuggestions(input: BuildContext): WritebackSuggestionGroups {
 	};
 	const changedFiles = input.files.filter(
 		(file) =>
-			file.reasons.includes("modified") || file.reasons.includes("git_changed"),
+			file.reasons.includes("modified") ||
+			file.reasons.includes("git_changed") ||
+			file.reasons.includes("captured_modified"),
 	);
-	const inspectedFiles = input.files.filter((file) =>
-		file.reasons.includes("inspected"),
+	const inspectedFiles = input.files.filter(
+		(file) =>
+			file.reasons.includes("inspected") ||
+			file.reasons.includes("captured_inspected") ||
+			file.reasons.includes("captured_recall_hit"),
 	);
 	const sourceCandidates = pickSourceCandidates(
-		changedFiles.length > 0 ? changedFiles : input.files,
+		changedFiles.length > 0
+			? uniqueFileCandidates([...changedFiles, ...inspectedFiles])
+			: input.files,
 	);
 	const text = `${input.activeTopic ?? ""} ${input.workSummary}`.toLowerCase();
 
@@ -513,6 +594,18 @@ function pickSourceCandidates(
 	return files.slice(0, MAX_SOURCE_CANDIDATES);
 }
 
+function uniqueFileCandidates(
+	files: WritebackFileCandidate[],
+): WritebackFileCandidate[] {
+	const candidates = new Map<string, WritebackFileCandidate>();
+	for (const file of files) {
+		if (!candidates.has(file.file_path)) {
+			candidates.set(file.file_path, file);
+		}
+	}
+	return [...candidates.values()];
+}
+
 function countSuggestions(suggestions: WritebackSuggestionGroups): number {
 	return (
 		suggestions.decisions.length +
@@ -551,6 +644,11 @@ function countLines(content: Buffer): number {
 function clampLimit(limit: number): number {
 	if (!Number.isFinite(limit)) return DEFAULT_LIMIT;
 	return Math.min(20, Math.max(0, Math.floor(limit)));
+}
+
+function clampCaptureLimit(limit: number | undefined): number {
+	if (limit === undefined || !Number.isFinite(limit)) return 200;
+	return Math.min(1000, Math.max(0, Math.floor(limit)));
 }
 
 function parsePorcelainStatus(value: string): string[] {

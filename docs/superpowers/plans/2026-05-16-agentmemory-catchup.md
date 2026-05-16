@@ -73,13 +73,13 @@ existing source index, existing retrieval benchmark harness.
 
 ## Phase 5 - Better Writeback Suggestions
 
-- [ ] Implement task 062.
-- [ ] Extend `src/writeback_suggestions.ts` to accept capture/session evidence.
-- [ ] Keep suggestions read-only and grouped by decision, invariant, gotcha, and
+- [x] Implement task 062.
+- [x] Extend `src/writeback_suggestions.ts` to accept capture/session evidence.
+- [x] Keep suggestions read-only and grouped by decision, invariant, gotcha, and
       relationship.
-- [ ] Add tests showing captured evidence improves source-anchor candidates
+- [x] Add tests showing captured evidence improves source-anchor candidates
       without auto-emitting nodes.
-- [ ] Verify with:
+- [x] Verify with:
       - `bun test test/unit/writeback_suggestions.test.ts`
       - MCP `suggest_writeback` smoke test in this repo.
 

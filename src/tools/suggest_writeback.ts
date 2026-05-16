@@ -34,6 +34,28 @@ export function registerSuggestWriteback(
 					.describe(
 						"Short summary of what changed or what was learned during the repo task.",
 					),
+				capture_session_id: z
+					.string()
+					.min(1)
+					.optional()
+					.describe(
+						"Use rebuildable capture evidence from this session as read-only writeback evidence.",
+					),
+				latest_capture_session: z
+					.boolean()
+					.optional()
+					.describe(
+						"When true, use rebuildable capture evidence from the latest captured session.",
+					),
+				capture_limit: z
+					.number()
+					.int()
+					.min(0)
+					.max(1000)
+					.optional()
+					.describe(
+						"Maximum capture events to consider when loading capture evidence. Default 200.",
+					),
 				include_git: z
 					.boolean()
 					.optional()
@@ -53,6 +75,9 @@ export function registerSuggestWriteback(
 			inspected_files,
 			modified_files,
 			work_summary,
+			capture_session_id,
+			latest_capture_session,
+			capture_limit,
 			include_git,
 			limit,
 		}) => {
@@ -61,6 +86,9 @@ export function registerSuggestWriteback(
 				inspectedFiles: inspected_files,
 				modifiedFiles: modified_files,
 				workSummary: work_summary,
+				captureSessionId: capture_session_id,
+				includeLatestCaptureSession: latest_capture_session,
+				captureLimit: capture_limit,
 				includeGit: include_git ?? false,
 				limit,
 			});

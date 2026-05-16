@@ -861,6 +861,19 @@ program
     repeatable,
   )
   .option("--summary <text>", "Short summary of what changed or was learned.")
+  .option(
+    "--capture-session <id>",
+    "Use capture evidence from a specific session as read-only writeback evidence.",
+  )
+  .option(
+    "--latest-capture-session",
+    "Use capture evidence from the latest captured session.",
+  )
+  .option(
+    "--capture-limit <n>",
+    "Maximum capture events to consider.",
+    parsePositiveInteger,
+  )
   .option("--no-git", "Do not inspect git changed/untracked files.")
   .option("--limit <n>", "Maximum suggestions to return.", parsePositiveInteger)
   .action(async (cmdOpts: Record<string, unknown>) => {
@@ -870,6 +883,9 @@ program
       modifiedFile: cmdOpts.modifiedFile as string[] | undefined,
       summary: cmdOpts.summary as string | undefined,
       git: cmdOpts.git as boolean | undefined,
+      captureSession: cmdOpts.captureSession as string | undefined,
+      latestCaptureSession: cmdOpts.latestCaptureSession as boolean | undefined,
+      captureLimit: cmdOpts.captureLimit as number | undefined,
       limit: cmdOpts.limit as number | undefined,
     };
     emit(await suggestWriteback(flags, { repoRoot: opts.repo }));

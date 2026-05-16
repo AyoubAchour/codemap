@@ -1,6 +1,6 @@
 # Task 062: Capture-Backed Writeback Suggestions
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 4 / memory quality
 **Estimate:** 2-4 days
 **Depends on:** task-060, task-059
@@ -37,13 +37,22 @@ manually.
 
 ## Exit Criteria
 
-- [ ] Captured evidence improves suggestions without requiring explicit file
+- [x] Captured evidence improves suggestions without requiring explicit file
       lists.
-- [ ] Suggestions remain prompts for judgment, not durable memory.
-- [ ] Repeated low-value events are ignored or collapsed.
-- [ ] Tests prove graph memory is unchanged.
+- [x] Suggestions remain prompts for judgment, not durable memory.
+- [x] Repeated low-value events are ignored or collapsed.
+- [x] Tests prove graph memory is unchanged.
 
 ## Notes
 
 This is the highest-risk quality step. If suggestions get noisy, stop and tune
 ranking before adding more capture sources.
+
+Delivered in this task:
+
+- `suggest_writeback` accepts `capture_session_id` / latest-session evidence in
+  MCP and `--capture-session` / `--latest-capture-session` in the CLI.
+- Captured `file_inspected`, `file_modified`, and `recall_hit` anchors feed
+  writeback source candidates with explicit captured-file reasons.
+- Repeated captured file evidence collapses through the existing source-candidate
+  map instead of creating duplicate suggestions.

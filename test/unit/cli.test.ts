@@ -1317,6 +1317,41 @@ describe("CLI: source index", () => {
     expect(Object.keys(verify._data().nodes)).toEqual([]);
   });
 
+  test("suggest-writeback can use capture session evidence", async () => {
+    await captureEvent(
+      "file_modified",
+      {
+        session: "session-a",
+        anchor: ["src/auth.ts:1:4"],
+      } satisfies CaptureEventFlags,
+      { repoRoot: tmpRoot },
+    );
+
+    const result = await suggestWriteback(
+      {
+        captureSession: "session-a",
+        summary: "Fixed active user review finding.",
+        git: false,
+      },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.evidence.capture_session).toEqual(
+      expect.objectContaining({
+        session_id: "session-a",
+        captured_files: ["src/auth.ts"],
+      }),
+    );
+    expect(out.suggestions.gotchas[0].source_candidates[0]).toEqual(
+      expect.objectContaining({
+        file_path: "src/auth.ts",
+        reasons: expect.arrayContaining(["captured_modified"]),
+      }),
+    );
+  });
+
   test("bin suggest-writeback uses git changed files by default", async () => {
     await runGit(["init"]);
     await runGit(["config", "user.email", "test@example.com"]);
