@@ -75,6 +75,8 @@ jobs:
             exit 1
           fi
       - run: npm pack --dry-run
-      - run: npx --yes publint
-      - run: npx --yes @arethetypeswrong/cli --pack --ignore-rules cjs-resolves-to-esm
+      # Use the lockfile-installed binaries so CI does not depend on a moving
+      # `npx` resolution for package validation.
+      - run: ./node_modules/.bin/publint
+      - run: ./node_modules/.bin/attw --pack . --ignore-rules cjs-resolves-to-esm
       - run: ./scripts/smoke-test.sh
