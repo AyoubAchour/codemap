@@ -61,15 +61,15 @@ existing source index, existing retrieval benchmark harness.
 
 ## Phase 4 - Hook Setup and Checks
 
-- [ ] Implement task 061.
-- [ ] Extend setup logic in `src/setup.ts` or add `src/capture_setup.ts` for
+- [x] Implement task 061.
+- [x] Extend setup logic in `src/setup.ts` or add `src/capture_hook_setup.ts` for
       client-specific capture hook setup.
-- [ ] Start with Codex hook instructions/config because this repo is dogfooded
+- [x] Start with Codex hook instructions/config because this repo is dogfooded
       in Codex.
-- [ ] Support dry-run/check output before writes.
-- [ ] Add docs to `README.md` and generated guidance only after the command is
+- [x] Support dry-run/check output before writes.
+- [x] Add docs to `README.md` and generated guidance only after the command is
       tested.
-- [ ] Verify idempotence by running the check command twice.
+- [x] Verify idempotence by running the check command twice.
 
 ## Phase 5 - Better Writeback Suggestions
 

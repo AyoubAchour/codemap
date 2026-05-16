@@ -87,11 +87,16 @@ To configure supported MCP clients from one place:
 ```sh
 codemap setup
 codemap setup --check
+codemap setup --capture-hooks --client codex
+codemap setup --capture-hooks --client codex --check
 ```
 
 `setup` can write global Codemap entries for Codex, OpenCode, and Cursor, and
 prints the manual command for clients that manage MCP through their own CLI. It
 also checks whether the configured server command is available on `PATH`.
+Capture hooks are opt-in: `--capture-hooks` installs or checks Codex hooks that
+append rebuildable session evidence with `codemap capture-event`. They do not
+call graph write tools and they never modify `.codemap/graph.json`.
 
 ## Configure Your MCP Client
 
@@ -208,6 +213,9 @@ codemap init                          # Generate agent guidance for this repo
 codemap init --check                  # Check generated guidance freshness
 codemap setup                         # Configure global MCP clients
 codemap setup --check                 # Check global MCP client configuration
+codemap setup --capture-hooks --client codex
+codemap setup --capture-hooks --client codex --check
+codemap setup --capture-hooks --client codex --dry-run
 codemap show <id>                     # Print a node and its incident edges
 codemap correct <id> --summary "..."  # Override node fields by hand
 codemap deprecate <id> --reason "..." # Mark stale knowledge as deprecated
@@ -253,6 +261,15 @@ graph writes. Capture events live under `.codemap/index/capture/`, redact common
 secret/token text before storage, and never modify `.codemap/graph.json`.
 `codemap capture-session` summarizes one session for debugging and later
 hook-driven capture work.
+
+For Codex, `codemap setup --capture-hooks --client codex` writes a small
+`~/.codex/codemap/capture-hook.mjs` helper and merges matching entries into
+`~/.codex/hooks.json`. The generated hooks listen for Codex session start,
+prompt submit, selected post-tool-use events, and stop events, then append
+capture events only. Run `--check` to report missing or stale hook config
+without writing files, or `--dry-run` to preview planned writes. Unsupported
+clients get exact manual `capture-event` commands in the setup response instead
+of brittle config edits.
 
 `codemap benchmark-retrieval` looks for `benchmarks/retrieval.codemap.json` or
 `.codemap/retrieval-benchmark.json` and reports offline baseline metrics for

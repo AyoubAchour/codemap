@@ -171,11 +171,21 @@ Outputs:
 
 ### Capture hooks
 
-Add setup/check support for lifecycle hooks where the client supports them.
-Codex should be first because the current user workflow is Codex-heavy.
+Task 061 adds opt-in setup/check support for lifecycle hooks where the client
+supports them, starting with Codex because the current user workflow is
+Codex-heavy.
 
-Hook scripts should call small Codemap capture commands, not write graph nodes.
-They may call `suggest_writeback` or prepare evidence for it.
+Codex hook onboarding lives in `codemap setup` behind `--capture-hooks` instead
+of a separate setup command, so MCP config and hook config share one health
+surface. `--check` is read-only and reports missing or stale hook config;
+`--dry-run` reports planned writes. The Codex implementation writes a small
+`~/.codex/codemap/capture-hook.mjs` helper and merges matching entries into
+`~/.codex/hooks.json` without duplicating them on repeated runs.
+
+Hook scripts call small Codemap capture commands, not graph write commands. The
+Codex helper only invokes `codemap capture-event` for rebuildable evidence such
+as session start/end, prompts, Codemap calls, and file modifications. It never
+calls `emit_node`, `link`, or writes `.codemap/graph.json`.
 
 ### Writeback suggestions from captured evidence
 
@@ -224,6 +234,7 @@ explicitly opt-in until benchmark and install costs are proven acceptable.
 - Benchmark output includes recall@K, MRR, precision/recall, latency, response
   bytes, budget compliance, and diversity.
 - Hook setup supports `--check` and is idempotent.
+- Hook setup supports a read-only `--dry-run` preview before writes.
 - Report/replay output is useful from local files alone.
 - Optional semantic retrieval stays disabled by default until benchmark evidence
   justifies changing that posture.

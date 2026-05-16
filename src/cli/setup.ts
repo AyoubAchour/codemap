@@ -1,13 +1,13 @@
-import {
-  setupCodemap,
-  type SetupClient,
-} from "../setup.js";
+import { type SetupClient, setupCodemap } from "../setup.js";
 import type { CommandResult, GlobalOptions } from "./_types.js";
 
 export interface SetupFlags {
   client?: SetupClient[];
   check?: boolean;
   force?: boolean;
+  dryRun?: boolean;
+  captureHooks?: boolean;
+  captureCommand?: string;
   command?: string;
 }
 
@@ -28,15 +28,32 @@ export async function setup(
       clients: flags.client,
       check: flags.check,
       force: flags.force,
+      dryRun: flags.dryRun,
+      captureHooks: flags.captureHooks,
+      captureCommand: flags.captureCommand,
       command: flags.command,
       repoRoot: globals?.repoRoot,
     });
-    const hasError = response.clients.some((client) => client.status === "error");
+    const hasError = response.clients.some(
+      (client) => client.status === "error",
+    );
+    const hasCaptureError = response.capture_hooks.some(
+      (hook) => hook.status === "error",
+    );
     const hasMissing = response.clients.some(
       (client) => flags.check && client.status === "missing",
     );
+    const hasMissingCaptureHook = response.capture_hooks.some(
+      (hook) =>
+        flags.check && (hook.status === "missing" || hook.status === "stale"),
+    );
     return {
-      exitCode: hasError ? 2 : hasMissing || response.warnings.length > 0 ? 1 : 0,
+      exitCode:
+        hasError || hasCaptureError
+          ? 2
+          : hasMissing || hasMissingCaptureHook || response.warnings.length > 0
+            ? 1
+            : 0,
       stdout: `${JSON.stringify(response, null, 2)}\n`,
     };
   } catch (err) {

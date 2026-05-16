@@ -126,11 +126,7 @@ function parseDisabledProvider(value: string): "disabled" {
 }
 
 function parseRefreshIndex(value: string): SourceRefreshMode {
-  if (
-    value !== "never" &&
-    value !== "if_missing" &&
-    value !== "if_stale"
-  ) {
+  if (value !== "never" && value !== "if_missing" && value !== "if_stale") {
     throw new InvalidArgumentError(
       "expected one of never, if_missing, if_stale",
     );
@@ -204,7 +200,10 @@ program
     "Check generated guidance freshness without writing files; cannot be combined with --force.",
   )
   .option("--claude", "Also write CLAUDE.md.")
-  .option("--all", "Write all known agent-preamble files (AGENTS.md + CLAUDE.md).")
+  .option(
+    "--all",
+    "Write all known agent-preamble files (AGENTS.md + CLAUDE.md).",
+  )
   .action(async (cmdOpts: Record<string, unknown>) => {
     const opts = program.opts() as { repo: string };
     const flags: InitFlags = {
@@ -234,6 +233,16 @@ program
     "Check global client configuration without writing files; cannot be combined with --force.",
   )
   .option("-f, --force", "Rewrite existing Codemap MCP entries.")
+  .option("--dry-run", "Show planned setup changes without writing files.")
+  .option(
+    "--capture-hooks",
+    "Also install or check supported client capture hooks.",
+  )
+  .option(
+    "--capture-command <cmd>",
+    "Codemap CLI command used by generated capture hooks.",
+    "codemap",
+  )
   .option(
     "--command <cmd>",
     "MCP server command to write into client config.",
@@ -245,6 +254,9 @@ program
       client: cmdOpts.client as SetupClient[] | undefined,
       check: cmdOpts.check as boolean | undefined,
       force: cmdOpts.force as boolean | undefined,
+      dryRun: cmdOpts.dryRun as boolean | undefined,
+      captureHooks: cmdOpts.captureHooks as boolean | undefined,
+      captureCommand: cmdOpts.captureCommand as string | undefined,
       command: cmdOpts.command as string | undefined,
     };
     emit(await setup(flags, { repoRoot: opts.repo }));
@@ -252,7 +264,9 @@ program
 
 program
   .command("show <id>")
-  .description("Print a node + its incident edges. `id` may be a canonical id or alias.")
+  .description(
+    "Print a node + its incident edges. `id` may be a canonical id or alias.",
+  )
   .action(async (id: string) => {
     const opts = program.opts() as { repo: string };
     emit(await show(id, { repoRoot: opts.repo } satisfies GlobalOptions));
@@ -288,11 +302,18 @@ program
 
 program
   .command("deprecate <id>")
-  .description("Mark a node as deprecated. Optionally prepend a reason to its summary.")
-  .option("--reason <r>", "Short reason; prepended as '[deprecated: <reason>] '.")
+  .description(
+    "Mark a node as deprecated. Optionally prepend a reason to its summary.",
+  )
+  .option(
+    "--reason <r>",
+    "Short reason; prepended as '[deprecated: <reason>] '.",
+  )
   .action(async (id: string, cmdOpts: Record<string, unknown>) => {
     const opts = program.opts() as { repo: string };
-    const flags: DeprecateFlags = { reason: cmdOpts.reason as string | undefined };
+    const flags: DeprecateFlags = {
+      reason: cmdOpts.reason as string | undefined,
+    };
     emit(await deprecate(id, flags, { repoRoot: opts.repo }));
   });
 
@@ -388,7 +409,10 @@ program
     "Keep the rebuildable source index fresh with a polling watcher. Use --once for a single refresh check.",
   )
   .option("--once", "Run one freshness check and refresh if needed, then exit.")
-  .option("--status", "Report watcher and source-index status without refreshing.")
+  .option(
+    "--status",
+    "Report watcher and source-index status without refreshing.",
+  )
   .option(
     "--interval-ms <n>",
     "Polling interval in milliseconds for long-running watch mode.",
@@ -466,8 +490,16 @@ program
     "Response detail mode: compact, standard, or full.",
     parseQueryContextMode,
   )
-  .option("--graph-limit <n>", "Maximum graph nodes to return.", parsePositiveInteger)
-  .option("--source-limit <n>", "Maximum source chunks to return.", parsePositiveInteger)
+  .option(
+    "--graph-limit <n>",
+    "Maximum graph nodes to return.",
+    parsePositiveInteger,
+  )
+  .option(
+    "--source-limit <n>",
+    "Maximum source chunks to return.",
+    parsePositiveInteger,
+  )
   .option(
     "--max-content-chars <n>",
     "Maximum characters of chunk content per source result.",
@@ -517,7 +549,11 @@ program
     "Recall mode: mixed, graph, or source.",
     parseRecallContextMode,
   )
-  .option("-l, --limit <n>", "Maximum recall results to return.", parsePositiveInteger)
+  .option(
+    "-l, --limit <n>",
+    "Maximum recall results to return.",
+    parsePositiveInteger,
+  )
   .option(
     "--budget <n>",
     "Maximum response bytes for the recall packet.",
@@ -594,24 +630,38 @@ program
   .description(
     "Summarize capture events for a session from .codemap/index/capture.",
   )
-  .option("--kind <kind>", "Filter to a capture event kind. Repeatable.", repeatable)
-  .option("--limit <n>", "Maximum recent events to include.", parsePositiveInteger)
-  .action(async (session: string | undefined, cmdOpts: Record<string, unknown>) => {
-    const opts = program.opts() as { repo: string };
-    const flags: CaptureSessionFlags = {
-      session,
-      kind: cmdOpts.kind as string[] | undefined,
-      limit: cmdOpts.limit as number | undefined,
-    };
-    emit(await captureSession(flags, { repoRoot: opts.repo }));
-  });
+  .option(
+    "--kind <kind>",
+    "Filter to a capture event kind. Repeatable.",
+    repeatable,
+  )
+  .option(
+    "--limit <n>",
+    "Maximum recent events to include.",
+    parsePositiveInteger,
+  )
+  .action(
+    async (session: string | undefined, cmdOpts: Record<string, unknown>) => {
+      const opts = program.opts() as { repo: string };
+      const flags: CaptureSessionFlags = {
+        session,
+        kind: cmdOpts.kind as string[] | undefined,
+        limit: cmdOpts.limit as number | undefined,
+      };
+      emit(await captureSession(flags, { repoRoot: opts.repo }));
+    },
+  );
 
 program
   .command("benchmark-retrieval [suite]")
   .description(
     "Run a local retrieval benchmark suite against query_context. No network or embeddings required.",
   )
-  .option("-l, --limit <n>", "Maximum graph/source results per query.", parsePositiveInteger)
+  .option(
+    "-l, --limit <n>",
+    "Maximum graph/source results per query.",
+    parsePositiveInteger,
+  )
   .option(
     "--profile <profile>",
     "Benchmark profile: planning uses full query_context defaults; recall uses compact, smaller-payload defaults.",
@@ -686,33 +736,35 @@ program
     "Reranker provider for benchmark experiments. Current CLI build supports: disabled.",
     parseDisabledProvider,
   )
-  .action(async (suite: string | undefined, cmdOpts: Record<string, unknown>) => {
-    const opts = program.opts() as { repo: string };
-    const flags: BenchmarkRetrievalFlags = {
-      suite,
-      profile: cmdOpts.profile as RetrievalBenchmarkProfile | undefined,
-      limit: cmdOpts.limit as number | undefined,
-      mode: cmdOpts.mode as QueryContextMode | undefined,
-      maxContentChars: cmdOpts.maxContentChars as number | undefined,
-      dependencyLimit: cmdOpts.dependencyLimit as number | undefined,
-      includeImpact: cmdOpts.includeImpact as boolean | undefined,
-      impactLimit: cmdOpts.impactLimit as number | undefined,
-      refreshIndex: cmdOpts.refreshIndex as SourceRefreshMode | undefined,
-      minFileHitRate: cmdOpts.minFileHitRate as number | undefined,
-      minNodeHitRate: cmdOpts.minNodeHitRate as number | undefined,
-      responseBudgetBytes: cmdOpts.responseBudgetBytes as number | undefined,
-      minPayloadBudgetCompliance: cmdOpts.minPayloadBudgetCompliance as
-        | number
-        | undefined,
-      maxAverageResponseBytes: cmdOpts.maxAverageResponseBytes as
-        | number
-        | undefined,
-      maxAverageLatencyMs: cmdOpts.maxAverageLatencyMs as number | undefined,
-      semanticProvider: cmdOpts.semanticProvider as "disabled" | undefined,
-      rerankerProvider: cmdOpts.rerankerProvider as "disabled" | undefined,
-    };
-    emit(await benchmarkRetrieval(flags, { repoRoot: opts.repo }));
-  });
+  .action(
+    async (suite: string | undefined, cmdOpts: Record<string, unknown>) => {
+      const opts = program.opts() as { repo: string };
+      const flags: BenchmarkRetrievalFlags = {
+        suite,
+        profile: cmdOpts.profile as RetrievalBenchmarkProfile | undefined,
+        limit: cmdOpts.limit as number | undefined,
+        mode: cmdOpts.mode as QueryContextMode | undefined,
+        maxContentChars: cmdOpts.maxContentChars as number | undefined,
+        dependencyLimit: cmdOpts.dependencyLimit as number | undefined,
+        includeImpact: cmdOpts.includeImpact as boolean | undefined,
+        impactLimit: cmdOpts.impactLimit as number | undefined,
+        refreshIndex: cmdOpts.refreshIndex as SourceRefreshMode | undefined,
+        minFileHitRate: cmdOpts.minFileHitRate as number | undefined,
+        minNodeHitRate: cmdOpts.minNodeHitRate as number | undefined,
+        responseBudgetBytes: cmdOpts.responseBudgetBytes as number | undefined,
+        minPayloadBudgetCompliance: cmdOpts.minPayloadBudgetCompliance as
+          | number
+          | undefined,
+        maxAverageResponseBytes: cmdOpts.maxAverageResponseBytes as
+          | number
+          | undefined,
+        maxAverageLatencyMs: cmdOpts.maxAverageLatencyMs as number | undefined,
+        semanticProvider: cmdOpts.semanticProvider as "disabled" | undefined,
+        rerankerProvider: cmdOpts.rerankerProvider as "disabled" | undefined,
+      };
+      emit(await benchmarkRetrieval(flags, { repoRoot: opts.repo }));
+    },
+  );
 
 program
   .command("changes-context")
@@ -778,7 +830,10 @@ program
     "Repo-relative output path.",
     ".codemap/skills/codemap-repo/SKILL.md",
   )
-  .option("--check", "Check whether generated guidance is current without writing.")
+  .option(
+    "--check",
+    "Check whether generated guidance is current without writing.",
+  )
   .option("--stdout", "Print generated guidance instead of writing it.")
   .action(async (cmdOpts: Record<string, unknown>) => {
     const opts = program.opts() as { repo: string };
