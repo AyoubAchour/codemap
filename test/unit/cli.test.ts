@@ -74,7 +74,10 @@ function makeNode(overrides: Partial<Node> & { id: string }): Node {
   };
 }
 
-async function seed(nodes: Node[], edges: Array<[string, string, string, string?]> = []): Promise<void> {
+async function seed(
+  nodes: Node[],
+  edges: Array<[string, string, string, string?]> = [],
+): Promise<void> {
   const store = await GraphStore.load(tmpRoot);
   for (const node of nodes) {
     store.upsertNode(node);
@@ -152,9 +155,7 @@ describe("CLI: show", () => {
   });
 
   test("alias resolution: passing an alias returns the canonical node", async () => {
-    await seed([
-      makeNode({ id: "a/canonical", aliases: ["the-alias"] }),
-    ]);
+    await seed([makeNode({ id: "a/canonical", aliases: ["the-alias"] })]);
     const r = await show("the-alias", { repoRoot: tmpRoot });
     expect(r.exitCode).toBe(0);
     const out = JSON.parse(r.stdout!);
@@ -205,22 +206,14 @@ describe("CLI: correct", () => {
 
   test("scalar: --confidence rejects out-of-range value (1)", async () => {
     await seed([makeNode({ id: "a/x" })]);
-    const r = await correct(
-      "a/x",
-      { confidence: 1.5 },
-      { repoRoot: tmpRoot },
-    );
+    const r = await correct("a/x", { confidence: 1.5 }, { repoRoot: tmpRoot });
     expect(r.exitCode).toBe(1);
     expect(JSON.parse(r.stderr!).error.code).toBe("INVALID_FLAG");
   });
 
   test("scalar: --confidence rejects out-of-range value (-)", async () => {
     await seed([makeNode({ id: "a/x" })]);
-    const r = await correct(
-      "a/x",
-      { confidence: -0.1 },
-      { repoRoot: tmpRoot },
-    );
+    const r = await correct("a/x", { confidence: -0.1 }, { repoRoot: tmpRoot });
     expect(r.exitCode).toBe(1);
   });
 
@@ -282,11 +275,7 @@ describe("CLI: correct", () => {
 
   test("not found: exits 1", async () => {
     await seed([]);
-    const r = await correct(
-      "missing",
-      { summary: "x" },
-      { repoRoot: tmpRoot },
-    );
+    const r = await correct("missing", { summary: "x" }, { repoRoot: tmpRoot });
     expect(r.exitCode).toBe(1);
     expect(JSON.parse(r.stderr!).error.code).toBe("NODE_NOT_FOUND");
   });
@@ -315,11 +304,7 @@ describe("CLI: correct", () => {
       path.join(tmpRoot, ".codemap", "graph.json"),
       JSON.stringify({ version: 99 }),
     );
-    const r = await correct(
-      "any",
-      { summary: "x" },
-      { repoRoot: tmpRoot },
-    );
+    const r = await correct("any", { summary: "x" }, { repoRoot: tmpRoot });
     expect(r.exitCode).toBe(2);
     expect(JSON.parse(r.stderr!).error.code).toBe("SCHEMA_INVALID");
   });
@@ -334,9 +319,7 @@ describe("CLI: correct", () => {
     const before = Date.now();
     await correct("a/x", { name: "renamed" }, { repoRoot: tmpRoot });
     const verify = await GraphStore.load(tmpRoot);
-    const after = new Date(
-      verify.getNode("a/x")!.last_verified_at,
-    ).getTime();
+    const after = new Date(verify.getNode("a/x")!.last_verified_at).getTime();
     expect(after).toBeGreaterThanOrEqual(before);
   });
 });
@@ -355,9 +338,7 @@ describe("CLI: deprecate", () => {
   });
 
   test("--reason prepends '[deprecated: <r>] ' to summary", async () => {
-    await seed([
-      makeNode({ id: "a/x", summary: "Original behavior." }),
-    ]);
+    await seed([makeNode({ id: "a/x", summary: "Original behavior." })]);
     const r = await deprecate(
       "a/x",
       { reason: "replaced by a/y" },
@@ -651,10 +632,7 @@ describe("CLI: init", () => {
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toContain("wrote AGENTS.md");
 
-    const written = await fs.readFile(
-      path.join(tmpRoot, "AGENTS.md"),
-      "utf8",
-    );
+    const written = await fs.readFile(path.join(tmpRoot, "AGENTS.md"), "utf8");
     // Body must contain the protocol-level lifecycle string verbatim
     // (single-source-of-truth contract — if this regresses, the in-protocol
     // and in-file copies have drifted, which defeats the whole point of
@@ -677,10 +655,7 @@ describe("CLI: init", () => {
     await fs.mkdir(projDir);
     const r = await init({}, { repoRoot: projDir });
     expect(r.exitCode).toBe(0);
-    const written = await fs.readFile(
-      path.join(projDir, "AGENTS.md"),
-      "utf8",
-    );
+    const written = await fs.readFile(path.join(projDir, "AGENTS.md"), "utf8");
     expect(written).toContain("# voice2work-fixture — agent guidance");
   });
 
@@ -695,10 +670,7 @@ describe("CLI: init", () => {
     expect(r.stderr).toContain("skipped AGENTS.md");
     expect(r.stderr).toContain("--force");
     // Original content preserved
-    const after = await fs.readFile(
-      path.join(tmpRoot, "AGENTS.md"),
-      "utf8",
-    );
+    const after = await fs.readFile(path.join(tmpRoot, "AGENTS.md"), "utf8");
     expect(after).toBe("previous content");
   });
 
@@ -711,10 +683,7 @@ describe("CLI: init", () => {
     const r = await init({ force: true }, { repoRoot: tmpRoot });
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toContain("wrote AGENTS.md");
-    const after = await fs.readFile(
-      path.join(tmpRoot, "AGENTS.md"),
-      "utf8",
-    );
+    const after = await fs.readFile(path.join(tmpRoot, "AGENTS.md"), "utf8");
     expect(after).toContain(SERVER_INSTRUCTIONS);
   });
 
@@ -723,14 +692,8 @@ describe("CLI: init", () => {
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toContain("wrote AGENTS.md");
     expect(r.stdout).toContain("wrote CLAUDE.md");
-    const agents = await fs.readFile(
-      path.join(tmpRoot, "AGENTS.md"),
-      "utf8",
-    );
-    const claude = await fs.readFile(
-      path.join(tmpRoot, "CLAUDE.md"),
-      "utf8",
-    );
+    const agents = await fs.readFile(path.join(tmpRoot, "AGENTS.md"), "utf8");
+    const claude = await fs.readFile(path.join(tmpRoot, "CLAUDE.md"), "utf8");
     expect(agents).toContain(SERVER_INSTRUCTIONS);
     expect(claude).toContain(SERVER_INSTRUCTIONS);
     // Bodies should be identical when project basename is the same
@@ -747,11 +710,7 @@ describe("CLI: init", () => {
   test("partial-skip path: AGENTS.md exists + --claude → exit 0 (CLAUDE.md still written)", async () => {
     // Validates the exit-code contract: skip alone → 1, but if at least
     // one file was written, we exit 0 (the operation made progress).
-    await fs.writeFile(
-      path.join(tmpRoot, "AGENTS.md"),
-      "preexisting",
-      "utf8",
-    );
+    await fs.writeFile(path.join(tmpRoot, "AGENTS.md"), "preexisting", "utf8");
     const r = await init({ claude: true }, { repoRoot: tmpRoot });
     expect(r.exitCode).toBe(0);
     expect(r.stderr).toContain("skipped AGENTS.md");
@@ -1264,9 +1223,7 @@ describe("CLI: source index", () => {
     const out = JSON.parse(result.stdout!);
     expect(out.mode).toBe("full");
     expect(out.source.search.results[0].file_path).toBe("src/auth.ts");
-    expect(out.source.search.results[0].content).toContain(
-      "requireActiveUser",
-    );
+    expect(out.source.search.results[0].content).toContain("requireActiveUser");
     expect(out.source.search.results[0].impact_context).toBeDefined();
     expect(out.expansion.source_search.arguments.include_impact).toBe(true);
   });
@@ -1383,11 +1340,7 @@ describe("CLI: source index", () => {
   });
 
   test("bin scan rejects non-numeric max-file-bytes values", async () => {
-    const result = await runCodemapBin([
-      "scan",
-      "--max-file-bytes",
-      "256k",
-    ]);
+    const result = await runCodemapBin(["scan", "--max-file-bytes", "256k"]);
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("expected a positive integer");
@@ -1402,7 +1355,9 @@ describe("CLI: source index", () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("expected one of never, if_missing, if_stale");
+    expect(result.stderr).toContain(
+      "expected one of never, if_missing, if_stale",
+    );
   });
 
   test("bin context rejects invalid response modes", async () => {
@@ -1541,7 +1496,8 @@ describe("CLI: source index", () => {
     if (result.stdout === undefined) throw new Error("expected stdout");
     const out = JSON.parse(result.stdout);
     const file = out.files.find(
-      (entry: { file_path?: string }) => entry.file_path === "src/delete_only.ts",
+      (entry: { file_path?: string }) =>
+        entry.file_path === "src/delete_only.ts",
     );
     if (file === undefined) throw new Error("expected delete_only.ts result");
     expect(file.changed_ranges).toEqual([]);
@@ -1646,20 +1602,43 @@ describe("CLI: source index", () => {
     expect(body).toContain("top_repo_rank");
     expect(body).toContain("changes_context");
     const rootArea = await fs.readFile(
-      path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", "root.md"),
+      path.join(
+        tmpRoot,
+        ".codemap",
+        "skills",
+        "codemap-repo",
+        "areas",
+        "root.md",
+      ),
       "utf8",
     );
     expect(rootArea).toContain("Codemap Area: root");
     expect(rootArea).toContain("root.ts");
-    const hiddenRootAreaExists = await fs.stat(
-      path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", ".md"),
-    ).then(
-      () => true,
-      () => false,
-    );
+    const hiddenRootAreaExists = await fs
+      .stat(
+        path.join(
+          tmpRoot,
+          ".codemap",
+          "skills",
+          "codemap-repo",
+          "areas",
+          ".md",
+        ),
+      )
+      .then(
+        () => true,
+        () => false,
+      );
     expect(hiddenRootAreaExists).toBe(false);
     const srcArea = await fs.readFile(
-      path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", "src.md"),
+      path.join(
+        tmpRoot,
+        ".codemap",
+        "skills",
+        "codemap-repo",
+        "areas",
+        "src.md",
+      ),
       "utf8",
     );
     expect(srcArea).toContain("Codemap Area: src");
@@ -1718,7 +1697,14 @@ describe("CLI: source index", () => {
     await generateSkills({}, { repoRoot: tmpRoot });
 
     await fs.rm(
-      path.join(tmpRoot, ".codemap", "skills", "codemap-repo", "areas", "src.md"),
+      path.join(
+        tmpRoot,
+        ".codemap",
+        "skills",
+        "codemap-repo",
+        "areas",
+        "src.md",
+      ),
     );
     const check = await generateSkills({ check: true }, { repoRoot: tmpRoot });
 
@@ -1882,7 +1868,7 @@ describe("CLI: source index", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain(
-      "semantic provider must be \"disabled\" in this build",
+      'semantic provider must be "disabled" in this build',
     );
   });
 });
@@ -2014,15 +2000,16 @@ describe("CLI: setup", () => {
     });
 
     expect(response.health.server_command_found).toBe(true);
-    expect(response.clients.find((client) => client.client === "codex")).toEqual(
-      expect.objectContaining({ status: "installed", changed: true }),
-    );
+    expect(
+      response.clients.find((client) => client.client === "codex"),
+    ).toEqual(expect.objectContaining({ status: "installed", changed: true }));
     expect(
       await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8"),
     ).toContain("[mcp_servers.codemap]");
     expect(
-      JSON.parse(await fs.readFile(path.join(homeDir, ".cursor", "mcp.json"), "utf8"))
-        .mcpServers.codemap.command,
+      JSON.parse(
+        await fs.readFile(path.join(homeDir, ".cursor", "mcp.json"), "utf8"),
+      ).mcpServers.codemap.command,
     ).toBe(process.execPath);
     expect(
       JSON.parse(
@@ -2032,7 +2019,9 @@ describe("CLI: setup", () => {
         ),
       ).mcp.codemap.command,
     ).toEqual([process.execPath]);
-    expect(response.clients.find((client) => client.client === "claude")).toEqual(
+    expect(
+      response.clients.find((client) => client.client === "claude"),
+    ).toEqual(
       expect.objectContaining({
         status: "manual",
         manual_command: expect.stringContaining("claude mcp add codemap"),
@@ -2045,7 +2034,216 @@ describe("CLI: setup", () => {
       command: process.execPath,
       check: true,
     });
-    expect(check.clients.every((client) => client.status === "current")).toBe(true);
+    expect(check.clients.every((client) => client.status === "current")).toBe(
+      true,
+    );
+  });
+
+  test("setup capture hooks installs Codex hooks idempotently", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    const first = await setupCodemap({
+      clients: ["codex"],
+      homeDir,
+      command: process.execPath,
+      captureHooks: true,
+      captureCommand: "codemap",
+    });
+
+    expect(first.capture_hooks).toHaveLength(1);
+    expect(first.capture_hooks[0]).toEqual(
+      expect.objectContaining({
+        client: "codex",
+        status: "installed",
+        changed: true,
+      }),
+    );
+
+    const hooksPath = path.join(homeDir, ".codex", "hooks.json");
+    const scriptPath = path.join(
+      homeDir,
+      ".codex",
+      "codemap",
+      "capture-hook.mjs",
+    );
+    const hooksJson = await fs.readFile(hooksPath, "utf8");
+    const script = await fs.readFile(scriptPath, "utf8");
+    const hooks = JSON.parse(hooksJson);
+
+    expect(hooks.hooks.UserPromptSubmit[0].hooks[0].command).toContain(
+      "capture-hook.mjs",
+    );
+    expect(hooks.hooks.PostToolUse[0].hooks[0].command).toContain(
+      "capture-hook.mjs",
+    );
+    expect(script).toContain("capture-event");
+    expect(script).not.toContain("emit_node");
+    expect(script).not.toContain("link(");
+
+    const second = await setupCodemap({
+      clients: ["codex"],
+      homeDir,
+      command: process.execPath,
+      captureHooks: true,
+      captureCommand: "codemap",
+    });
+
+    expect(second.capture_hooks[0]).toEqual(
+      expect.objectContaining({
+        client: "codex",
+        status: "current",
+        changed: false,
+      }),
+    );
+    expect(await fs.readFile(hooksPath, "utf8")).toBe(hooksJson);
+    expect(await fs.readFile(scriptPath, "utf8")).toBe(script);
+  });
+
+  test("setup capture hooks check reports missing or stale without writing", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    const hooksPath = path.join(homeDir, ".codex", "hooks.json");
+
+    const missing = await setupCodemap({
+      clients: ["codex"],
+      homeDir,
+      command: process.execPath,
+      captureHooks: true,
+      captureCommand: "codemap",
+      check: true,
+    });
+
+    expect(missing.capture_hooks[0]).toEqual(
+      expect.objectContaining({
+        client: "codex",
+        status: "missing",
+        changed: false,
+      }),
+    );
+    await expect(fs.access(hooksPath)).rejects.toThrow();
+
+    await fs.mkdir(path.dirname(hooksPath), { recursive: true });
+    const staleHooks = `${JSON.stringify({ hooks: { UserPromptSubmit: [] } }, null, 2)}\n`;
+    await fs.writeFile(hooksPath, staleHooks, "utf8");
+
+    const stale = await setupCodemap({
+      clients: ["codex"],
+      homeDir,
+      command: process.execPath,
+      captureHooks: true,
+      captureCommand: "codemap",
+      check: true,
+    });
+
+    expect(stale.capture_hooks[0]).toEqual(
+      expect.objectContaining({
+        client: "codex",
+        status: "stale",
+        changed: false,
+      }),
+    );
+    expect(await fs.readFile(hooksPath, "utf8")).toBe(staleHooks);
+  });
+
+  test("setup capture hooks preserves unrelated Codex hooks and backs up stale config", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    const hooksPath = path.join(homeDir, ".codex", "hooks.json");
+    await fs.mkdir(path.dirname(hooksPath), { recursive: true });
+    const existingHooks = `${JSON.stringify(
+      {
+        hooks: {
+          Stop: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: "echo keep-me",
+                  statusMessage: "Existing hook",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      null,
+      2,
+    )}\n`;
+    await fs.writeFile(hooksPath, existingHooks, "utf8");
+
+    const result = await setupCodemap({
+      clients: ["codex"],
+      homeDir,
+      command: process.execPath,
+      captureHooks: true,
+      captureCommand: "codemap",
+    });
+
+    expect(result.capture_hooks[0]).toEqual(
+      expect.objectContaining({
+        client: "codex",
+        status: "updated",
+        changed: true,
+        backup_path: `${hooksPath}.codemap-backup`,
+      }),
+    );
+    expect(await fs.readFile(`${hooksPath}.codemap-backup`, "utf8")).toBe(
+      existingHooks,
+    );
+
+    const hooks = JSON.parse(await fs.readFile(hooksPath, "utf8"));
+    expect(hooks.hooks.Stop).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          hooks: [
+            expect.objectContaining({
+              command: "echo keep-me",
+            }),
+          ],
+        }),
+      ]),
+    );
+    expect(
+      hooks.hooks.Stop.filter((group: { hooks?: Array<{ command?: string }> }) =>
+        group.hooks?.some((hook) => hook.command?.includes("capture-hook.mjs")),
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("setup capture hooks dry run reports planned writes without touching files", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    const configPath = path.join(homeDir, ".codex", "config.toml");
+    const hooksPath = path.join(homeDir, ".codex", "hooks.json");
+    const scriptPath = path.join(
+      homeDir,
+      ".codex",
+      "codemap",
+      "capture-hook.mjs",
+    );
+
+    const dryRun = await setupCodemap({
+      clients: ["codex"],
+      homeDir,
+      command: process.execPath,
+      captureHooks: true,
+      captureCommand: "codemap",
+      dryRun: true,
+    });
+
+    expect(dryRun.clients[0]).toEqual(
+      expect.objectContaining({
+        client: "codex",
+        status: "planned",
+        changed: false,
+      }),
+    );
+    expect(dryRun.capture_hooks[0]).toEqual(
+      expect.objectContaining({
+        client: "codex",
+        status: "planned",
+        changed: false,
+      }),
+    );
+    await expect(fs.access(configPath)).rejects.toThrow();
+    await expect(fs.access(hooksPath)).rejects.toThrow();
+    await expect(fs.access(scriptPath)).rejects.toThrow();
   });
 
   test("setup health reports generated guidance freshness when a repo root is supplied", async () => {
@@ -2083,9 +2281,12 @@ describe("CLI: setup", () => {
     expect(stale.health.guidance.status).toBe("stale");
     expect(stale.warnings.join("\n")).toContain("guidance");
 
-    const cli = await setup({ check: true, command: process.execPath }, {
-      repoRoot: tmpRoot,
-    });
+    const cli = await setup(
+      { check: true, command: process.execPath },
+      {
+        repoRoot: tmpRoot,
+      },
+    );
     const parsed = JSON.parse(cli.stdout!);
     expect(parsed.health.guidance.status).toBe("stale");
 

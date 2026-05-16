@@ -45,6 +45,8 @@ get_index_status/watch_status/clear_index may help find code faster or check
 freshness, but they must not be treated as durable conclusions and must not
 auto-generate graph nodes. Dependency and impact context are navigation hints,
 not durable relationships unless confirmed from real files.
+Capture logs under .codemap/index/capture/ are also rebuildable evidence; use
+them only as prompts for inspection or suggestions, never as graph memory.
 
 LIFECYCLE for any task that touches this codebase:
 

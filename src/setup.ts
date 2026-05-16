@@ -5,9 +5,10 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 
 import {
-  checkGuidanceFiles,
-  type GuidanceCheck,
-} from "./guidance.js";
+  type SetupCaptureHookResult,
+  setupCaptureHookClient,
+} from "./capture_hook_setup.js";
+import { checkGuidanceFiles, type GuidanceCheck } from "./guidance.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,6 +18,7 @@ export type SetupClientStatus =
   | "installed"
   | "updated"
   | "missing"
+  | "planned"
   | "manual"
   | "error";
 
@@ -24,6 +26,9 @@ export interface SetupOptions {
   clients?: SetupClient[];
   check?: boolean;
   force?: boolean;
+  dryRun?: boolean;
+  captureHooks?: boolean;
+  captureCommand?: string;
   command?: string;
   homeDir?: string;
   repoRoot?: string;
@@ -49,6 +54,7 @@ export interface SetupResponse {
     guidance: SetupGuidanceHealth;
   };
   clients: SetupClientResult[];
+  capture_hooks: SetupCaptureHookResult[];
   warnings: string[];
   next_steps: string[];
 }
@@ -68,17 +74,25 @@ export interface SetupGuidanceHealth {
   message: string;
 }
 
-const DEFAULT_CLIENTS: SetupClient[] = ["codex", "opencode", "cursor", "claude"];
+const DEFAULT_CLIENTS: SetupClient[] = [
+  "codex",
+  "opencode",
+  "cursor",
+  "claude",
+];
 
 export async function setupCodemap(
   options: SetupOptions = {},
 ): Promise<SetupResponse> {
   const command = options.command ?? "codemap-mcp";
-  const clients = options.clients?.length ? unique(options.clients) : DEFAULT_CLIENTS;
+  const clients = options.clients?.length
+    ? unique(options.clients)
+    : DEFAULT_CLIENTS;
   const homeDir = options.homeDir ?? os.homedir();
   const health = await installHealth(command, options.repoRoot);
   const warnings: string[] = [];
   const results: SetupClientResult[] = [];
+  const captureHooks: SetupCaptureHookResult[] = [];
 
   if (!health.server_command_found) {
     warnings.push(
@@ -102,13 +116,28 @@ export async function setupCodemap(
     results.push(await setupClient(client, { ...options, command, homeDir }));
   }
 
+  if (options.captureHooks) {
+    for (const client of clients) {
+      captureHooks.push(
+        await setupCaptureHookClient(client, {
+          homeDir,
+          check: options.check,
+          force: options.force,
+          dryRun: options.dryRun,
+          captureCommand: options.captureCommand,
+        }),
+      );
+    }
+  }
+
   return {
     ok: true,
     command,
     health,
     clients: results,
+    capture_hooks: captureHooks,
     warnings,
-    next_steps: setupNextSteps(results, warnings),
+    next_steps: setupNextSteps(results, captureHooks, warnings, options.dryRun),
   };
 }
 
@@ -142,7 +171,8 @@ async function guidanceHealth(repoRoot?: string): Promise<SetupGuidanceHealth> {
       checked: false,
       status: "unchecked",
       files: [],
-      message: "No repo root supplied; run codemap setup from a repo or pass --repo.",
+      message:
+        "No repo root supplied; run codemap setup from a repo or pass --repo.",
     };
   }
 
@@ -181,7 +211,10 @@ async function commandPath(command: string): Promise<string | null> {
     }
   }
   try {
-    const { stdout } = await execFileAsync("sh", ["-lc", `command -v ${shellQuote(command)}`]);
+    const { stdout } = await execFileAsync("sh", [
+      "-lc",
+      `command -v ${shellQuote(command)}`,
+    ]);
     const found = stdout.trim();
     return found || null;
   } catch {
@@ -217,6 +250,7 @@ async function setupCodexClient(
     block,
     check: options.check,
     force: options.force,
+    dryRun: options.dryRun,
   });
 }
 
@@ -224,12 +258,18 @@ async function setupOpenCodeClient(
   options: Required<Pick<SetupOptions, "command" | "homeDir">> &
     Omit<SetupOptions, "command" | "homeDir">,
 ): Promise<SetupClientResult> {
-  const configPath = path.join(options.homeDir, ".config", "opencode", "config.json");
+  const configPath = path.join(
+    options.homeDir,
+    ".config",
+    "opencode",
+    "config.json",
+  );
   return updateJsonConfig({
     client: "opencode",
     configPath,
     check: options.check,
     force: options.force,
+    dryRun: options.dryRun,
     updater: (value) => {
       const root = isRecord(value) ? { ...value } : {};
       const mcp = isRecord(root.mcp) ? { ...root.mcp } : {};
@@ -257,9 +297,12 @@ async function setupCursorClient(
     configPath,
     check: options.check,
     force: options.force,
+    dryRun: options.dryRun,
     updater: (value) => {
       const root = isRecord(value) ? { ...value } : {};
-      const mcpServers = isRecord(root.mcpServers) ? { ...root.mcpServers } : {};
+      const mcpServers = isRecord(root.mcpServers)
+        ? { ...root.mcpServers }
+        : {};
       mcpServers.codemap = { command: options.command };
       root.mcpServers = mcpServers;
       return root;
@@ -292,10 +335,13 @@ async function updateTomlBlock(input: {
   block: string;
   check?: boolean;
   force?: boolean;
+  dryRun?: boolean;
 }): Promise<SetupClientResult> {
   const existing = await readIfExists(input.configPath);
   const hasBlock = existing?.includes(input.blockHeader) ?? false;
-  const current = existing !== null && extractTomlBlock(existing, input.blockHeader) === input.block.trim();
+  const current =
+    existing !== null &&
+    extractTomlBlock(existing, input.blockHeader) === input.block.trim();
   if (input.check) {
     return {
       client: input.client,
@@ -320,6 +366,17 @@ async function updateTomlBlock(input: {
   const next = hasBlock
     ? replaceTomlBlock(existing ?? "", input.blockHeader, input.block)
     : `${(existing ?? "").trimEnd()}${existing ? "\n\n" : ""}${input.block}`;
+  if (input.dryRun) {
+    return {
+      client: input.client,
+      status: "planned",
+      path: input.configPath,
+      changed: false,
+      message: hasBlock
+        ? "Would update Codemap MCP server configuration."
+        : "Would install Codemap MCP server configuration.",
+    };
+  }
   try {
     await fs.mkdir(path.dirname(input.configPath), { recursive: true });
     await fs.writeFile(input.configPath, `${next.trimEnd()}\n`, "utf8");
@@ -342,6 +399,7 @@ async function updateJsonConfig(input: {
   configPath: string;
   check?: boolean;
   force?: boolean;
+  dryRun?: boolean;
   updater: (value: unknown) => Record<string, unknown>;
   isCurrent: (value: unknown) => boolean;
 }): Promise<SetupClientResult> {
@@ -370,10 +428,25 @@ async function updateJsonConfig(input: {
       message: "Codemap MCP server is already configured.",
     };
   }
+  if (input.dryRun) {
+    return {
+      client: input.client,
+      status: "planned",
+      path: input.configPath,
+      changed: false,
+      message: existing.found
+        ? "Would update Codemap MCP server configuration."
+        : "Would install Codemap MCP server configuration.",
+    };
+  }
   try {
     await fs.mkdir(path.dirname(input.configPath), { recursive: true });
     const next = input.updater(existing.value);
-    await fs.writeFile(input.configPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+    await fs.writeFile(
+      input.configPath,
+      `${JSON.stringify(next, null, 2)}\n`,
+      "utf8",
+    );
     return {
       client: input.client,
       status: existing.found ? "updated" : "installed",
@@ -392,22 +465,29 @@ async function readIfExists(filePath: string): Promise<string | null> {
   try {
     return await fs.readFile(filePath, "utf8");
   } catch (err) {
-    if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+    if (
+      err instanceof Error &&
+      (err as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
       return null;
     }
     throw err;
   }
 }
 
-async function readJsonIfExists(filePath: string): Promise<
-  | { ok: true; found: boolean; value: unknown }
-  | { ok: false; error: unknown }
+async function readJsonIfExists(
+  filePath: string,
+): Promise<
+  { ok: true; found: boolean; value: unknown } | { ok: false; error: unknown }
 > {
   try {
     const raw = await fs.readFile(filePath, "utf8");
     return { ok: true, found: true, value: JSON.parse(raw) };
   } catch (err) {
-    if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+    if (
+      err instanceof Error &&
+      (err as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
       return { ok: true, found: false, value: {} };
     }
     return { ok: false, error: err };
@@ -428,7 +508,11 @@ function extractTomlBlock(content: string, header: string): string | null {
   return lines.slice(start, end).join("\n").trim();
 }
 
-function replaceTomlBlock(content: string, header: string, block: string): string {
+function replaceTomlBlock(
+  content: string,
+  header: string,
+  block: string,
+): string {
   const lines = content.split(/\r?\n/);
   const start = lines.findIndex((line) => line.trim() === header);
   if (start === -1) return `${content.trimEnd()}\n\n${block}`;
@@ -439,11 +523,13 @@ function replaceTomlBlock(content: string, header: string, block: string): strin
       break;
     }
   }
-  return [...lines.slice(0, start), block.trim(), ...lines.slice(end)].join("\n");
+  return [...lines.slice(0, start), block.trim(), ...lines.slice(end)].join(
+    "\n",
+  );
 }
 
 function escapeToml(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -466,11 +552,15 @@ function errorResult(
 
 function setupNextSteps(
   results: SetupClientResult[],
+  captureHooks: SetupCaptureHookResult[],
   warnings: string[],
+  dryRun?: boolean,
 ): string[] {
   const steps: string[] = [];
   if (warnings.length > 0) {
-    steps.push("Resolve install-health warnings before relying on global MCP setup.");
+    steps.push(
+      "Resolve install-health warnings before relying on global MCP setup.",
+    );
   }
   for (const result of results) {
     if (result.manual_command) {
@@ -478,9 +568,43 @@ function setupNextSteps(
     }
   }
   if (results.some((result) => result.changed)) {
-    steps.push("Restart or reload MCP clients so they pick up the new server configuration.");
+    steps.push(
+      "Restart or reload MCP clients so they pick up the new server configuration.",
+    );
   }
-  steps.push("Run codemap init --check inside each repo to verify project guidance.");
+  if (results.some((result) => result.status === "planned")) {
+    steps.push(
+      "Run codemap setup without --dry-run to write planned MCP client changes.",
+    );
+  }
+  if (captureHooks.some((result) => result.status === "planned")) {
+    steps.push(
+      "Run codemap setup --capture-hooks without --dry-run to install capture hooks.",
+    );
+  }
+  if (captureHooks.some((result) => result.changed)) {
+    steps.push(
+      "Restart Codex and review new hooks with /hooks before relying on capture.",
+    );
+  }
+  if (
+    !dryRun &&
+    captureHooks.some(
+      (result) => result.status === "missing" || result.status === "stale",
+    )
+  ) {
+    steps.push(
+      "Run codemap setup --capture-hooks to refresh missing or stale capture hooks.",
+    );
+  }
+  for (const result of captureHooks) {
+    for (const instruction of result.manual_instructions ?? []) {
+      steps.push(`Manual ${result.client} capture hook setup: ${instruction}`);
+    }
+  }
+  steps.push(
+    "Run codemap init --check inside each repo to verify project guidance.",
+  );
   return steps;
 }
 
