@@ -181,9 +181,7 @@ export async function buildRecallContext(
 
   const graphCandidates = graph.result.nodes
     .filter((node) => matchesNodeFilters(node, files, symbols))
-    .map((node, index) =>
-      graphCandidate(node, graph.result, index, maxContentChars),
-    );
+    .map((node) => graphCandidate(node, graph.result, maxContentChars));
   const sourceResults = source.search?.ok ? source.search.results : [];
   const sourceCandidates = sourceResults
     .filter((result) => matchesFileFilters(result.file_path, files))
@@ -361,7 +359,6 @@ async function maybeRefreshSourceIndex(
 function graphCandidate(
   node: Node,
   graphResult: QueryResult,
-  index: number,
   maxContentChars: number,
 ): RecallCandidate {
   const match = graphResult.matches.find((entry) => entry.node_id === node.id);
