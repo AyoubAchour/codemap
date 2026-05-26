@@ -484,9 +484,10 @@ function buildWritebackOpportunities(
 		const suggestedFiles = session.files.filter(
 			(file) => file.writeback_suggestion_events > 0,
 		);
+		const hasGraphWriteEvents = (session.counts_by_kind.graph_write ?? 0) > 0;
 		const reasons: string[] = [];
 		if (suggestedFiles.length > 0) reasons.push("writeback_suggestion_captured");
-		if (modifiedFiles.length > 0 && session.graph_writes.length === 0) {
+		if (modifiedFiles.length > 0 && !hasGraphWriteEvents) {
 			reasons.push("modified_files_without_graph_write");
 		}
 		if (reasons.length === 0) continue;

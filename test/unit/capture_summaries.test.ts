@@ -137,6 +137,26 @@ describe("capture summaries", () => {
 		);
 	});
 
+	test("counts empty graph write events as graph writes for opportunities", async () => {
+		await write("src/auth.ts", "export const auth = true;\n");
+		await appendCaptureEvent(tmpRoot, {
+			session_id: "session-a",
+			kind: "file_modified",
+			anchors: [{ file_path: "src/auth.ts", line_range: [1, 1] }],
+		});
+		await appendCaptureEvent(tmpRoot, {
+			session_id: "session-a",
+			kind: "graph_write",
+			payload: {},
+		});
+
+		const response = await buildCaptureSummaries(tmpRoot);
+
+		expect(response.sessions[0].counts_by_kind.graph_write).toBe(1);
+		expect(response.sessions[0].graph_writes).toEqual([]);
+		expect(response.profile.unresolved_writeback_opportunities).toEqual([]);
+	});
+
 	test("counts one file event once when it has multiple anchors in the same file", async () => {
 		await write("src/auth.ts", "one\ntwo\nthree\n");
 		await appendCaptureEvent(tmpRoot, {

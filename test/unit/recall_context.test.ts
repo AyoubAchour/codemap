@@ -261,6 +261,37 @@ describe("buildRecallContext", () => {
     );
   });
 
+  test("does not warn about capture summaries omitted by selection", async () => {
+    await seedRecallFixture();
+    await appendCaptureEvent(tmpRoot, {
+      session_id: "session-a",
+      kind: "prompt",
+      payload: { text: "Investigate requireActiveUser behavior." },
+    });
+    await appendCaptureEvent(tmpRoot, {
+      session_id: "session-a",
+      kind: "file_modified",
+      anchors: [{ file_path: "src/auth.ts", line_range: [1, 6] }],
+    });
+
+    const result = await buildRecallContext(tmpRoot, "requireActiveUser", {
+      budgetBytes: 3200,
+      limit: 1,
+      refreshIndex: "never",
+      includeCaptureSummary: true,
+    });
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]?.kind).toBe("graph");
+    expect(result.results.some((entry) => entry.kind === "capture_summary")).toBe(
+      false,
+    );
+    expect(result.budget.omitted.capture_summary).toBeGreaterThan(0);
+    expect(result.warnings).not.toContain(
+      "Capture summary results are rebuildable session evidence; promote only durable source-anchored findings through emit_node or link.",
+    );
+  });
+
   test("requires symbol relevance before returning capture summary candidates", async () => {
     await writeRepoFile("src/auth.ts", "export const auth = true;\n");
     await appendCaptureEvent(tmpRoot, {

@@ -494,10 +494,6 @@ async function captureSummaryRecall(
     if (candidate) candidates.push(candidate);
   }
 
-  if (candidates.length > 0) {
-    options.warnings.push(CAPTURE_SUMMARY_WARNING);
-  }
-
   return candidates.sort((a, b) => b.rank - a.rank);
 }
 
@@ -670,7 +666,7 @@ function fitBudget(input: {
       totalSourceCandidates: input.totalSourceCandidates,
       totalCaptureCandidates: input.totalCaptureCandidates,
     });
-    const warnings = buildBudgetWarnings(input.warnings, false);
+    const warnings = buildBudgetWarnings(input.warnings, false, tentativeResults);
     const tentative = finalizeBudget(
       baseResponse({
         ...input,
@@ -692,7 +688,7 @@ function fitBudget(input: {
     totalSourceCandidates: input.totalSourceCandidates,
     totalCaptureCandidates: input.totalCaptureCandidates,
   });
-  const warnings = buildBudgetWarnings(input.warnings, omittedForBudget);
+  const warnings = buildBudgetWarnings(input.warnings, omittedForBudget, results);
   return finalizeBudget(
     baseResponse({
       ...input,
@@ -806,8 +802,14 @@ function omittedCounts(input: {
 function buildBudgetWarnings(
   warnings: string[],
   omittedForBudget: boolean,
+  results: RecallResult[],
 ): string[] {
-  return omittedForBudget ? [...warnings, BUDGET_WARNING] : warnings;
+  const next = [...warnings];
+  if (results.some((result) => result.kind === "capture_summary")) {
+    next.push(CAPTURE_SUMMARY_WARNING);
+  }
+  if (omittedForBudget) next.push(BUDGET_WARNING);
+  return next;
 }
 
 function enrichQuery(
