@@ -138,6 +138,10 @@ export async function buildCaptureReport(
 ): Promise<CaptureReportResponse> {
 	const generatedAt = options.generatedAt ?? new Date().toISOString();
 	const readResult = await readCaptureEventRecords(repoRoot);
+	const matchingSessionRecordCount = countSessionRecords(
+		readResult.records,
+		options.sessionId,
+	);
 	const selectedRecords = selectReportRecords(readResult.records, options);
 	const selectedEvents = selectedRecords.map((record) => record.event);
 	const summaries = await buildCaptureSummaries(repoRoot, {
@@ -163,7 +167,7 @@ export async function buildCaptureReport(
 			`${readResult.ignored_events.length} capture event line(s) were ignored; see ignored_events.`,
 		);
 	}
-	if (options.sessionId !== undefined && selectedRecords.length === 0) {
+	if (options.sessionId !== undefined && matchingSessionRecordCount === 0) {
 		warnings.add(`No capture events found for session ${options.sessionId}.`);
 	}
 
@@ -213,6 +217,14 @@ export async function buildCaptureReport(
 		ignored_events: readResult.ignored_events,
 		warnings: [...warnings],
 	};
+}
+
+function countSessionRecords(
+	records: CaptureEventReadRecord[],
+	sessionId: string | undefined,
+): number {
+	if (sessionId === undefined) return records.length;
+	return records.filter((record) => record.event.session_id === sessionId).length;
 }
 
 function selectReportRecords(

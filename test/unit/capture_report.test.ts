@@ -231,6 +231,17 @@ describe("capture report", () => {
 			"evt-a2",
 		]);
 
+		const limitZero = await buildCaptureReport(tmpRoot, {
+			sessionId: "session-a",
+			limit: 0,
+		});
+		expect(limitZero.source.total_valid_event_count).toBe(3);
+		expect(limitZero.source.selected_event_count).toBe(0);
+		expect(limitZero.sessions).toEqual([]);
+		expect(limitZero.warnings.join("\n")).not.toContain(
+			"No capture events found for session session-a.",
+		);
+
 		const missing = await buildCaptureReport(tmpRoot, {
 			sessionId: "missing-session",
 		});
