@@ -2,7 +2,7 @@
 /**
  * `codemap` CLI entry. Subcommands: init, show, correct, deprecate,
  * validate, doctor, repair-graph, rollup, setup, scan, context, recall-context,
- * capture-event, capture-session, capture-summary, changes-context,
+ * capture-event, capture-session, capture-summary, capture-report, changes-context,
  * generate-skills, watch, benchmark-retrieval, search-source, index-status,
  * clear-index.
  *
@@ -22,6 +22,10 @@ import {
   captureEvent,
   type CaptureEventFlags,
 } from "../src/cli/capture_event.js";
+import {
+  captureReport,
+  type CaptureReportFlags,
+} from "../src/cli/capture_report.js";
 import {
   captureSession,
   type CaptureSessionFlags,
@@ -704,6 +708,31 @@ program
       emit(await captureSummary(flags, { repoRoot: opts.repo }));
     },
   );
+
+program
+  .command("capture-report")
+  .description(
+    "Report captured sessions, recall hits, writeback suggestions, graph writes, ignored events, and budget use.",
+  )
+  .option(
+    "--session <id>",
+    "Capture session id to report. Defaults to all captured sessions.",
+  )
+  .option(
+    "--limit <n>",
+    "Maximum recent capture events to include. Use 0 to show no events.",
+    parseNonNegativeInteger,
+  )
+  .option("--json", "Print the structured JSON report. This is the default.")
+  .action(async (cmdOpts: Record<string, unknown>) => {
+    const opts = program.opts() as { repo: string };
+    const flags: CaptureReportFlags = {
+      session: cmdOpts.session as string | undefined,
+      limit: cmdOpts.limit as number | undefined,
+      json: cmdOpts.json as boolean | undefined,
+    };
+    emit(await captureReport(flags, { repoRoot: opts.repo }));
+  });
 
 program
   .command("benchmark-retrieval [suite]")

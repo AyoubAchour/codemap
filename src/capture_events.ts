@@ -65,6 +65,24 @@ export interface ReadCaptureEventsOptions {
 	limit?: number;
 }
 
+export interface CaptureEventReadIssue {
+	line_number: number;
+	reason: string;
+	raw_preview: string;
+}
+
+export interface CaptureEventReadRecord {
+	line_number: number;
+	event: CaptureEvent;
+}
+
+export interface CaptureEventReadResult {
+	storage_path: string;
+	events: CaptureEvent[];
+	records: CaptureEventReadRecord[];
+	ignored_events: CaptureEventReadIssue[];
+}
+
 export interface CaptureSessionSummary {
 	storage_path: string;
 	session_id?: string;
@@ -108,6 +126,20 @@ export async function readCaptureEvents(
 	repoRoot: string,
 	options: ReadCaptureEventsOptions = {},
 ): Promise<CaptureEvent[]> {
+	const result = await readCaptureEventRecords(repoRoot, options);
+	if (result.ignored_events.length > 0) {
+		const issue = result.ignored_events[0];
+		throw new Error(
+			`Invalid capture event at line ${issue.line_number}: ${issue.reason}`,
+		);
+	}
+	return result.events;
+}
+
+export async function readCaptureEventRecords(
+	repoRoot: string,
+	options: ReadCaptureEventsOptions = {},
+): Promise<CaptureEventReadResult> {
 	const logPath = captureEventPath(repoRoot);
 	let content: string;
 	try {
@@ -117,39 +149,55 @@ export async function readCaptureEvents(
 			err instanceof Error &&
 			(err as NodeJS.ErrnoException).code === "ENOENT"
 		) {
-			return [];
+			return {
+				storage_path: logPath,
+				events: [],
+				records: [],
+				ignored_events: [],
+			};
 		}
 		throw err;
 	}
 
-	const events = content
-		.split(/\r?\n/)
-		.map((line, index) => ({ line, index }))
-		.filter(({ line }) => line.trim().length > 0)
-		.map(({ line, index }) => {
-			try {
-				return normalizeCaptureEvent(
+	const records: CaptureEventReadRecord[] = [];
+	const ignoredEvents: CaptureEventReadIssue[] = [];
+	for (const [index, line] of content.split(/\r?\n/).entries()) {
+		if (line.trim().length === 0) continue;
+		try {
+			records.push({
+				line_number: index + 1,
+				event: normalizeCaptureEvent(
 					repoRoot,
 					JSON.parse(line) as CaptureEventInput,
 					true,
-				);
-			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
-				throw new Error(
-					`Invalid capture event at line ${index + 1}: ${message}`,
-				);
-			}
-		})
-		.filter((event) =>
+				),
+			});
+		} catch (err) {
+			ignoredEvents.push({
+				line_number: index + 1,
+				reason: err instanceof Error ? err.message : String(err),
+				raw_preview: captureRawPreview(line),
+			});
+		}
+	}
+
+	const filtered = records
+		.filter(({ event }) =>
 			options.sessionId === undefined
 				? true
 				: event.session_id === options.sessionId,
 		)
-		.filter((event) =>
+		.filter(({ event }) =>
 			options.kinds === undefined ? true : options.kinds.includes(event.kind),
 		);
+	const limited = limitCaptureEventRecords(filtered, options.limit);
 
-	return limitCaptureEvents(events, options.limit);
+	return {
+		storage_path: logPath,
+		events: limited.map((record) => record.event),
+		records: limited,
+		ignored_events: ignoredEvents,
+	};
 }
 
 export async function summarizeCaptureSession(
@@ -186,9 +234,9 @@ export function redactCaptureText(text: string): string {
 	return text
 		.replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, `sk-${CAPTURE_REDACTED}`)
 		.replace(
-			/\b(token|api[_-]?key|secret|password)\s*([:=])\s*["']?[^"'\s,}]+["']?/gi,
-			(_match, key: string, separator: string) =>
-				`${key}${separator}${CAPTURE_REDACTED}`,
+			/(^|[^A-Za-z0-9_])(["']?)(token|api[_-]?key|secret|password)\2\s*([:=])\s*["']?[^"'\s,}]+["']?/gi,
+			(_match, prefix: string, quote: string, key: string, separator: string) =>
+				`${prefix}${quote}${key}${quote}${separator}${CAPTURE_REDACTED}`,
 		);
 }
 
@@ -251,6 +299,22 @@ function limitCaptureEvents(
 	if (limit === undefined) return events;
 	if (limit <= 0) return [];
 	return events.length > limit ? events.slice(-limit) : events;
+}
+
+function limitCaptureEventRecords(
+	records: CaptureEventReadRecord[],
+	limit: number | undefined,
+): CaptureEventReadRecord[] {
+	if (limit === undefined) return records;
+	if (limit <= 0) return [];
+	return records.length > limit ? records.slice(-limit) : records;
+}
+
+function captureRawPreview(line: string): string {
+	const preview = redactCaptureText(line.trim());
+	return preview.length <= 240
+		? preview
+		: `${preview.slice(0, 224)} ... truncated`;
 }
 
 function valueOrGenerated(

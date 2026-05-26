@@ -1,6 +1,6 @@
 # Task 064: Observability and Replay Report
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 4 / observability
 **Estimate:** 3-5 days
 **Depends on:** task-060, task-062, task-063
@@ -32,12 +32,23 @@ extension is unparked.
 
 ## Exit Criteria
 
-- [ ] The report runs without a server or hosted dependency.
-- [ ] The JSON output is stable enough for tests and future UI work.
-- [ ] Graph writes are distinguishable from capture-only events.
-- [ ] The report makes token/byte budget use visible.
+- [x] The report runs without a server or hosted dependency.
+- [x] The JSON output is stable enough for tests and future UI work.
+- [x] Graph writes are distinguishable from capture-only events.
+- [x] The report makes token/byte budget use visible.
 
 ## Notes
 
 Do not restart visual graph work here. This task is about auditability of the
 memory loop, not graph visualization.
+
+Delivered in this task:
+
+- `codemap capture-report` builds a read-only JSON audit report from
+  `.codemap/index/capture/events.jsonl`.
+- Reports include per-session timelines, recall hits, writeback suggestions,
+  graph-write events, stale anchors, ignored malformed capture lines, and
+  captured budget fields.
+- Malformed capture lines are surfaced under `ignored_events` instead of failing
+  the whole report.
+- Static HTML remains deferred until the JSON report shape has dogfood mileage.

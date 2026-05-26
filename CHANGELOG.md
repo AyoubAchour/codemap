@@ -13,6 +13,9 @@ All notable user-facing changes to Codemap are documented here.
 - Optional capture-summary evidence in `recall_context` and
   `codemap recall-context --include-capture-summary`, with explicit provenance
   and byte-budget accounting.
+- Read-only capture audit reports via `codemap capture-report`, including
+  session timelines, recall hits, writeback suggestions, graph writes, ignored
+  capture lines, stale anchors, and captured budget fields.
 
 ## 0.8.0 - 2026-05-11
 

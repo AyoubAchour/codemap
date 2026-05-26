@@ -26,6 +26,7 @@ export interface CaptureSummaryOptions {
 	exclude?: string[];
 	write?: boolean;
 	generatedAt?: string;
+	events?: CaptureEvent[];
 }
 
 export interface CaptureAnchorIssue {
@@ -152,10 +153,13 @@ export async function buildCaptureSummaries(
 	const generatedAt = options.generatedAt ?? new Date().toISOString();
 	const excludes = cleanList(options.exclude);
 	const warnings: string[] = [];
-	const events = await readCaptureEvents(repoRoot, {
-		sessionId: options.sessionId,
-		limit: options.limit,
-	});
+	const events =
+		options.events === undefined
+			? await readCaptureEvents(repoRoot, {
+					sessionId: options.sessionId,
+					limit: options.limit,
+				})
+			: selectSummaryEvents(options.events, options);
 	const sessions = await summarizeSessions(repoRoot, events, excludes);
 	const source = sourceSummary(repoRoot, events, sessions.length);
 	const profile = await buildProfile(repoRoot, sessions, source, generatedAt);
@@ -518,6 +522,21 @@ function sourceSummary(
 		first_event_at: events[0]?.occurred_at,
 		last_event_at: events.at(-1)?.occurred_at,
 	};
+}
+
+function selectSummaryEvents(
+	events: CaptureEvent[],
+	options: Pick<CaptureSummaryOptions, "sessionId" | "limit">,
+): CaptureEvent[] {
+	const filtered =
+		options.sessionId === undefined
+			? events
+			: events.filter((event) => event.session_id === options.sessionId);
+	if (options.limit === undefined) return filtered;
+	if (options.limit <= 0) return [];
+	return filtered.length > options.limit
+		? filtered.slice(-options.limit)
+		: filtered;
 }
 
 function decisionSummary(node: Node): CaptureRecentDecision {

@@ -11,6 +11,7 @@ import {
   captureEvent,
   type CaptureEventFlags,
 } from "../../src/cli/capture_event.js";
+import { captureReport } from "../../src/cli/capture_report.js";
 import {
   captureSession,
   type CaptureSessionFlags,
@@ -2065,6 +2066,85 @@ describe("CLI: capture events", () => {
     await expect(
       fs.access(path.join(tmpRoot, ".codemap", "index", "capture", "profile.json")),
     ).resolves.toBeNull();
+  });
+
+  test("capture-report returns a read-only JSON audit report", async () => {
+    await captureEvent(
+      "recall_hit",
+      {
+        session: "session-a",
+        anchor: ["src/auth.ts:1:1"],
+        data: '{"budget":{"budget_bytes":1200,"used_bytes":700,"omitted":{"graph":1}}}',
+      },
+      { repoRoot: tmpRoot },
+    );
+    await captureEvent(
+      "graph_write",
+      { session: "session-a", data: "{}" },
+      { repoRoot: tmpRoot },
+    );
+
+    const result = await captureReport(
+      { session: "session-a", json: true },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.ok).toBe(true);
+    expect(out.filters.session_id).toBe("session-a");
+    expect(out.totals.recall_hits).toBe(1);
+    expect(out.totals.graph_writes).toBe(1);
+    expect(out.budget_usage).toEqual(
+      expect.objectContaining({
+        total_records: 1,
+        max_budget_bytes: 1200,
+        max_used_bytes: 700,
+        omitted_results: 1,
+      }),
+    );
+    await expect(
+      fs.access(
+        path.join(tmpRoot, ".codemap", "index", "capture", "sessions.json"),
+      ),
+    ).rejects.toThrow();
+  });
+
+  test("bin capture-report wires session, limit, and json flags", async () => {
+    await runCodemapBin([
+      "capture-event",
+      "prompt",
+      "--session",
+      "session-a",
+      "--text",
+      "first",
+    ]);
+    await runCodemapBin([
+      "capture-event",
+      "codemap_call",
+      "--session",
+      "session-a",
+      "--tool",
+      "query_context",
+    ]);
+
+    const reported = await runCodemapBin([
+      "capture-report",
+      "--session",
+      "session-a",
+      "--limit",
+      "1",
+      "--json",
+    ]);
+
+    expect(reported.exitCode).toBe(0);
+    const out = JSON.parse(reported.stdout);
+    expect(out.source.selected_event_count).toBe(1);
+    expect(out.sessions[0].timeline[0]).toEqual(
+      expect.objectContaining({
+        kind: "codemap_call",
+      }),
+    );
   });
 });
 

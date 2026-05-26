@@ -93,12 +93,12 @@ existing source index, existing retrieval benchmark harness.
 
 ## Phase 7 - Observability and Replay
 
-- [ ] Implement task 064.
-- [ ] Add `codemap capture-report` with JSON output first.
+- [x] Implement task 064.
+- [x] Add `codemap capture-report` with JSON output first.
 - [ ] Add optional static HTML only after JSON output is stable.
-- [ ] Include capture events, recall hits, writeback suggestions, graph writes,
+- [x] Include capture events, recall hits, writeback suggestions, graph writes,
       and budget accounting.
-- [ ] Verify generated reports do not require a server or external service.
+- [x] Verify generated reports do not require a server or external service.
 
 ## Phase 8 - Local Semantic Provider Experiment
 
@@ -115,7 +115,7 @@ existing source index, existing retrieval benchmark harness.
 - [x] Codemap has a compact recall surface with hard budget tests.
 - [x] Codemap can capture session evidence automatically without graph writes.
 - [x] `suggest_writeback` can use capture evidence while remaining read-only.
-- [ ] A local report makes capture and recall auditable.
+- [x] A local report makes capture and recall auditable.
 - [ ] Benchmarks make retrieval quality, latency, and payload tradeoffs visible.
 - [ ] README/HANDOFF/ROADMAP describe the sequence without implying automatic
       graph writes.
