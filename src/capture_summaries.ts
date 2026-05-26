@@ -152,7 +152,10 @@ export async function buildCaptureSummaries(
 	const generatedAt = options.generatedAt ?? new Date().toISOString();
 	const excludes = cleanList(options.exclude);
 	const warnings: string[] = [];
-	const events = await readCaptureEvents(repoRoot, { limit: options.limit });
+	const events = await readCaptureEvents(repoRoot, {
+		sessionId: options.sessionId,
+		limit: options.limit,
+	});
 	const sessions = await summarizeSessions(repoRoot, events, excludes);
 	const source = sourceSummary(repoRoot, events, sessions.length);
 	const profile = await buildProfile(repoRoot, sessions, source, generatedAt);
@@ -171,11 +174,6 @@ export async function buildCaptureSummaries(
 		await writeJsonFile(captureProfilePath(repoRoot), profile);
 	}
 
-	const outputSessions =
-		options.sessionId === undefined
-			? sessions
-			: sessions.filter((session) => session.session_id === options.sessionId);
-
 	return {
 		ok: true,
 		session_id: options.sessionId ?? null,
@@ -185,7 +183,7 @@ export async function buildCaptureSummaries(
 			profile: captureProfilePath(repoRoot),
 		},
 		source,
-		sessions: outputSessions,
+		sessions,
 		profile,
 		wrote_files: options.write ?? false,
 		warnings: [...new Set(warnings)],
@@ -238,6 +236,7 @@ async function summarizeOneSession(
 		captureToolName(event, codemapCalls);
 		captureGraphWrites(event, graphWrites);
 		captureWritebackSuggestion(event, writebackSuggestions);
+		const countedFileEvents = new Set<string>();
 
 		for (const anchor of event.anchors) {
 			const filePath = normalizeRepoPath(anchor.file_path);
@@ -246,14 +245,10 @@ async function summarizeOneSession(
 				continue;
 			}
 			const summary = getFileSummary(files, filePath);
-			summary.event_count += 1;
-			if (event.kind === "file_inspected") summary.inspected_events += 1;
-			if (event.kind === "file_modified") summary.modified_events += 1;
-			if (event.kind === "recall_hit") summary.recall_hit_events += 1;
-			if (event.kind === "writeback_suggestion") {
-				summary.writeback_suggestion_events += 1;
+			if (!countedFileEvents.has(filePath)) {
+				countedFileEvents.add(filePath);
+				incrementFileEventSummary(summary, event.kind);
 			}
-			if (event.kind === "graph_write") summary.graph_write_events += 1;
 			const rangeKey = `${anchor.line_range[0]}:${anchor.line_range[1]}`;
 			if (!summary.lineRangeKeys.has(rangeKey)) {
 				summary.lineRangeKeys.add(rangeKey);
@@ -306,6 +301,20 @@ function getFileSummary(
 	};
 	files.set(filePath, next);
 	return next;
+}
+
+function incrementFileEventSummary(
+	summary: MutableFileSummary,
+	kind: CaptureEventKind,
+): void {
+	summary.event_count += 1;
+	if (kind === "file_inspected") summary.inspected_events += 1;
+	if (kind === "file_modified") summary.modified_events += 1;
+	if (kind === "recall_hit") summary.recall_hit_events += 1;
+	if (kind === "writeback_suggestion") {
+		summary.writeback_suggestion_events += 1;
+	}
+	if (kind === "graph_write") summary.graph_write_events += 1;
 }
 
 async function checkCaptureAnchor(

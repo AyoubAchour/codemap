@@ -137,6 +137,79 @@ describe("capture summaries", () => {
 		);
 	});
 
+	test("counts one file event once when it has multiple anchors in the same file", async () => {
+		await write("src/auth.ts", "one\ntwo\nthree\n");
+		await appendCaptureEvent(tmpRoot, {
+			session_id: "session-a",
+			kind: "file_modified",
+			anchors: [
+				{ file_path: "src/auth.ts", line_range: [1, 1] },
+				{ file_path: "src/auth.ts", line_range: [2, 2] },
+			],
+		});
+
+		const response = await buildCaptureSummaries(tmpRoot);
+
+		expect(response.sessions[0].files[0]).toEqual(
+			expect.objectContaining({
+				file_path: "src/auth.ts",
+				event_count: 1,
+				modified_events: 1,
+				line_ranges: [
+					[1, 1],
+					[2, 2],
+				],
+			}),
+		);
+		expect(response.profile.active_areas[0]).toEqual(
+			expect.objectContaining({ area: "src", event_count: 1 }),
+		);
+	});
+
+	test("filters capture summary sessions before applying the event limit", async () => {
+		await write("src/auth.ts", "one\n");
+		await write("src/other.ts", "one\n");
+		await appendCaptureEvent(tmpRoot, {
+			id: "evt-a",
+			session_id: "session-a",
+			kind: "file_inspected",
+			occurred_at: "2026-05-16T09:00:00.000Z",
+			anchors: [{ file_path: "src/auth.ts", line_range: [1, 1] }],
+		});
+		await appendCaptureEvent(tmpRoot, {
+			id: "evt-b1",
+			session_id: "session-b",
+			kind: "file_inspected",
+			occurred_at: "2026-05-16T09:01:00.000Z",
+			anchors: [{ file_path: "src/other.ts", line_range: [1, 1] }],
+		});
+		await appendCaptureEvent(tmpRoot, {
+			id: "evt-b2",
+			session_id: "session-b",
+			kind: "file_modified",
+			occurred_at: "2026-05-16T09:02:00.000Z",
+			anchors: [{ file_path: "src/other.ts", line_range: [1, 1] }],
+		});
+
+		const response = await buildCaptureSummaries(tmpRoot, {
+			sessionId: "session-a",
+			limit: 1,
+		});
+
+		expect(response.source.event_count).toBe(1);
+		expect(response.source.session_count).toBe(1);
+		expect(response.sessions).toHaveLength(1);
+		expect(response.sessions[0]).toEqual(
+			expect.objectContaining({
+				session_id: "session-a",
+				total_events: 1,
+			}),
+		);
+		expect(response.sessions[0].files.map((file) => file.file_path)).toEqual([
+			"src/auth.ts",
+		]);
+	});
+
 	test("excludes sensitive paths and reports stale capture anchors", async () => {
 		await write("src/auth.ts", "one\n");
 		await appendCaptureEvent(tmpRoot, {
