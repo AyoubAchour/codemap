@@ -238,6 +238,7 @@ codemap capture-session s1            # Summarize rebuildable capture evidence
 codemap benchmark-retrieval           # Evaluate local retrieval against a suite
 codemap changes-context               # Diff impact, stale graph anchors, tests/docs
 codemap suggest-writeback --summary "what changed"
+codemap suggest-writeback --capture-session s1 --summary "what changed"
 codemap generate-skills               # Generate repo-local skill guidance and area slices
 codemap generate-skills --check       # Check generated repo guidance freshness
 codemap search-source "auth guard"    # Search indexed source chunks
@@ -345,6 +346,11 @@ looks at explicit inspected or modified files, an optional work summary, the
 active topic, and, on the CLI by default, git changed files. It returns possible
 `decision`, `invariant`, `gotcha`, or `link` prompts with source-anchor
 candidates.
+
+It can also use rebuildable capture evidence with `--capture-session <id>` or
+`--latest-capture-session`. Captured `file_inspected`, `file_modified`, and
+`recall_hit` events add source candidates and are collapsed by file/reason so
+repeated hook events do not spam suggestions.
 
 Related graph memories in suggestions are quality-ranked, so high-utility,
 fresh, source-confirmed memories appear before low-utility or superseded ones.

@@ -10,6 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
+import { appendCaptureEvent } from "../../src/capture_events.js";
 import { registerTools } from "../../src/index.js";
 import { SERVER_INSTRUCTIONS } from "../../src/instructions.js";
 import { _resetActiveTopic } from "../../src/tools/_active_topic.js";
@@ -891,6 +892,41 @@ describe("MCP server — source index tools", () => {
             reasons: expect.arrayContaining(["inspected"]),
           }),
         ],
+      }),
+    );
+
+    const { GraphStore } = await import("../../src/graph.js");
+    const verify = await GraphStore.load(tmpRoot);
+    expect(Object.keys(verify._data().nodes)).toEqual([]);
+  });
+
+  test("suggest_writeback can use capture session evidence", async () => {
+    await appendCaptureEvent(tmpRoot, {
+      session_id: "session-a",
+      kind: "file_modified",
+      anchors: [{ file_path: "src/x.ts", line_range: [1, 1] }],
+    });
+
+    const result = await client.callTool({
+      name: "suggest_writeback",
+      arguments: {
+        capture_session_id: "session-a",
+        work_summary: "Fixed auth review finding.",
+      },
+    });
+    const parsed = parseToolText(result as never);
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.evidence.capture_session).toEqual(
+      expect.objectContaining({
+        session_id: "session-a",
+        captured_files: ["src/x.ts"],
+      }),
+    );
+    expect(parsed.suggestions.gotchas[0].source_candidates[0]).toEqual(
+      expect.objectContaining({
+        file_path: "src/x.ts",
+        reasons: expect.arrayContaining(["captured_modified"]),
       }),
     );
 

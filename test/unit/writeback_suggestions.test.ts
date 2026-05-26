@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 
+import { appendCaptureEvent } from "../../src/capture_events.js";
 import { GraphStore } from "../../src/graph.js";
 import { buildWritebackSuggestions } from "../../src/writeback_suggestions.js";
 
@@ -307,6 +308,160 @@ describe("writeback suggestions", () => {
 				expect.stringContaining("No repo-local file evidence"),
 			]),
 		);
+	});
+
+	test("uses captured session file evidence without explicit file lists", async () => {
+		await write(
+			"src/auth.ts",
+			"export function requireActiveUser() { return true; }\n",
+		);
+		await write("test/auth.test.ts", "expect(true).toBe(true);\n");
+		await appendCaptureEvent(tmpRoot, {
+			session_id: "session-a",
+			kind: "file_inspected",
+			anchors: [{ file_path: "src/auth.ts", line_range: [1, 1] }],
+		});
+		await appendCaptureEvent(tmpRoot, {
+			session_id: "session-a",
+			kind: "file_modified",
+			anchors: [{ file_path: "test/auth.test.ts", line_range: [1, 1] }],
+		});
+
+		const response = await buildWritebackSuggestions(tmpRoot, {
+			captureSessionId: "session-a",
+			workSummary: "Fixed auth review finding.",
+			includeGit: false,
+		});
+
+		expect(response.evidence.capture_session).toEqual(
+			expect.objectContaining({
+				requested: "session-a",
+				session_id: "session-a",
+				total_events: 2,
+				used_events: 2,
+				captured_files: ["src/auth.ts", "test/auth.test.ts"],
+			}),
+		);
+		expect(response.suggestions.gotchas[0].source_candidates).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					file_path: "test/auth.test.ts",
+					reasons: expect.arrayContaining(["captured_modified"]),
+				}),
+				expect.objectContaining({
+					file_path: "src/auth.ts",
+					reasons: expect.arrayContaining(["captured_inspected"]),
+				}),
+			]),
+		);
+	});
+
+	test("uses the latest capture session when requested", async () => {
+		await write("src/old.ts", "export const oldValue = true;\n");
+		await write("src/new.ts", "export const newValue = true;\n");
+		await appendCaptureEvent(tmpRoot, {
+			session_id: "session-a",
+			kind: "file_inspected",
+			anchors: [{ file_path: "src/old.ts", line_range: [1, 1] }],
+			occurred_at: "2026-05-16T09:00:00.000Z",
+		});
+		await appendCaptureEvent(tmpRoot, {
+			session_id: "session-b",
+			kind: "file_inspected",
+			anchors: [{ file_path: "src/new.ts", line_range: [1, 1] }],
+			occurred_at: "2026-05-16T10:00:00.000Z",
+		});
+
+		const response = await buildWritebackSuggestions(tmpRoot, {
+			includeLatestCaptureSession: true,
+			workSummary: "Confirmed behavior invariant.",
+			includeGit: false,
+		});
+
+		expect(response.evidence.capture_session).toEqual(
+			expect.objectContaining({
+				requested: "latest",
+				session_id: "session-b",
+				captured_files: ["src/new.ts"],
+			}),
+		);
+		expect(response.evidence.capture_session?.captured_files).not.toContain(
+			"src/old.ts",
+		);
+	});
+
+	test("collapses repeated low-value capture events into one source candidate", async () => {
+		await write("src/auth.ts", "export const auth = true;\n");
+		for (let i = 0; i < 3; i += 1) {
+			await appendCaptureEvent(tmpRoot, {
+				session_id: "session-a",
+				kind: "file_inspected",
+				anchors: [{ file_path: "src/auth.ts", line_range: [1, 1] }],
+			});
+		}
+		await appendCaptureEvent(tmpRoot, {
+			session_id: "session-a",
+			kind: "prompt",
+			payload: { text: "No file evidence here." },
+		});
+
+		const response = await buildWritebackSuggestions(tmpRoot, {
+			captureSessionId: "session-a",
+			workSummary: "Confirmed behavior invariant.",
+			includeGit: false,
+		});
+		const candidates = response.suggestions.invariants[0].source_candidates;
+
+		expect(
+			candidates.filter((file) => file.file_path === "src/auth.ts"),
+		).toHaveLength(1);
+		expect(candidates[0].reasons).toEqual(["captured_inspected"]);
+		expect(response.evidence.capture_session).toEqual(
+			expect.objectContaining({
+				total_events: 4,
+				used_events: 3,
+				captured_files: ["src/auth.ts"],
+			}),
+		);
+	});
+
+	test("capture-backed suggestions do not write graph memory", async () => {
+		await write("src/auth.ts", "export const auth = true;\n");
+		const store = await GraphStore.load(tmpRoot);
+		store.upsertNode({
+			id: "auth/existing",
+			kind: "decision",
+			name: "Auth existing decision",
+			summary: "Keep this graph memory unchanged.",
+			sources: [
+				{
+					file_path: "src/auth.ts",
+					line_range: [1, 1],
+					content_hash: await fileHash("src/auth.ts"),
+				},
+			],
+			tags: ["auth"],
+			aliases: [],
+			status: "active",
+			confidence: 0.9,
+			last_verified_at: "2026-05-16T09:00:00.000Z",
+		});
+		await store.save();
+		const graphPath = path.join(tmpRoot, ".codemap", "graph.json");
+		const before = await fs.readFile(graphPath, "utf8");
+		await appendCaptureEvent(tmpRoot, {
+			session_id: "session-a",
+			kind: "file_modified",
+			anchors: [{ file_path: "src/auth.ts", line_range: [1, 1] }],
+		});
+
+		await buildWritebackSuggestions(tmpRoot, {
+			captureSessionId: "session-a",
+			workSummary: "Fixed auth review finding.",
+			includeGit: false,
+		});
+
+		expect(await fs.readFile(graphPath, "utf8")).toBe(before);
 	});
 
 	test("warns and ignores files outside the repository", async () => {
