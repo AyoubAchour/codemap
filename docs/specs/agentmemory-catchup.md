@@ -222,6 +222,12 @@ The report should answer:
 - what was written to graph memory?
 - what was ignored, and why?
 
+Task 064 implements the first JSON report slice. It is read-only, runs from
+local capture files, tolerates malformed capture lines by reporting them under
+`ignored_events`, and surfaces per-session timelines, recall hits, writeback
+suggestions, graph-write events, stale anchors, and captured byte-budget fields.
+Static HTML remains deferred until the JSON shape is stable in dogfood.
+
 ### Optional local semantic provider
 
 Build on the existing adapter-gated semantic retrieval work. The next step is a

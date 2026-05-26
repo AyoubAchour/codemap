@@ -141,7 +141,7 @@ Maintained manually. Update status as tasks land.
 | 061 | Capture hook onboarding | done | Phase 4 / onboarding | [task-061-capture-hook-onboarding.md](task-061-capture-hook-onboarding.md) |
 | 062 | Capture-backed writeback suggestions | done | Phase 4 / memory quality | [task-062-capture-backed-writeback-suggestions.md](task-062-capture-backed-writeback-suggestions.md) |
 | 063 | Recall profiles and session summaries | done | Phase 4 / recall | [task-063-recall-profile-and-session-summaries.md](task-063-recall-profile-and-session-summaries.md) |
-| 064 | Observability and replay report | todo | Phase 4 / observability | [task-064-observability-and-replay-report.md](task-064-observability-and-replay-report.md) |
+| 064 | Observability and replay report | done | Phase 4 / observability | [task-064-observability-and-replay-report.md](task-064-observability-and-replay-report.md) |
 | 065 | Local semantic provider experiment | todo | Phase 4 / retrieval | [task-065-local-semantic-provider-experiment.md](task-065-local-semantic-provider-experiment.md) |
 
 ---

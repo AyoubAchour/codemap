@@ -240,6 +240,7 @@ codemap recall-context "auth guard" --include-capture-summary
 codemap capture-event file_inspected --session s1 --anchor src/auth.ts:1:12
 codemap capture-session s1            # Summarize rebuildable capture evidence
 codemap capture-summary s1            # Refresh session summaries and project profile
+codemap capture-report --session s1 --json
 codemap benchmark-retrieval           # Evaluate local retrieval against a suite
 codemap changes-context               # Diff impact, stale graph anchors, tests/docs
 codemap suggest-writeback --summary "what changed"
@@ -272,6 +273,12 @@ hook-driven capture work.
 files from the capture log. These files can be deleted and rebuilt; they help
 recall recurring files, active areas, recent decisions, stale capture anchors,
 and unresolved writeback opportunities without writing graph memory.
+`codemap capture-report` is the read-only audit surface for the capture loop. It
+prints a JSON report with per-session timelines, recall hits, writeback
+suggestions, graph-write events, ignored malformed capture lines, stale anchors,
+and any recall byte-budget fields captured in event payloads. Use
+`--session <id>` to inspect one run and `--limit <n>` to constrain recent
+events.
 
 For Codex, `codemap setup --capture-hooks --client codex` writes a small
 `~/.codex/codemap/capture-hook.mjs` helper and merges matching entries into
