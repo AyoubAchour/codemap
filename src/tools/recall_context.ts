@@ -64,6 +64,12 @@ export function registerRecallContext(
           .describe(
             "Whether to rebuild the source index before source recall. Default if_missing.",
           ),
+        include_capture_summary: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, include rebuildable capture session/profile summaries as recall evidence. Default false.",
+          ),
       },
     },
     async ({
@@ -75,6 +81,7 @@ export function registerRecallContext(
       files,
       symbols,
       refresh_index,
+      include_capture_summary,
     }) => {
       const response = await buildRecallContext(options.repoRoot, question, {
         mode: mode as RecallContextMode | undefined,
@@ -84,6 +91,7 @@ export function registerRecallContext(
         files,
         symbols,
         refreshIndex: refresh_index as RecallRefreshMode | undefined,
+        includeCaptureSummary: include_capture_summary,
       });
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],

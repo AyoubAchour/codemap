@@ -1,6 +1,6 @@
 # Task 063: Recall Profiles and Session Summaries
 
-**Status:** todo
+**Status:** done
 **Phase:** Phase 4 / recall
 **Estimate:** 4-6 days
 **Depends on:** task-060, task-062
@@ -36,12 +36,28 @@ that remain evidence until a specific finding is promoted into graph memory.
 
 ## Exit Criteria
 
-- [ ] Summaries improve recall without writing graph nodes.
-- [ ] Deleting summaries does not affect `.codemap/graph.json`.
-- [ ] Sensitive paths/text can be excluded.
-- [ ] Stale source anchors are visible in recall output.
+- [x] Summaries improve recall without writing graph nodes.
+- [x] Deleting summaries does not affect `.codemap/graph.json`.
+- [x] Sensitive paths/text can be excluded.
+- [x] Stale source anchors are visible in recall output.
 
 ## Notes
 
 Avoid adding an LLM dependency in this task unless the deterministic version
 fails in dogfood.
+
+Delivered in this task:
+
+- `codemap capture-summary [session]` refreshes rebuildable
+  `.codemap/index/capture/sessions.json` and
+  `.codemap/index/capture/profile.json` files from capture events.
+- Session summaries track event counts, prompt samples, Codemap calls,
+  recurring captured files, graph writes, writeback suggestions, and stale or
+  missing capture anchors.
+- The project recall profile tracks active areas, recurring files, recent
+  decision memories, and unresolved writeback opportunities.
+- `recall_context` can include capture summaries with
+  `include_capture_summary` / `--include-capture-summary`, with provenance and
+  byte-budget accounting.
+- The implementation stays deterministic and rebuildable; no LLM summarization
+  dependency was added.

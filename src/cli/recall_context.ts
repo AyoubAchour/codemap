@@ -13,6 +13,7 @@ export interface RecallContextFlags {
   refreshIndex?: RecallRefreshMode;
   file?: string[];
   symbol?: string[];
+  includeCaptureSummary?: boolean;
 }
 
 export async function recallContext(
@@ -29,6 +30,7 @@ export async function recallContext(
       refreshIndex: flags.refreshIndex,
       files: flags.file,
       symbols: flags.symbol,
+      includeCaptureSummary: flags.includeCaptureSummary,
     });
 
     return {

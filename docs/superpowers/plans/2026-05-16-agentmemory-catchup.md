@@ -85,11 +85,11 @@ existing source index, existing retrieval benchmark harness.
 
 ## Phase 6 - Session Summaries and Profiles
 
-- [ ] Implement task 063.
-- [ ] Add local session/profile summaries derived from capture events.
-- [ ] Keep summaries rebuildable until a human/agent promotes a specific finding
+- [x] Implement task 063.
+- [x] Add local session/profile summaries derived from capture events.
+- [x] Keep summaries rebuildable until a human/agent promotes a specific finding
       into graph memory.
-- [ ] Add tests for stale source anchors, redaction, and summary refresh.
+- [x] Add tests for stale source anchors, redaction, and summary refresh.
 
 ## Phase 7 - Observability and Replay
 
@@ -112,9 +112,9 @@ existing source index, existing retrieval benchmark harness.
 
 ## Done When
 
-- [ ] Codemap has a compact recall surface with hard budget tests.
-- [ ] Codemap can capture session evidence automatically without graph writes.
-- [ ] `suggest_writeback` can use capture evidence while remaining read-only.
+- [x] Codemap has a compact recall surface with hard budget tests.
+- [x] Codemap can capture session evidence automatically without graph writes.
+- [x] `suggest_writeback` can use capture evidence while remaining read-only.
 - [ ] A local report makes capture and recall auditable.
 - [ ] Benchmarks make retrieval quality, latency, and payload tradeoffs visible.
 - [ ] README/HANDOFF/ROADMAP describe the sequence without implying automatic

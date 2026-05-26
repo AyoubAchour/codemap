@@ -192,6 +192,20 @@ calls `emit_node`, `link`, or writes `.codemap/graph.json`.
 Extend `suggest_writeback` so it can consume capture evidence for the current
 session. Suggestions should become more accurate without becoming automatic.
 
+### Session summaries and recall profiles
+
+Task 063 adds derived capture summaries under `.codemap/index/capture/`:
+
+- `sessions.json` summarizes each captured session with event counts, recurring
+  files, prompt samples, Codemap calls, graph writes, writeback suggestions, and
+  stale or missing capture anchors.
+- `profile.json` summarizes project-level active areas, recurring files, recent
+  decision memories, and unresolved writeback opportunities.
+
+These files are rebuildable evidence. They can be deleted and regenerated from
+`events.jsonl`, and `recall_context` includes them only when explicitly
+requested with capture-summary evidence enabled.
+
 ### Observability and replay
 
 Start with a local report:

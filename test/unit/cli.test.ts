@@ -2030,6 +2030,42 @@ describe("CLI: capture events", () => {
     expect(sessionOut.total_events).toBe(1);
     expect(sessionOut.events[0].kind).toBe("file_modified");
   });
+
+  test("bin capture-summary writes rebuildable summary files", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(path.join(tmpRoot, "src", "auth.ts"), "export const auth = true;\n");
+    await runCodemapBin([
+      "capture-event",
+      "file_modified",
+      "--session",
+      "session-a",
+      "--anchor",
+      "src/auth.ts:1:1",
+    ]);
+
+    const summarized = await runCodemapBin([
+      "capture-summary",
+      "session-a",
+      "--exclude",
+      "secrets/**",
+    ]);
+
+    expect(summarized.exitCode).toBe(0);
+    const out = JSON.parse(summarized.stdout);
+    expect(out.wrote_files).toBe(true);
+    expect(out.sessions[0]).toEqual(
+      expect.objectContaining({
+        session_id: "session-a",
+        total_events: 1,
+      }),
+    );
+    await expect(
+      fs.access(path.join(tmpRoot, ".codemap", "index", "capture", "sessions.json")),
+    ).resolves.toBeNull();
+    await expect(
+      fs.access(path.join(tmpRoot, ".codemap", "index", "capture", "profile.json")),
+    ).resolves.toBeNull();
+  });
 });
 
 // =============================================================

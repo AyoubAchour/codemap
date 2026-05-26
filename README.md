@@ -50,6 +50,9 @@ The graph and the source index are intentionally separate:
 - `.codemap/index/capture/events.jsonl` is rebuildable session evidence for
   audit and future suggestions. It can be deleted without corrupting graph
   memory.
+- `.codemap/index/capture/sessions.json` and
+  `.codemap/index/capture/profile.json` are rebuildable summaries derived from
+  capture events. They help recall long-running work but are not graph memory.
 - Repo map rankings are rebuildable source-index signals: they help agents pick
   high-value files and symbols to inspect, but they are not durable memory.
 
@@ -184,7 +187,7 @@ per turn to prevent graph spam.
 | --- | --- |
 | `set_active_topic` | Mark the current task and reset the per-turn emit budget. |
 | `query_context` | Preferred planning tool. Combines quality-ranked graph memory, source search, repo map rankings, staleness, match reasons, dependencies, impact context, and next steps. Supports `compact`, `standard`, and `full` response modes. |
-| `recall_context` | Compact recall tool. Returns a byte-budgeted packet with explicit graph/source provenance, trust/freshness warnings, source anchors, and omitted-result counts. |
+| `recall_context` | Compact recall tool. Returns a byte-budgeted packet with explicit graph/source provenance, optional capture-summary evidence, trust/freshness warnings, source anchors, and omitted-result counts. |
 | `changes_context` | Diff-aware planning tool. Maps git changes to source impact context, repo map rankings, stale graph anchors, likely tests/docs, and read-only writeback prompts. |
 | `query_graph` | Search curated graph memory for relevant nodes, edges, match reasons, and trust metadata. |
 | `get_node` | Fetch one node by id or alias. |
@@ -233,8 +236,10 @@ codemap context "auth guard"          # Graph + source context for planning
 codemap context "auth guard" --mode compact
 codemap recall-context "auth guard" --budget 2000
 codemap recall-context "auth guard" --file src/auth.ts --symbol requireActiveUser
+codemap recall-context "auth guard" --include-capture-summary
 codemap capture-event file_inspected --session s1 --anchor src/auth.ts:1:12
 codemap capture-session s1            # Summarize rebuildable capture evidence
+codemap capture-summary s1            # Refresh session summaries and project profile
 codemap benchmark-retrieval           # Evaluate local retrieval against a suite
 codemap changes-context               # Diff impact, stale graph anchors, tests/docs
 codemap suggest-writeback --summary "what changed"
@@ -253,8 +258,9 @@ By default, commands operate on the current working directory. Use
 
 Use `codemap recall-context` when an agent needs a small top-K packet rather
 than full planning context. It supports `--mode mixed|graph|source`, `--limit`,
-`--budget`, `--file`, `--symbol`, and `--refresh-index`. Every result says
-whether it came from curated graph memory or the rebuildable source index.
+`--budget`, `--file`, `--symbol`, `--refresh-index`, and
+`--include-capture-summary`. Every result says whether it came from curated
+graph memory, the rebuildable source index, or rebuildable capture summaries.
 
 Use `codemap capture-event` to append auditable session evidence such as prompts,
 files inspected, files modified, Codemap calls, recall hits, suggestions, and
@@ -262,6 +268,10 @@ graph writes. Capture events live under `.codemap/index/capture/`, redact common
 secret/token text before storage, and never modify `.codemap/graph.json`.
 `codemap capture-session` summarizes one session for debugging and later
 hook-driven capture work.
+`codemap capture-summary` refreshes derived `sessions.json` and `profile.json`
+files from the capture log. These files can be deleted and rebuilt; they help
+recall recurring files, active areas, recent decisions, stale capture anchors,
+and unresolved writeback opportunities without writing graph memory.
 
 For Codex, `codemap setup --capture-hooks --client codex` writes a small
 `~/.codex/codemap/capture-hook.mjs` helper and merges matching entries into
