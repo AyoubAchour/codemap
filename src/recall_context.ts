@@ -1,9 +1,9 @@
-import { GraphStore, type QueryResult } from "./graph.js";
 import {
   buildCaptureSummaries,
-  type CaptureSessionSummaryRecord,
   type CaptureProfile,
+  type CaptureSessionSummaryRecord,
 } from "./capture_summaries.js";
+import { GraphStore, type QueryResult } from "./graph.js";
 import {
   filterStalenessReportForNodes,
   rankGraphResultByQuality,
@@ -12,12 +12,12 @@ import {
 import {
   getSourceIndexStatus,
   loadSourceIndex,
-  scanSourceIndex,
-  searchSourceIndex,
   type SourceIndex,
   type SourceIndexStatus,
   type SourceSearchResponse,
   type SourceSearchResult,
+  scanSourceIndex,
+  searchSourceIndex,
 } from "./source_index.js";
 import { checkSourceStaleness, type StalenessReport } from "./staleness.js";
 import type { Node } from "./types.js";
@@ -140,6 +140,8 @@ const PROVENANCE_WARNING =
   "Graph results are curated repo memory; source results are rebuildable index hits and must be inspected before writeback.";
 const CAPTURE_SUMMARY_WARNING =
   "Capture summary results are rebuildable session evidence; promote only durable source-anchored findings through emit_node or link.";
+const CAPTURE_SUMMARY_UNAVAILABLE_WARNING =
+  "Capture summary recall unavailable:";
 const BUDGET_WARNING =
   "Recall results were omitted to stay within the configured byte budget.";
 const EMPTY_WARNING =
@@ -468,7 +470,15 @@ async function captureSummaryRecall(
     warnings: string[];
   },
 ): Promise<RecallCandidate[]> {
-  const summaries = await buildCaptureSummaries(repoRoot, { write: false });
+  let summaries: Awaited<ReturnType<typeof buildCaptureSummaries>>;
+  try {
+    summaries = await buildCaptureSummaries(repoRoot, { write: false });
+  } catch (err) {
+    options.warnings.push(
+      `${CAPTURE_SUMMARY_UNAVAILABLE_WARNING} ${errorMessage(err)}`,
+    );
+    return [];
+  }
   const candidates: RecallCandidate[] = [];
   if (summaries.source.event_count === 0) return candidates;
 
@@ -510,6 +520,7 @@ function captureProfileCandidate(
     ...profile.unresolved_writeback_opportunities.flatMap((entry) => entry.reasons),
   ].join(" ");
   const match = scoreText(question, haystack, options.symbols);
+  if (!matchesSymbolFilters(haystack, options.symbols)) return null;
   if (match.score === 0 && options.files.length === 0 && options.symbols.length === 0) {
     return null;
   }
@@ -566,6 +577,7 @@ function captureSessionCandidate(
     ...session.graph_writes,
   ].join(" ");
   const match = scoreText(question, haystack, options.symbols);
+  if (!matchesSymbolFilters(haystack, options.symbols)) return null;
   if (match.score === 0 && options.files.length === 0 && options.symbols.length === 0) {
     return null;
   }
@@ -843,6 +855,12 @@ function matchesCaptureFilters(candidateFiles: string[], files: string[]): boole
   return candidateFiles.some((candidate) => matchesFileFilters(candidate, files));
 }
 
+function matchesSymbolFilters(text: string, symbols: string[]): boolean {
+  if (symbols.length === 0) return true;
+  const haystack = text.toLowerCase();
+  return symbols.some((symbol) => haystack.includes(symbol.toLowerCase()));
+}
+
 function scoreText(
   question: string,
   text: string,
@@ -869,6 +887,10 @@ function cleanList(values: string[] | undefined): string[] {
 function truncateText(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   return `${value.slice(0, Math.max(0, maxChars - 16)).trimEnd()} ... truncated`;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function clampPositiveInteger(
