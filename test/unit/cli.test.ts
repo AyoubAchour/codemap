@@ -1352,6 +1352,39 @@ describe("CLI: source index", () => {
     );
   });
 
+  test("bin suggest-writeback accepts zero capture limit", async () => {
+    await captureEvent(
+      "file_modified",
+      {
+        session: "session-a",
+        anchor: ["src/auth.ts:1:4"],
+      } satisfies CaptureEventFlags,
+      { repoRoot: tmpRoot },
+    );
+
+    const result = await runCodemapBin([
+      "suggest-writeback",
+      "--capture-session",
+      "session-a",
+      "--capture-limit",
+      "0",
+      "--summary",
+      "Skip capture-backed evidence.",
+      "--no-git",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout);
+    expect(out.evidence.capture_session).toEqual(
+      expect.objectContaining({
+        session_id: "session-a",
+        total_events: 0,
+        used_events: 0,
+        captured_files: [],
+      }),
+    );
+  });
+
   test("bin suggest-writeback uses git changed files by default", async () => {
     await runGit(["init"]);
     await runGit(["config", "user.email", "test@example.com"]);

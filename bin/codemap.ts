@@ -110,6 +110,17 @@ function parsePositiveInteger(value: string): number {
   return parsed;
 }
 
+function parseNonNegativeInteger(value: string): number {
+  if (!/^\d+$/.test(value)) {
+    throw new InvalidArgumentError("expected a non-negative integer");
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new InvalidArgumentError("expected a non-negative integer");
+  }
+  return parsed;
+}
+
 function parseUnitInterval(value: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
@@ -872,7 +883,7 @@ program
   .option(
     "--capture-limit <n>",
     "Maximum capture events to consider.",
-    parsePositiveInteger,
+    parseNonNegativeInteger,
   )
   .option("--no-git", "Do not inspect git changed/untracked files.")
   .option("--limit <n>", "Maximum suggestions to return.", parsePositiveInteger)
