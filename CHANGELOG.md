@@ -4,6 +4,16 @@ All notable user-facing changes to Codemap are documented here.
 
 ## Unreleased
 
+### Added
+
+- Rebuildable capture summaries via `codemap capture-summary`, writing
+  `.codemap/index/capture/sessions.json` and
+  `.codemap/index/capture/profile.json` from captured session evidence without
+  touching graph memory.
+- Optional capture-summary evidence in `recall_context` and
+  `codemap recall-context --include-capture-summary`, with explicit provenance
+  and byte-budget accounting.
+
 ## 0.8.0 - 2026-05-11
 
 This release makes Codemap more agentic in everyday repository work. It adds

@@ -34,7 +34,7 @@ export interface RegisterToolsOptions {
  * Source discovery:
  *  - index_codebase
  *  - query_context   (fused graph/source/dependency/impact planning context)
- *  - recall_context  (compact budgeted graph/source recall packet)
+ *  - recall_context  (compact budgeted graph/source/capture-summary recall packet)
  *  - changes_context (git diff impact + writeback planning context)
  *  - search_source   (chunk search with optional dependency + impact context)
  *  - get_index_status

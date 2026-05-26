@@ -2,8 +2,9 @@
 /**
  * `codemap` CLI entry. Subcommands: init, show, correct, deprecate,
  * validate, doctor, repair-graph, rollup, setup, scan, context, recall-context,
- * capture-event, capture-session, changes-context, generate-skills, watch,
- * benchmark-retrieval, search-source, index-status, clear-index.
+ * capture-event, capture-session, capture-summary, changes-context,
+ * generate-skills, watch, benchmark-retrieval, search-source, index-status,
+ * clear-index.
  *
  * Each subcommand's logic lives in src/cli/<name>.ts as a pure function
  * returning { exitCode, stdout?, stderr? }; this entry file is the thin
@@ -25,6 +26,10 @@ import {
   captureSession,
   type CaptureSessionFlags,
 } from "../src/cli/capture_session.js";
+import {
+  captureSummary,
+  type CaptureSummaryFlags,
+} from "../src/cli/capture_summary.js";
 import {
   changesContext,
   type ChangesContextFlags,
@@ -586,6 +591,10 @@ program
     repeatable,
   )
   .option(
+    "--include-capture-summary",
+    "Include rebuildable capture session/profile summaries as recall evidence.",
+  )
+  .option(
     "--refresh-index <mode>",
     "Source index refresh mode: never, if_missing, or if_stale.",
     parseRefreshIndex,
@@ -600,6 +609,7 @@ program
       refreshIndex: cmdOpts.refreshIndex as RecallRefreshMode | undefined,
       file: cmdOpts.file as string[] | undefined,
       symbol: cmdOpts.symbol as string[] | undefined,
+      includeCaptureSummary: cmdOpts.includeCaptureSummary as boolean | undefined,
     };
     emit(await recallContext(question, flags, { repoRoot: opts.repo }));
   });
@@ -660,6 +670,38 @@ program
         limit: cmdOpts.limit as number | undefined,
       };
       emit(await captureSession(flags, { repoRoot: opts.repo }));
+    },
+  );
+
+program
+  .command("capture-summary [session]")
+  .description(
+    "Generate rebuildable capture session summaries and a project recall profile.",
+  )
+  .option(
+    "--limit <n>",
+    "Maximum capture events to summarize. Use 0 to summarize no events.",
+    parseNonNegativeInteger,
+  )
+  .option(
+    "--exclude <pattern>",
+    "Repo-relative path or glob pattern to exclude from summaries. Repeatable.",
+    repeatable,
+  )
+  .option(
+    "--no-write",
+    "Print summaries without writing .codemap/index/capture summary files.",
+  )
+  .action(
+    async (session: string | undefined, cmdOpts: Record<string, unknown>) => {
+      const opts = program.opts() as { repo: string };
+      const flags: CaptureSummaryFlags = {
+        session,
+        limit: cmdOpts.limit as number | undefined,
+        exclude: cmdOpts.exclude as string[] | undefined,
+        write: cmdOpts.write as boolean | undefined,
+      };
+      emit(await captureSummary(flags, { repoRoot: opts.repo }));
     },
   );
 

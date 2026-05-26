@@ -3,6 +3,10 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import {
+  appendCaptureEvent,
+  captureEventPath,
+} from "../../src/capture_events.js";
 import { GraphStore } from "../../src/graph.js";
 import { buildRecallContext } from "../../src/recall_context.js";
 import { scanSourceIndex } from "../../src/source_index.js";
@@ -179,12 +183,137 @@ describe("buildRecallContext", () => {
 
     expect(result.ok).toBe(true);
     expect(result.results).toEqual([]);
-    expect(result.budget.omitted).toEqual({ graph: 0, source: 0 });
+    expect(result.budget.omitted).toEqual({
+      graph: 0,
+      source: 0,
+      capture_summary: 0,
+    });
     expect(result.warnings).toContain(
       "No recall hits were found in graph memory or the source index.",
     );
     expect(result.warnings).toContain(
       "Source index is missing; run codemap scan or use refresh_index if_missing before relying on source recall.",
+    );
+  });
+
+  test("can include rebuildable capture summaries as recall evidence", async () => {
+    await seedRecallFixture();
+    await appendCaptureEvent(tmpRoot, {
+      session_id: "session-a",
+      kind: "prompt",
+      payload: { text: "Investigate requireActiveUser behavior." },
+    });
+    await appendCaptureEvent(tmpRoot, {
+      session_id: "session-a",
+      kind: "file_modified",
+      anchors: [{ file_path: "src/auth.ts", line_range: [1, 6] }],
+    });
+
+    const result = await buildRecallContext(tmpRoot, "requireActiveUser", {
+      budgetBytes: 3200,
+      limit: 5,
+      refreshIndex: "if_missing",
+      includeCaptureSummary: true,
+    });
+
+    const captureHit = result.results.find(
+      (entry) =>
+        entry.kind === "capture_summary" && entry.session_id === "session-a",
+    );
+    expect(captureHit).toEqual(
+      expect.objectContaining({
+        provenance: "rebuildable_capture_summary",
+        session_id: "session-a",
+        files: ["src/auth.ts"],
+      }),
+    );
+    expect(result.warnings).toContain(
+      "Capture summary results are rebuildable session evidence; promote only durable source-anchored findings through emit_node or link.",
+    );
+    expect(result.budget.used_bytes).toBeLessThanOrEqual(3200);
+  });
+
+  test("keeps graph and source recall when capture summaries are unreadable", async () => {
+    await seedRecallFixture();
+    const logPath = captureEventPath(tmpRoot);
+    await fs.mkdir(path.dirname(logPath), { recursive: true });
+    await fs.writeFile(logPath, "{not valid json\n");
+
+    const result = await buildRecallContext(tmpRoot, "requireActiveUser", {
+      budgetBytes: 3200,
+      limit: 5,
+      refreshIndex: "never",
+      includeCaptureSummary: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.results.map((entry) => entry.provenance)).toContain(
+      "curated_graph",
+    );
+    expect(result.results.map((entry) => entry.provenance)).toContain(
+      "rebuildable_source_index",
+    );
+    expect(result.results.some((entry) => entry.kind === "capture_summary")).toBe(
+      false,
+    );
+    expect(result.warnings.join("\n")).toContain(
+      "Capture summary recall unavailable:",
+    );
+  });
+
+  test("does not warn about capture summaries omitted by selection", async () => {
+    await seedRecallFixture();
+    await appendCaptureEvent(tmpRoot, {
+      session_id: "session-a",
+      kind: "prompt",
+      payload: { text: "Investigate requireActiveUser behavior." },
+    });
+    await appendCaptureEvent(tmpRoot, {
+      session_id: "session-a",
+      kind: "file_modified",
+      anchors: [{ file_path: "src/auth.ts", line_range: [1, 6] }],
+    });
+
+    const result = await buildRecallContext(tmpRoot, "requireActiveUser", {
+      budgetBytes: 3200,
+      limit: 1,
+      refreshIndex: "never",
+      includeCaptureSummary: true,
+    });
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]?.kind).toBe("graph");
+    expect(result.results.some((entry) => entry.kind === "capture_summary")).toBe(
+      false,
+    );
+    expect(result.budget.omitted.capture_summary).toBeGreaterThan(0);
+    expect(result.warnings).not.toContain(
+      "Capture summary results are rebuildable session evidence; promote only durable source-anchored findings through emit_node or link.",
+    );
+  });
+
+  test("requires symbol relevance before returning capture summary candidates", async () => {
+    await writeRepoFile("src/auth.ts", "export const auth = true;\n");
+    await appendCaptureEvent(tmpRoot, {
+      session_id: "session-a",
+      kind: "file_modified",
+      anchors: [{ file_path: "src/auth.ts", line_range: [1, 1] }],
+    });
+
+    const result = await buildRecallContext(tmpRoot, "billing workflow", {
+      budgetBytes: 3200,
+      limit: 5,
+      refreshIndex: "never",
+      includeCaptureSummary: true,
+      symbols: ["DefinitelyMissingSymbol"],
+    });
+
+    expect(result.results.some((entry) => entry.kind === "capture_summary")).toBe(
+      false,
+    );
+    expect(result.budget.omitted.capture_summary).toBe(0);
+    expect(result.warnings).not.toContain(
+      "Capture summary results are rebuildable session evidence; promote only durable source-anchored findings through emit_node or link.",
     );
   });
 });

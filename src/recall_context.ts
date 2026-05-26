@@ -1,3 +1,8 @@
+import {
+  buildCaptureSummaries,
+  type CaptureProfile,
+  type CaptureSessionSummaryRecord,
+} from "./capture_summaries.js";
 import { GraphStore, type QueryResult } from "./graph.js";
 import {
   filterStalenessReportForNodes,
@@ -7,12 +12,12 @@ import {
 import {
   getSourceIndexStatus,
   loadSourceIndex,
-  scanSourceIndex,
-  searchSourceIndex,
   type SourceIndex,
   type SourceIndexStatus,
   type SourceSearchResponse,
   type SourceSearchResult,
+  scanSourceIndex,
+  searchSourceIndex,
 } from "./source_index.js";
 import { checkSourceStaleness, type StalenessReport } from "./staleness.js";
 import type { Node } from "./types.js";
@@ -28,6 +33,7 @@ export interface RecallContextOptions {
   refreshIndex?: RecallRefreshMode;
   files?: string[];
   symbols?: string[];
+  includeCaptureSummary?: boolean;
 }
 
 export interface RecallAnchor {
@@ -64,7 +70,25 @@ export interface RecallSourceResult {
   anchors: RecallAnchor[];
 }
 
-export type RecallResult = RecallGraphResult | RecallSourceResult;
+export interface RecallCaptureSummaryResult {
+  kind: "capture_summary";
+  provenance: "rebuildable_capture_summary";
+  scope: "session" | "profile";
+  session_id?: string;
+  title: string;
+  summary: string;
+  event_count: number;
+  files: string[];
+  stale_anchors: number;
+  match_reasons: string[];
+  anchors: RecallAnchor[];
+  warnings: string[];
+}
+
+export type RecallResult =
+  | RecallGraphResult
+  | RecallSourceResult
+  | RecallCaptureSummaryResult;
 
 export interface RecallContextResponse {
   ok: true;
@@ -83,6 +107,7 @@ export interface RecallContextResponse {
     omitted: {
       graph: number;
       source: number;
+      capture_summary: number;
     };
   };
   results: RecallResult[];
@@ -113,6 +138,10 @@ const DEFAULT_MAX_CONTENT_CHARS = 220;
 const DEFAULT_REFRESH_INDEX: RecallRefreshMode = "if_missing";
 const PROVENANCE_WARNING =
   "Graph results are curated repo memory; source results are rebuildable index hits and must be inspected before writeback.";
+const CAPTURE_SUMMARY_WARNING =
+  "Capture summary results are rebuildable session evidence; promote only durable source-anchored findings through emit_node or link.";
+const CAPTURE_SUMMARY_UNAVAILABLE_WARNING =
+  "Capture summary recall unavailable:";
 const BUDGET_WARNING =
   "Recall results were omitted to stay within the configured byte budget.";
 const EMPTY_WARNING =
@@ -186,10 +215,20 @@ export async function buildRecallContext(
   const sourceCandidates = sourceResults
     .filter((result) => matchesFileFilters(result.file_path, files))
     .map((result, index) => sourceCandidate(result, index, maxContentChars));
+  const captureCandidates =
+    options.includeCaptureSummary && mode === "mixed"
+      ? await captureSummaryRecall(repoRoot, recallQuery, {
+          files,
+          symbols,
+          maxContentChars,
+          warnings,
+        })
+      : [];
   const candidates = selectCandidates(
     mode,
     graphCandidates,
     sourceCandidates,
+    captureCandidates,
     limit,
   );
 
@@ -206,6 +245,7 @@ export async function buildRecallContext(
     candidates,
     totalGraphCandidates: graphCandidates.length,
     totalSourceCandidates: sourceCandidates.length,
+    totalCaptureCandidates: captureCandidates.length,
     warnings,
     sourceStatus: source.status,
     refreshed: source.refreshed,
@@ -306,7 +346,9 @@ async function sourceRecall(
         message: String(err),
       },
     };
-    options.warnings.push(`Source search failed: ${search.error!.message}`);
+    options.warnings.push(
+      `Source search failed: ${search.error?.message ?? String(err)}`,
+    );
     return { status, refreshed, search };
   }
 
@@ -418,20 +460,180 @@ function sourceCandidate(
   };
 }
 
+async function captureSummaryRecall(
+  repoRoot: string,
+  question: string,
+  options: {
+    files: string[];
+    symbols: string[];
+    maxContentChars: number;
+    warnings: string[];
+  },
+): Promise<RecallCandidate[]> {
+  let summaries: Awaited<ReturnType<typeof buildCaptureSummaries>>;
+  try {
+    summaries = await buildCaptureSummaries(repoRoot, { write: false });
+  } catch (err) {
+    options.warnings.push(
+      `${CAPTURE_SUMMARY_UNAVAILABLE_WARNING} ${errorMessage(err)}`,
+    );
+    return [];
+  }
+  const candidates: RecallCandidate[] = [];
+  if (summaries.source.event_count === 0) return candidates;
+
+  const profileCandidate = captureProfileCandidate(
+    summaries.profile,
+    question,
+    options,
+  );
+  if (profileCandidate) candidates.push(profileCandidate);
+
+  for (const session of summaries.sessions) {
+    const candidate = captureSessionCandidate(session, question, options);
+    if (candidate) candidates.push(candidate);
+  }
+
+  return candidates.sort((a, b) => b.rank - a.rank);
+}
+
+function captureProfileCandidate(
+  profile: CaptureProfile,
+  question: string,
+  options: {
+    files: string[];
+    symbols: string[];
+    maxContentChars: number;
+  },
+): RecallCandidate | null {
+  const files = profile.recurring_files.map((file) => file.file_path);
+  if (!matchesCaptureFilters(files, options.files)) return null;
+  const haystack = [
+    "project capture profile",
+    ...profile.active_areas.map((area) => area.area),
+    ...files,
+    ...profile.recent_decisions.map((decision) => `${decision.name} ${decision.summary}`),
+    ...profile.unresolved_writeback_opportunities.flatMap((entry) => entry.reasons),
+  ].join(" ");
+  const match = scoreText(question, haystack, options.symbols);
+  if (!matchesSymbolFilters(haystack, options.symbols)) return null;
+  if (match.score === 0 && options.files.length === 0 && options.symbols.length === 0) {
+    return null;
+  }
+  const summaryParts = [
+    profile.active_areas.length > 0
+      ? `active areas: ${profile.active_areas.map((area) => area.area).slice(0, 4).join(", ")}`
+      : "no active areas",
+    profile.recurring_files.length > 0
+      ? `recurring files: ${files.slice(0, 4).join(", ")}`
+      : "no recurring files",
+    profile.unresolved_writeback_opportunities.length > 0
+      ? `${profile.unresolved_writeback_opportunities.length} unresolved writeback opportunity(s)`
+      : "no unresolved writeback opportunities",
+  ];
+  return {
+    kind: "capture_summary",
+    rank: match.score + profile.source.event_count / 100,
+    result: {
+      kind: "capture_summary",
+      provenance: "rebuildable_capture_summary",
+      scope: "profile",
+      title: "Project capture profile",
+      summary: truncateText(summaryParts.join("; "), options.maxContentChars),
+      event_count: profile.source.event_count,
+      files: files.slice(0, 6),
+      stale_anchors: 0,
+      match_reasons: match.reasons,
+      anchors: profile.recurring_files.slice(0, 3).map((file) => ({
+        file_path: file.file_path,
+        line_range: [1, 1],
+      })),
+      warnings: profile.warnings.slice(0, 3),
+    },
+  };
+}
+
+function captureSessionCandidate(
+  session: CaptureSessionSummaryRecord,
+  question: string,
+  options: {
+    files: string[];
+    symbols: string[];
+    maxContentChars: number;
+  },
+): RecallCandidate | null {
+  const files = session.files.map((file) => file.file_path);
+  if (!matchesCaptureFilters(files, options.files)) return null;
+  const haystack = [
+    session.session_id,
+    ...files,
+    ...session.prompt_samples,
+    ...session.codemap_calls,
+    ...session.writeback_suggestions,
+    ...session.graph_writes,
+  ].join(" ");
+  const match = scoreText(question, haystack, options.symbols);
+  if (!matchesSymbolFilters(haystack, options.symbols)) return null;
+  if (match.score === 0 && options.files.length === 0 && options.symbols.length === 0) {
+    return null;
+  }
+  const changedFiles = session.files
+    .filter((file) => file.modified_events > 0)
+    .map((file) => file.file_path);
+  const summary = [
+    `${session.total_events} captured event(s)`,
+    changedFiles.length > 0
+      ? `modified ${changedFiles.slice(0, 3).join(", ")}`
+      : undefined,
+    session.prompt_samples[0],
+  ]
+    .filter(Boolean)
+    .join("; ");
+  return {
+    kind: "capture_summary",
+    rank: match.score + session.total_events / 100,
+    result: {
+      kind: "capture_summary",
+      provenance: "rebuildable_capture_summary",
+      scope: "session",
+      session_id: session.session_id,
+      title: `Capture session ${session.session_id}`,
+      summary: truncateText(summary, options.maxContentChars),
+      event_count: session.total_events,
+      files: files.slice(0, 6),
+      stale_anchors: session.stale_anchors.length,
+      match_reasons: match.reasons,
+      anchors: session.files.slice(0, 3).map((file) => ({
+        file_path: file.file_path,
+        line_range: file.line_ranges[0] ?? [1, 1],
+      })),
+      warnings: session.warnings.slice(0, 3),
+    },
+  };
+}
+
 function selectCandidates(
   mode: RecallContextMode,
   graphCandidates: RecallCandidate[],
   sourceCandidates: RecallCandidate[],
+  captureCandidates: RecallCandidate[],
   limit: number,
 ): RecallCandidate[] {
   if (mode === "graph") return graphCandidates.slice(0, limit);
   if (mode === "source") return sourceCandidates.slice(0, limit);
 
   const selected: RecallCandidate[] = [];
-  const maxLength = Math.max(graphCandidates.length, sourceCandidates.length);
+  const maxLength = Math.max(
+    graphCandidates.length,
+    captureCandidates.length,
+    sourceCandidates.length,
+  );
   for (let index = 0; index < maxLength && selected.length < limit; index += 1) {
     const graph = graphCandidates[index];
     if (graph) selected.push(graph);
+    if (selected.length >= limit) break;
+    const capture = captureCandidates[index];
+    if (capture) selected.push(capture);
     if (selected.length >= limit) break;
     const source = sourceCandidates[index];
     if (source) selected.push(source);
@@ -448,6 +650,7 @@ function fitBudget(input: {
   candidates: RecallCandidate[];
   totalGraphCandidates: number;
   totalSourceCandidates: number;
+  totalCaptureCandidates: number;
   warnings: string[];
   sourceStatus: SourceIndexStatus;
   refreshed: boolean;
@@ -461,8 +664,9 @@ function fitBudget(input: {
       results: tentativeResults,
       totalGraphCandidates: input.totalGraphCandidates,
       totalSourceCandidates: input.totalSourceCandidates,
+      totalCaptureCandidates: input.totalCaptureCandidates,
     });
-    const warnings = buildBudgetWarnings(input.warnings, false);
+    const warnings = buildBudgetWarnings(input.warnings, false, tentativeResults);
     const tentative = finalizeBudget(
       baseResponse({
         ...input,
@@ -482,8 +686,9 @@ function fitBudget(input: {
     results,
     totalGraphCandidates: input.totalGraphCandidates,
     totalSourceCandidates: input.totalSourceCandidates,
+    totalCaptureCandidates: input.totalCaptureCandidates,
   });
-  const warnings = buildBudgetWarnings(input.warnings, omittedForBudget);
+  const warnings = buildBudgetWarnings(input.warnings, omittedForBudget, results);
   return finalizeBudget(
     baseResponse({
       ...input,
@@ -501,7 +706,7 @@ function baseResponse(input: {
   symbols: string[];
   budgetBytes: number;
   results: RecallResult[];
-  omitted: { graph: number; source: number };
+  omitted: { graph: number; source: number; capture_summary: number };
   warnings: string[];
   sourceStatus: SourceIndexStatus;
   refreshed: boolean;
@@ -519,7 +724,10 @@ function baseResponse(input: {
       used_bytes: 0,
       remaining_bytes: input.budgetBytes,
       within_budget: true,
-      truncated: input.omitted.graph > 0 || input.omitted.source > 0,
+      truncated:
+        input.omitted.graph > 0 ||
+        input.omitted.source > 0 ||
+        input.omitted.capture_summary > 0,
       omitted: input.omitted,
     },
     results: input.results,
@@ -576,21 +784,32 @@ function omittedCounts(input: {
   results: RecallResult[];
   totalGraphCandidates: number;
   totalSourceCandidates: number;
-}): { graph: number; source: number } {
+  totalCaptureCandidates: number;
+}): { graph: number; source: number; capture_summary: number } {
   const graph = input.results.filter((result) => result.kind === "graph").length;
   const source = input.results.filter((result) => result.kind === "source")
     .length;
+  const capture = input.results.filter(
+    (result) => result.kind === "capture_summary",
+  ).length;
   return {
     graph: Math.max(0, input.totalGraphCandidates - graph),
     source: Math.max(0, input.totalSourceCandidates - source),
+    capture_summary: Math.max(0, input.totalCaptureCandidates - capture),
   };
 }
 
 function buildBudgetWarnings(
   warnings: string[],
   omittedForBudget: boolean,
+  results: RecallResult[],
 ): string[] {
-  return omittedForBudget ? [...warnings, BUDGET_WARNING] : warnings;
+  const next = [...warnings];
+  if (results.some((result) => result.kind === "capture_summary")) {
+    next.push(CAPTURE_SUMMARY_WARNING);
+  }
+  if (omittedForBudget) next.push(BUDGET_WARNING);
+  return next;
 }
 
 function enrichQuery(
@@ -633,6 +852,36 @@ function matchesFileFilters(filePath: string, files: string[]): boolean {
   return files.some((file) => filePath === file || filePath.endsWith(`/${file}`));
 }
 
+function matchesCaptureFilters(candidateFiles: string[], files: string[]): boolean {
+  if (files.length === 0) return true;
+  return candidateFiles.some((candidate) => matchesFileFilters(candidate, files));
+}
+
+function matchesSymbolFilters(text: string, symbols: string[]): boolean {
+  if (symbols.length === 0) return true;
+  const haystack = text.toLowerCase();
+  return symbols.some((symbol) => haystack.includes(symbol.toLowerCase()));
+}
+
+function scoreText(
+  question: string,
+  text: string,
+  symbols: string[],
+): { score: number; reasons: string[] } {
+  const haystack = text.toLowerCase();
+  const tokens = [...question.toLowerCase().split(/\s+/), ...symbols]
+    .map((token) => token.trim().toLowerCase())
+    .filter((token) => token.length > 1);
+  let score = 0;
+  const reasons: string[] = [];
+  for (const token of new Set(tokens)) {
+    if (!haystack.includes(token)) continue;
+    score += 1;
+    if (reasons.length < 3) reasons.push(`text:${token}`);
+  }
+  return { score, reasons };
+}
+
 function cleanList(values: string[] | undefined): string[] {
   return dedupe((values ?? []).map((value) => value.trim()).filter(Boolean));
 }
@@ -640,6 +889,10 @@ function cleanList(values: string[] | undefined): string[] {
 function truncateText(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   return `${value.slice(0, Math.max(0, maxChars - 16)).trimEnd()} ... truncated`;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function clampPositiveInteger(
