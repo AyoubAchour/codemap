@@ -116,11 +116,12 @@ The sequence is:
 7. task-063 - recall profiles and session summaries
 8. task-064 - observability and replay report
 9. task-065 - local semantic provider experiment
+10. task-066 - optimization baseline and coverage audit
 
 Keep the principle crisp: Codemap may capture evidence automatically, but graph
 memory stays explicit, curated, and anchored to real repo files.
 
-Tasks 058-065 are now implemented. `benchmark-retrieval` has a `recall` profile
+Tasks 058-066 are now implemented. `benchmark-retrieval` has a `recall` profile
 for compact benchmark defaults plus payload/latency gates, `recall_context`
 provides compact budgeted recall, capture hooks can append rebuildable evidence,
 `suggest_writeback` can consume captured session evidence, `capture-summary`
@@ -130,9 +131,12 @@ events, and captured budget fields without touching graph memory. Task 065 adds
 `benchmark-retrieval --semantic-provider local-hash`, a dependency-free local
 hashing-vector experiment over the source index, plus lexical/graph/mixed/local
 variant metrics. The first local-vector experiment did not beat lexical recall,
-so semantic retrieval stays benchmark-only. The next natural slice is release
-bookkeeping for the post-0.8.0 Agentmemory catch-up work unless a follow-up
-semantic provider experiment is explicitly chosen first.
+so semantic retrieval stays benchmark-only. Task 066 adds optimization guardrail
+metrics: forbidden file/node expectations, expected warning and result-source
+coverage, latency p50/p95, and small distractor/payload cases. The next natural
+slice is a targeted retrieval/ranking optimization chosen from those measured
+misses, or release bookkeeping if the user wants to ship the post-0.8 work
+first.
 
 ## How to work in this repo (the conventions)
 

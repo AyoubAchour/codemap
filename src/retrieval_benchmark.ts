@@ -45,11 +45,20 @@ export interface RetrievalBenchmarkQuery {
   query: string;
   expected_files?: string[];
   expected_nodes?: string[];
+  forbidden_files?: string[];
+  forbidden_nodes?: string[];
+  expected_warnings?: string[];
+  expected_result_sources?: RetrievalBenchmarkResultSource[];
   response_budget_bytes?: number;
   tags?: string[];
 }
 
 export type RetrievalBenchmarkProfile = "planning" | "recall";
+export type RetrievalBenchmarkResultSource =
+  | "graph"
+  | "source"
+  | "semantic"
+  | "reranker";
 
 export interface RetrievalBenchmarkSuite {
   version: typeof BENCHMARK_VERSION;
@@ -83,10 +92,24 @@ export interface RetrievalTargetEvaluation {
   expected: string[];
   returned: string[];
   matched: string[];
+  forbidden: string[];
+  forbidden_matched: string[];
   hit: boolean;
+  clean: boolean;
   first_match_rank: number | null;
   reciprocal_rank: number;
   precision_at_k: number;
+  recall_at_k: number;
+  false_positive_rate_at_k: number;
+}
+
+export interface RetrievalExpectationEvaluation {
+  evaluated: boolean;
+  expected: string[];
+  returned: string[];
+  matched: string[];
+  missing: string[];
+  hit: boolean;
   recall_at_k: number;
 }
 
@@ -101,6 +124,8 @@ export interface RetrievalBenchmarkQueryResult {
   source_file_diversity: number;
   files: RetrievalTargetEvaluation;
   nodes: RetrievalTargetEvaluation;
+  warning_expectations: RetrievalExpectationEvaluation;
+  result_sources: RetrievalExpectationEvaluation;
   variants: RetrievalBenchmarkVariantResult;
   semantic: RetrievalBenchmarkSemanticResult;
   reranker: RetrievalBenchmarkRerankerResult;
@@ -113,6 +138,15 @@ export interface RetrievalBenchmarkAggregate {
   precision_at_k: number;
   recall_at_k: number;
   mrr: number;
+  forbidden_evaluated_queries: number;
+  forbidden_violation_rate: number;
+  false_positive_rate_at_k: number;
+}
+
+export interface RetrievalExpectationAggregate {
+  evaluated_queries: number;
+  hit_rate_at_k: number;
+  recall_at_k: number;
 }
 
 export interface RetrievalPayloadBudgetResult {
@@ -133,6 +167,8 @@ export interface RetrievalPayloadBudgetSummary {
 
 export interface RetrievalLatencySummary {
   average_latency_ms: number;
+  p50_latency_ms: number;
+  p95_latency_ms: number;
   max_latency_ms: number;
 }
 
@@ -149,6 +185,8 @@ export interface RetrievalBenchmarkSummary {
   average_source_file_diversity: number;
   files: RetrievalBenchmarkAggregate;
   nodes: RetrievalBenchmarkAggregate;
+  warning_expectations: RetrievalExpectationAggregate;
+  result_sources: RetrievalExpectationAggregate;
   variants: RetrievalBenchmarkVariantSummary;
   thresholds: {
     min_file_hit_rate?: number;
@@ -327,6 +365,8 @@ export async function runRetrievalBenchmark(
     const sourceFileDiversity =
       sourceResults.length === 0 ? 0 : returnedFiles.length / sourceResults.length;
     const expectedFiles = (benchmarkQuery.expected_files ?? []).map(normalizeRepoPath);
+    const forbiddenFiles = (benchmarkQuery.forbidden_files ?? []).map(normalizeRepoPath);
+    const forbiddenNodes = benchmarkQuery.forbidden_nodes ?? [];
     const responseBytes = Buffer.byteLength(JSON.stringify(context), "utf8");
     const responseBudgetBytes =
       options.responseBudgetBytes ?? benchmarkQuery.response_budget_bytes;
@@ -354,25 +394,41 @@ export async function runRetrievalBenchmark(
     const lexicalFiles = evaluateTargets(
       expectedFiles,
       returnedFiles.map(normalizeRepoPath),
+      forbiddenFiles,
     );
-    const graphFiles = evaluateTargets(expectedFiles, returnedGraphFiles);
+    const graphFiles = evaluateTargets(
+      expectedFiles,
+      returnedGraphFiles,
+      forbiddenFiles,
+    );
     const mixedFiles = evaluateTargets(
       expectedFiles,
       unique([
         ...returnedFiles.map(normalizeRepoPath),
         ...returnedGraphFiles,
       ]),
+      forbiddenFiles,
     );
     const semanticFiles = evaluateTargets(
       semanticRun.enabled ? expectedFiles : [],
       semanticRun.hits.map((hit) => hit.file_path),
+      semanticRun.enabled ? forbiddenFiles : [],
     );
     const localVectorFiles = evaluateTargets(
       semanticRun.enabled && semanticRun.provider_kind === "local"
         ? expectedFiles
         : [],
       semanticRun.hits.map((hit) => hit.file_path),
+      semanticRun.enabled && semanticRun.provider_kind === "local"
+        ? forbiddenFiles
+        : [],
     );
+    const returnedResultSources = resultSources({
+      graphNodeCount: context.graph.nodes.length,
+      sourceResultCount: sourceResults.length,
+      semanticHitCount: semanticRun.enabled ? semanticRun.hits.length : 0,
+      rerankerHitCount: rerankRun.enabled ? rerankRun.hits.length : 0,
+    });
 
     results.push({
       id: benchmarkQuery.id,
@@ -384,7 +440,19 @@ export async function runRetrievalBenchmark(
       source_result_count: sourceResults.length,
       source_file_diversity: round4(sourceFileDiversity),
       files: lexicalFiles,
-      nodes: evaluateTargets(benchmarkQuery.expected_nodes ?? [], returnedNodes),
+      nodes: evaluateTargets(
+        benchmarkQuery.expected_nodes ?? [],
+        returnedNodes,
+        forbiddenNodes,
+      ),
+      warning_expectations: evaluateExpectations(
+        benchmarkQuery.expected_warnings ?? [],
+        context.warnings,
+      ),
+      result_sources: evaluateExpectations(
+        benchmarkQuery.expected_result_sources ?? [],
+        returnedResultSources,
+      ),
       variants: {
         lexical_files: lexicalFiles,
         graph_files: graphFiles,
@@ -409,6 +477,7 @@ export async function runRetrievalBenchmark(
         files: evaluateTargets(
           rerankRun.enabled ? expectedFiles : [],
           rerankRun.hits.map((hit) => hit.file_path),
+          rerankRun.enabled ? forbiddenFiles : [],
         ),
         warnings: rerankRun.warnings,
       },
@@ -525,13 +594,36 @@ function parseQuery(value: unknown, label: string): RetrievalBenchmarkQuery {
     entry.expected_nodes,
     `${label}.expected_nodes`,
   );
+  const forbiddenFiles = parseOptionalStringArray(
+    entry.forbidden_files,
+    `${label}.forbidden_files`,
+  );
+  const forbiddenNodes = parseOptionalStringArray(
+    entry.forbidden_nodes,
+    `${label}.forbidden_nodes`,
+  );
+  const expectedWarnings = parseOptionalStringArray(
+    entry.expected_warnings,
+    `${label}.expected_warnings`,
+  );
+  const expectedResultSources = parseOptionalResultSources(
+    entry.expected_result_sources,
+    `${label}.expected_result_sources`,
+  );
   const responseBudgetBytes = parseOptionalPositiveInteger(
     entry.response_budget_bytes,
     `${label}.response_budget_bytes`,
   );
-  if (expectedFiles.length === 0 && expectedNodes.length === 0) {
+  if (
+    expectedFiles.length === 0 &&
+    expectedNodes.length === 0 &&
+    forbiddenFiles.length === 0 &&
+    forbiddenNodes.length === 0 &&
+    expectedWarnings.length === 0 &&
+    expectedResultSources.length === 0
+  ) {
     throw new Error(
-      `${label} must include expected_files, expected_nodes, or both.`,
+      `${label} must include at least one expected, forbidden, warning, or result-source expectation.`,
     );
   }
   return {
@@ -539,9 +631,34 @@ function parseQuery(value: unknown, label: string): RetrievalBenchmarkQuery {
     query: entry.query,
     expected_files: expectedFiles.map(normalizeRepoPath),
     expected_nodes: expectedNodes,
+    forbidden_files: forbiddenFiles.map(normalizeRepoPath),
+    forbidden_nodes: forbiddenNodes,
+    expected_warnings: expectedWarnings,
+    expected_result_sources: expectedResultSources,
     response_budget_bytes: responseBudgetBytes,
     tags: parseOptionalStringArray(entry.tags, `${label}.tags`),
   };
+}
+
+function parseOptionalResultSources(
+  value: unknown,
+  label: string,
+): RetrievalBenchmarkResultSource[] {
+  const values = parseOptionalStringArray(value, label);
+  const allowed = new Set<RetrievalBenchmarkResultSource>([
+    "graph",
+    "source",
+    "semantic",
+    "reranker",
+  ]);
+  for (const entry of values) {
+    if (!allowed.has(entry as RetrievalBenchmarkResultSource)) {
+      throw new Error(
+        `${label} must contain only graph, source, semantic, or reranker.`,
+      );
+    }
+  }
+  return values as RetrievalBenchmarkResultSource[];
 }
 
 function parseOptionalStringArray(value: unknown, label: string): string[] {
@@ -583,10 +700,15 @@ function parseOptionalPositiveInteger(
 function evaluateTargets(
   expected: string[],
   returned: string[],
+  forbidden: string[] = [],
 ): RetrievalTargetEvaluation {
   const expectedSet = new Set(expected);
+  const forbiddenSet = new Set(forbidden);
   const uniqueReturned = unique(returned);
   const matched = uniqueReturned.filter((target) => expectedSet.has(target));
+  const forbiddenMatched = uniqueReturned.filter((target) =>
+    forbiddenSet.has(target),
+  );
   const firstMatchIndex = uniqueReturned.findIndex((target) =>
     expectedSet.has(target),
   );
@@ -596,13 +718,40 @@ function evaluateTargets(
     expected,
     returned: uniqueReturned,
     matched,
+    forbidden,
+    forbidden_matched: forbiddenMatched,
     hit: matched.length > 0,
+    clean: forbidden.length === 0 || forbiddenMatched.length === 0,
     first_match_rank: firstMatchRank,
     reciprocal_rank: firstMatchRank ? round4(1 / firstMatchRank) : 0,
     precision_at_k:
       expected.length > 0 && uniqueReturned.length > 0
         ? round4(matched.length / uniqueReturned.length)
         : 0,
+    recall_at_k:
+      expected.length > 0 ? round4(matched.length / expected.length) : 0,
+    false_positive_rate_at_k:
+      forbidden.length > 0 && uniqueReturned.length > 0
+        ? round4(forbiddenMatched.length / uniqueReturned.length)
+        : 0,
+  };
+}
+
+function evaluateExpectations(
+  expected: string[],
+  returned: string[],
+): RetrievalExpectationEvaluation {
+  const uniqueReturned = unique(returned);
+  const matched = expected.filter((entry) =>
+    uniqueReturned.some((result) => result.includes(entry)),
+  );
+  return {
+    evaluated: expected.length > 0,
+    expected,
+    returned: uniqueReturned,
+    matched,
+    missing: expected.filter((entry) => !matched.includes(entry)),
+    hit: expected.length > 0 && matched.length === expected.length,
     recall_at_k:
       expected.length > 0 ? round4(matched.length / expected.length) : 0,
   };
@@ -627,6 +776,12 @@ function summarizeResults(
 ): RetrievalBenchmarkSummary {
   const files = aggregateEvaluations(results.map((result) => result.files));
   const nodes = aggregateEvaluations(results.map((result) => result.nodes));
+  const warningExpectations = aggregateExpectations(
+    results.map((result) => result.warning_expectations),
+  );
+  const resultSources = aggregateExpectations(
+    results.map((result) => result.result_sources),
+  );
   const variants: RetrievalBenchmarkVariantSummary = {
     lexical_files: aggregateEvaluations(
       results.map((result) => result.variants.lexical_files),
@@ -705,6 +860,14 @@ function summarizeResults(
     average_response_bytes: averageResponseBytes,
     latency: {
       average_latency_ms: averageLatencyMs,
+      p50_latency_ms: percentile(
+        results.map((result) => result.latency_ms),
+        50,
+      ),
+      p95_latency_ms: percentile(
+        results.map((result) => result.latency_ms),
+        95,
+      ),
       max_latency_ms: max(results.map((result) => result.latency_ms)),
     },
     payload_budget: payloadBudget,
@@ -713,6 +876,8 @@ function summarizeResults(
     ),
     files,
     nodes,
+    warning_expectations: warningExpectations,
+    result_sources: resultSources,
     variants,
     thresholds: {
       min_file_hit_rate: input.minFileHitRate,
@@ -808,6 +973,9 @@ function aggregateEvaluations(
   evaluations: RetrievalTargetEvaluation[],
 ): RetrievalBenchmarkAggregate {
   const evaluated = evaluations.filter((entry) => entry.evaluated);
+  const forbiddenEvaluated = evaluations.filter(
+    (entry) => entry.forbidden.length > 0,
+  );
   if (evaluated.length === 0) {
     return {
       evaluated_queries: 0,
@@ -815,6 +983,13 @@ function aggregateEvaluations(
       precision_at_k: 0,
       recall_at_k: 0,
       mrr: 0,
+      forbidden_evaluated_queries: forbiddenEvaluated.length,
+      forbidden_violation_rate: average(
+        forbiddenEvaluated.map((entry) => (entry.clean ? 0 : 1)),
+      ),
+      false_positive_rate_at_k: average(
+        forbiddenEvaluated.map((entry) => entry.false_positive_rate_at_k),
+      ),
     };
   }
   return {
@@ -823,7 +998,46 @@ function aggregateEvaluations(
     precision_at_k: average(evaluated.map((entry) => entry.precision_at_k)),
     recall_at_k: average(evaluated.map((entry) => entry.recall_at_k)),
     mrr: average(evaluated.map((entry) => entry.reciprocal_rank)),
+    forbidden_evaluated_queries: forbiddenEvaluated.length,
+    forbidden_violation_rate: average(
+      forbiddenEvaluated.map((entry) => (entry.clean ? 0 : 1)),
+    ),
+    false_positive_rate_at_k: average(
+      forbiddenEvaluated.map((entry) => entry.false_positive_rate_at_k),
+    ),
   };
+}
+
+function aggregateExpectations(
+  evaluations: RetrievalExpectationEvaluation[],
+): RetrievalExpectationAggregate {
+  const evaluated = evaluations.filter((entry) => entry.evaluated);
+  if (evaluated.length === 0) {
+    return {
+      evaluated_queries: 0,
+      hit_rate_at_k: 0,
+      recall_at_k: 0,
+    };
+  }
+  return {
+    evaluated_queries: evaluated.length,
+    hit_rate_at_k: average(evaluated.map((entry) => (entry.hit ? 1 : 0))),
+    recall_at_k: average(evaluated.map((entry) => entry.recall_at_k)),
+  };
+}
+
+function resultSources(input: {
+  graphNodeCount: number;
+  sourceResultCount: number;
+  semanticHitCount: number;
+  rerankerHitCount: number;
+}): RetrievalBenchmarkResultSource[] {
+  const sources: RetrievalBenchmarkResultSource[] = [];
+  if (input.graphNodeCount > 0) sources.push("graph");
+  if (input.sourceResultCount > 0) sources.push("source");
+  if (input.semanticHitCount > 0) sources.push("semantic");
+  if (input.rerankerHitCount > 0) sources.push("reranker");
+  return sources;
 }
 
 function toRerankCandidate(result: {
@@ -851,6 +1065,24 @@ function benchmarkNextSteps(summary: RetrievalBenchmarkSummary): string[] {
   if (summary.thresholds.failed.length > 0) {
     steps.push(`Thresholds failed: ${summary.thresholds.failed.join(", ")}.`);
   }
+  if (summary.files.forbidden_violation_rate > 0) {
+    steps.push("Inspect forbidden file hits; irrelevant source context is consuming the agent budget.");
+  }
+  if (summary.nodes.forbidden_violation_rate > 0) {
+    steps.push("Inspect forbidden graph hits; noisy or stale memory may be outranking useful context.");
+  }
+  if (
+    summary.warning_expectations.evaluated_queries > 0 &&
+    summary.warning_expectations.recall_at_k < 1
+  ) {
+    steps.push("Inspect missing warning expectations before trusting graph/source provenance signals.");
+  }
+  if (
+    summary.result_sources.evaluated_queries > 0 &&
+    summary.result_sources.recall_at_k < 1
+  ) {
+    steps.push("Inspect result-source misses; the benchmark expected evidence from a source that was absent.");
+  }
   if (summary.variants.local_vector_files.evaluated_queries > 0) {
     const localRecall = summary.variants.local_vector_files.recall_at_k;
     const lexicalRecall = summary.variants.lexical_files.recall_at_k;
@@ -875,6 +1107,14 @@ function average(values: number[]): number {
 function max(values: number[]): number {
   if (values.length === 0) return 0;
   return Math.max(...values);
+}
+
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = Math.ceil((p / 100) * sorted.length) - 1;
+  const index = Math.min(sorted.length - 1, Math.max(0, rank));
+  return sorted[index] ?? 0;
 }
 
 function round4(value: number): number {

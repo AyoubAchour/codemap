@@ -4,6 +4,10 @@ Codemap retrieval benchmarks are local, deterministic query suites. They exist
 to show where the current graph/source retrieval path works, where it misses,
 and whether optional semantic retrieval or reranking is justified.
 
+They are retrieval and recall benchmarks, not full autonomous-agent evals. A
+passing run means the right context and guardrails are available within budget;
+it does not prove an agent will make the right edit.
+
 Run the default suite from the repository root:
 
 ```sh
@@ -32,16 +36,20 @@ codemap benchmark-retrieval \
 The JSON summary reports:
 
 - file and node hit rate, precision, recall, and MRR
+- forbidden file/node violations and false-positive rate
+- expected warning and result-source recall
 - per-query and aggregate response bytes
 - payload-budget compliance
-- average and max latency
+- average, p50, p95, and max latency
 - source-file diversity
 - optional semantic/reranker adapter results
 
 Semantic retrieval and reranking are disabled by default. The CLI currently
-accepts only `--semantic-provider disabled` and `--reranker-provider disabled`;
-provider experiments should be wired through the benchmark adapter interfaces
-first, then compared against the same suite before runtime retrieval changes.
+accepts `--semantic-provider disabled`, `--semantic-provider local-hash`, and
+`--reranker-provider disabled`. `local-hash` is a dependency-free
+benchmark-only comparison point over the source index; heavier provider
+experiments should be wired through the benchmark adapter interfaces first,
+then compared against the same suite before runtime retrieval changes.
 
 The default suite lives at `benchmarks/retrieval.codemap.json`. It should cover
 more than happy-path symbol lookup:
@@ -53,9 +61,22 @@ more than happy-path symbol lookup:
 - stale graph / source-anchor repair cases
 - docs and tests discovery
 
-Each query must include at least one of `expected_files` or `expected_nodes`.
-Use `tags` to label the scenario family so aggregate misses can be grouped
-manually after a run.
+Each query must include at least one positive expectation, forbidden
+expectation, warning expectation, or result-source expectation. Use `tags` to
+label the scenario family so aggregate misses can be grouped manually after a
+run.
+
+Queries may also include guardrail expectations:
+
+- `forbidden_files` and `forbidden_nodes` detect irrelevant or noisy context
+  that should not consume the agent's limited budget.
+- `expected_warnings` matches stable warning substrings, such as source-index
+  or stale-memory provenance warnings.
+- `expected_result_sources` checks which evidence lanes returned results:
+  `graph`, `source`, `semantic`, or `reranker`.
+
+These guardrails are metrics, not default threshold failures. Use them to decide
+which ranking or packaging optimization deserves a follow-up task.
 
 Queries may include `response_budget_bytes` when a specific case needs its own
 payload gate. The `--response-budget-bytes` CLI flag applies one budget to every

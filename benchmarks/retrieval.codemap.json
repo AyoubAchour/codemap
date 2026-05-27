@@ -10,7 +10,14 @@
         "src/query_context.ts",
         "src/tools/query_context.ts"
       ],
-      "tags": ["query-context", "planning"]
+      "forbidden_files": [
+        "src/capture_report.ts"
+      ],
+      "expected_warnings": [
+        "Source hits come from the rebuildable local index"
+      ],
+      "expected_result_sources": ["source"],
+      "tags": ["query-context", "planning", "provenance", "guardrail"]
     },
     {
       "id": "diff-impact-analysis",
@@ -68,7 +75,11 @@
         "src/guidance.ts",
         "src/setup.ts"
       ],
-      "tags": ["semantic", "onboarding", "agent-compliance"]
+      "forbidden_files": [
+        "src/local_semantic_provider.ts"
+      ],
+      "expected_result_sources": ["source"],
+      "tags": ["semantic", "onboarding", "agent-compliance", "guardrail"]
     },
     {
       "id": "typo-source-index",
@@ -137,7 +148,36 @@
         "src/retrieval_benchmark.ts",
         "tasks/task-055-retrieval-benchmark-suite.md"
       ],
-      "tags": ["semantic", "embeddings", "benchmark"]
+      "forbidden_files": [
+        "src/capture_report.ts"
+      ],
+      "expected_result_sources": ["source"],
+      "tags": ["semantic", "embeddings", "benchmark", "guardrail"]
+    },
+    {
+      "id": "agent-lifecycle-writeback",
+      "query": "repo agent should call suggest_writeback before ending and avoid graph writes for unrelated read only research",
+      "expected_files": [
+        "AGENTS.md",
+        "src/tools/suggest_writeback.ts",
+        "src/writeback_suggestions.ts"
+      ],
+      "forbidden_files": [
+        "src/local_semantic_provider.ts"
+      ],
+      "expected_result_sources": ["source"],
+      "tags": ["agent-compliance", "writeback", "accuracy", "guardrail"]
+    },
+    {
+      "id": "recall-payload-gates",
+      "query": "compact recall payload budget compliance latency response bytes thresholds benchmark",
+      "expected_files": [
+        "src/retrieval_benchmark.ts",
+        "tasks/task-058-recall-benchmark-parity.md"
+      ],
+      "response_budget_bytes": 65000,
+      "expected_result_sources": ["source"],
+      "tags": ["optimization", "payload", "recall", "benchmark"]
     }
   ]
 }

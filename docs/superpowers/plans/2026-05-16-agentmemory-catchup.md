@@ -110,6 +110,15 @@ existing source index, existing retrieval benchmark harness.
       same benchmark suite.
 - [x] Promote only if recall/payload gains beat install and maintenance cost.
 
+## Phase 9 - Optimization Baseline Follow-Up
+
+- [x] Implement task 066.
+- [x] Add benchmark guardrails for forbidden files/nodes, expected warnings, and
+      expected result-source categories.
+- [x] Add p50/p95 latency metrics alongside average and max latency.
+- [x] Keep fixture additions small and focused on lifecycle, payload, and
+      distractor pressure.
+
 ## Done When
 
 - [x] Codemap has a compact recall surface with hard budget tests.
@@ -117,5 +126,7 @@ existing source index, existing retrieval benchmark harness.
 - [x] `suggest_writeback` can use capture evidence while remaining read-only.
 - [x] A local report makes capture and recall auditable.
 - [x] Benchmarks make retrieval quality, latency, and payload tradeoffs visible.
+- [x] Optimization work can start from measured guardrail misses instead of
+      guessing at ranking changes.
 - [x] README/HANDOFF/ROADMAP describe the sequence without implying automatic
       graph writes.
