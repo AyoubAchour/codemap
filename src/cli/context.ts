@@ -35,9 +35,14 @@ export async function context(
       budgetBytes: flags.budgetBytes,
     });
 
+    const stdout =
+      flags.budgetBytes === undefined
+        ? `${JSON.stringify(response, null, 2)}\n`
+        : JSON.stringify(response);
+
     return {
       exitCode: 0,
-      stdout: `${JSON.stringify(response, null, 2)}\n`,
+      stdout,
     };
   } catch (err) {
     return {

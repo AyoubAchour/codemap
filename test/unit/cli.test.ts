@@ -1111,6 +1111,7 @@ describe("CLI: source index", () => {
     expect(out.budget.budget_bytes).toBe(6500);
     expect(out.budget.used_bytes).toBeLessThanOrEqual(6500);
     expect(out.budget.within_budget).toBe(true);
+    expect(Buffer.byteLength(result.stdout, "utf8")).toBeLessThanOrEqual(6500);
     expect(out.source.search.results[0].file_path).toBe("src/auth.ts");
     expect(out.warnings).toContain(
       "Query context was trimmed to stay within the configured byte budget.",
