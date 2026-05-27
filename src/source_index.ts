@@ -1799,7 +1799,7 @@ function scoreSourceFields(
   const pathLower = chunk.file_path.toLowerCase();
   const contentLower = chunk.content.toLowerCase();
   const contentTokens = new Set(tokenize(chunk.content));
-  const pathTokens = new Set(tokenize(chunk.file_path));
+  const pathTokens = new Set(structuredPathTokens(chunk.file_path, queryTokens));
   const score_breakdown: SourceScoreBreakdown = {
     bm25: bm25Score,
     content: 0,
@@ -1870,25 +1870,29 @@ function scoreSourceFields(
       addReason("path", chunk.file_path, 1.5, `path contains "${token}"`);
     }
     const symbol = chunk.symbols.find((entry) =>
-      tokenMatchesStructuredText(entry.name, token),
+      tokenMatchesStructuredText(entry.name, token, queryTokens),
     );
     if (symbol) {
       addReason("symbol", symbol.name, 3, `symbol contains "${token}"`);
     }
     const sourceImport = chunk.imports.find((entry) =>
-      tokenMatchesStructuredText(entry.module, token),
+      tokenMatchesStructuredText(entry.module, token, queryTokens),
     );
     if (sourceImport) {
       addReason("import", sourceImport.module, 1, `import contains "${token}"`);
     }
     const sourceExport = chunk.exports.find((entry) =>
-      tokenMatchesStructuredText(entry, token),
+      tokenMatchesStructuredText(entry, token, queryTokens),
     );
     if (sourceExport) {
       addReason("export", sourceExport, 1, `export contains "${token}"`);
     }
     const relatedNode = relatedNodes.find((node) =>
-      tokenMatchesStructuredText(`${node.name} ${node.summary}`, token),
+      tokenMatchesStructuredText(
+        `${node.name} ${node.summary}`,
+        token,
+        queryTokens,
+      ),
     );
     if (relatedNode) {
       addReason(
@@ -2018,7 +2022,7 @@ function hasExplicitPathTokenMatch(
     filePath,
     path.posix.extname(filePath),
   );
-  const pathTokens = new Set(tokenize(fileName));
+  const pathTokens = new Set(structuredPathTokens(fileName, queryTokens));
   return queryTokens.some(
     (token) => pathTokens.has(token) && !GENERIC_PATH_TOKENS.has(token),
   );
@@ -2716,8 +2720,59 @@ function searchQueryTokens(value: string): string[] {
   return tokenize(value).filter((token) => !QUERY_STOP_WORDS.has(token));
 }
 
-function tokenMatchesStructuredText(value: string, token: string): boolean {
-  return tokenize(value).includes(token);
+function structuredPathTokens(value: string, queryTokens: string[]): string[] {
+  const expanded = new Set(tokenize(value));
+  if (shouldUseStructuredSegmentFallback(value, queryTokens)) {
+    for (const token of structuredSegmentTokens(value)) {
+      expanded.add(token);
+    }
+  }
+  return Array.from(expanded);
+}
+
+function tokenMatchesStructuredText(
+  value: string,
+  token: string,
+  queryTokens: string[],
+): boolean {
+  if (tokenize(value).includes(token)) return true;
+  if (!shouldUseStructuredSegmentFallback(value, queryTokens)) return false;
+  return structuredSegmentTokens(value).includes(token);
+}
+
+function shouldUseStructuredSegmentFallback(
+  value: string,
+  queryTokens: string[],
+): boolean {
+  const segments = new Set(structuredSegmentTokens(value));
+  if (segments.size < 2) return false;
+
+  const queryTokenSet = new Set(queryTokens);
+  if (![...segments].every((segment) => queryTokenSet.has(segment))) {
+    return false;
+  }
+
+  const signalTokens = queryTokens.filter(
+    (token) =>
+      !GENERIC_PATH_TOKENS.has(token) &&
+      !IMPACT_REVIEW_TOKENS.has(token) &&
+      token !== "need" &&
+      token !== "needs",
+  );
+  return signalTokens.length <= segments.size + 1;
+}
+
+function structuredSegmentTokens(value: string): string[] {
+  const segments = new Set<string>();
+  for (const token of tokenize(value)) {
+    if (!token.includes("_")) continue;
+    for (const part of token.split("_")) {
+      if (part.length > 1 && !GENERIC_PATH_TOKENS.has(part)) {
+        segments.add(part);
+      }
+    }
+  }
+  return Array.from(segments);
 }
 
 function isImpactReviewQuery(queryTokens: string[]): boolean {

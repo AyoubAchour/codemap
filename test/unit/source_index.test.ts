@@ -988,6 +988,38 @@ describe("source index", () => {
     );
   });
 
+  test("search matches snake_case structured fields by segment", async () => {
+    await write("src/session_link.ts", "export const session_link = 1;");
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(tmpRoot, "session link", {
+      limit: 3,
+    });
+    const result = response.results.find(
+      (candidate) => candidate.file_path === "src/session_link.ts",
+    );
+
+    expect(result).toBeDefined();
+    expect(result?.match_reasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "path",
+          detail: expect.stringContaining('"session"'),
+        }),
+        expect.objectContaining({
+          field: "symbol",
+          value: "session_link",
+          detail: expect.stringContaining('"session"'),
+        }),
+        expect.objectContaining({
+          field: "export",
+          value: "session_link",
+          detail: expect.stringContaining('"session"'),
+        }),
+      ]),
+    );
+  });
+
   test("search total_results reports matches beyond the returned limit", async () => {
     await write("src/needle-a.ts", "export function sharedNeedleAlpha() {}");
     await write("src/needle-b.ts", "export function sharedNeedleBeta() {}");
