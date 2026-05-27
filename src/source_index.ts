@@ -372,6 +372,11 @@ interface ReverseImportReference {
 
 type ReverseImportIndex = Map<string, ReverseImportReference[]>;
 
+interface ImportRelationshipIndex {
+  reverseImportIndex: ReverseImportIndex;
+  localImportingFiles: Set<string>;
+}
+
 interface CandidateFileSearchResult {
   candidates: CandidateFile[];
   skippedCount: number;
@@ -681,17 +686,21 @@ export async function searchSourceIndex(
   const relatedNodesByFile = await loadRelatedNodesByFile(repoRoot);
   const queryTokens = searchQueryTokens(trimmedQuery);
   const needsRelationshipRanking = isImpactReviewQuery(queryTokens);
-  const reverseImportIndex =
+  const importRelationships =
     dependencyLimit > 0 || includeImpact || needsRelationshipRanking
-      ? buildReverseImportIndex(index)
-      : new Map();
+      ? buildImportRelationshipIndex(index)
+      : {
+          reverseImportIndex: new Map<string, ReverseImportReference[]>(),
+          localImportingFiles: new Set<string>(),
+        };
   const allRanked = rankChunks(
     trimmedQuery,
     searchReady,
     relatedNodesByFile,
     {
       queryTokens,
-      reverseImportIndex,
+      reverseImportIndex: importRelationships.reverseImportIndex,
+      localImportingFiles: importRelationships.localImportingFiles,
       needsRelationshipRanking,
     },
   );
@@ -719,7 +728,7 @@ export async function searchSourceIndex(
         chunk.file_path,
         dependencyLimit,
         dependencyContentChars,
-        reverseImportIndex,
+        importRelationships.reverseImportIndex,
       ),
       impact_context: includeImpact
         ? buildImpactContext(
@@ -728,7 +737,7 @@ export async function searchSourceIndex(
             trimmedQuery,
             impactLimit,
             impactContentChars,
-            reverseImportIndex,
+            importRelationships.reverseImportIndex,
           )
         : undefined,
     }));
@@ -1685,11 +1694,13 @@ function rankChunks(
   options: {
     queryTokens?: string[];
     reverseImportIndex?: ReverseImportIndex;
+    localImportingFiles?: Set<string>;
     needsRelationshipRanking?: boolean;
   } = {},
 ): RankedChunk[] {
   const queryTokens = options.queryTokens ?? searchQueryTokens(query);
   const reverseImportIndex = options.reverseImportIndex ?? new Map();
+  const localImportingFiles = options.localImportingFiles ?? new Set();
   const needsRelationshipRanking =
     options.needsRelationshipRanking ?? isImpactReviewQuery(queryTokens);
   const bm25Scores = bm25ScoresForQuery(queryTokens, searchReady);
@@ -1717,6 +1728,7 @@ function rankChunks(
         chunk,
         queryTokens,
         reverseImportIndex,
+        localImportingFiles,
         needsRelationshipRanking,
       });
       return {
@@ -1943,6 +1955,7 @@ function adjustSourceScore(
     chunk: SourceChunk;
     queryTokens: string[];
     reverseImportIndex: ReverseImportIndex;
+    localImportingFiles: Set<string>;
     needsRelationshipRanking: boolean;
   },
 ): number {
@@ -1961,6 +1974,7 @@ function adjustSourceScore(
     isDisconnectedImplementationCandidate(
       input.chunk,
       input.reverseImportIndex,
+      input.localImportingFiles,
       input.queryTokens,
     )
   ) {
@@ -1981,6 +1995,7 @@ function isArchivalChunk(chunk: SourceChunk): boolean {
 function isDisconnectedImplementationCandidate(
   chunk: SourceChunk,
   reverseImportIndex: ReverseImportIndex,
+  localImportingFiles: Set<string>,
   queryTokens?: string[],
 ): boolean {
   if (chunk.language === "markdown") return false;
@@ -1991,6 +2006,7 @@ function isDisconnectedImplementationCandidate(
     return false;
   }
   if ((reverseImportIndex.get(chunk.file_path)?.length ?? 0) > 0) return false;
+  if (localImportingFiles.has(chunk.file_path)) return false;
   return !chunk.imports.some((entry) => entry.module.startsWith("."));
 }
 
@@ -2521,8 +2537,9 @@ function chunkForLine(
   );
 }
 
-function buildReverseImportIndex(index: SourceIndex): ReverseImportIndex {
+function buildImportRelationshipIndex(index: SourceIndex): ImportRelationshipIndex {
   const reverseIndex: ReverseImportIndex = new Map();
+  const localImportingFiles = new Set<string>();
   const files = Object.values(index.files).sort((a, b) =>
     a.file_path.localeCompare(b.file_path),
   );
@@ -2535,6 +2552,7 @@ function buildReverseImportIndex(index: SourceIndex): ReverseImportIndex {
         importEntry.module,
       );
       if (!resolved) continue;
+      localImportingFiles.add(file.file_path);
 
       const reference = { importer: file, importEntry };
       const existing = reverseIndex.get(resolved);
@@ -2546,7 +2564,7 @@ function buildReverseImportIndex(index: SourceIndex): ReverseImportIndex {
     }
   }
 
-  return reverseIndex;
+  return { reverseImportIndex: reverseIndex, localImportingFiles };
 }
 
 function resolveImportPath(
@@ -2554,7 +2572,9 @@ function resolveImportPath(
   fromFilePath: string,
   moduleSpecifier: string,
 ): string | null {
-  if (!moduleSpecifier.startsWith(".")) return null;
+  if (!moduleSpecifier.startsWith(".")) {
+    return resolveNonRelativeImportPath(index, moduleSpecifier);
+  }
 
   const baseDir = path.posix.dirname(fromFilePath);
   const unresolved = path.posix.normalize(
@@ -2564,6 +2584,80 @@ function resolveImportPath(
     return null;
   }
 
+  return resolveImportBase(index, unresolved);
+}
+
+function resolveNonRelativeImportPath(
+  index: SourceIndex,
+  moduleSpecifier: string,
+): string | null {
+  const bases = nonRelativeImportBaseCandidates(moduleSpecifier);
+  for (const base of bases) {
+    const resolved = resolveImportBase(index, base);
+    if (resolved) return resolved;
+  }
+  return null;
+}
+
+function nonRelativeImportBaseCandidates(moduleSpecifier: string): string[] {
+  const bases: string[] = [];
+  const add = (candidate: string): void => {
+    const normalized = normalizePath(candidate).replace(/^\/+/, "");
+    if (
+      normalized &&
+      !normalized.startsWith("../") &&
+      !bases.includes(normalized)
+    ) {
+      bases.push(normalized);
+    }
+  };
+
+  if (moduleSpecifier.startsWith("@/")) {
+    const aliasTarget = moduleSpecifier.slice(2);
+    add(`src/${aliasTarget}`);
+    add(aliasTarget);
+    return bases;
+  }
+  if (moduleSpecifier.startsWith("~/")) {
+    const aliasTarget = moduleSpecifier.slice(2);
+    add(`src/${aliasTarget}`);
+    add(aliasTarget);
+    return bases;
+  }
+  if (moduleSpecifier.startsWith("#/")) {
+    const aliasTarget = moduleSpecifier.slice(2);
+    add(aliasTarget);
+    add(`src/${aliasTarget}`);
+    return bases;
+  }
+
+  add(moduleSpecifier);
+  add(`src/${moduleSpecifier}`);
+
+  const workspaceParts = moduleSpecifier.split("/");
+  const packageName =
+    moduleSpecifier.startsWith("@") && workspaceParts.length >= 2
+      ? workspaceParts[1]
+      : workspaceParts[0];
+  const packageSubpath =
+    moduleSpecifier.startsWith("@") && workspaceParts.length >= 3
+      ? workspaceParts.slice(2).join("/")
+      : workspaceParts.slice(1).join("/");
+
+  if (packageName) {
+    for (const root of ["packages", "apps", "libs"]) {
+      add(path.posix.join(root, packageName, packageSubpath));
+      add(path.posix.join(root, packageName, "src", packageSubpath));
+    }
+  }
+
+  return bases;
+}
+
+function resolveImportBase(
+  index: SourceIndex,
+  unresolved: string,
+): string | null {
   const explicitExtension = path.posix.extname(unresolved);
   const baseWithoutExtension = explicitExtension
     ? unresolved.slice(0, -explicitExtension.length)

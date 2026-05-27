@@ -930,6 +930,64 @@ describe("source index", () => {
     }
   });
 
+  test("search preserves files connected through path-alias imports during impact ranking", async () => {
+    await write(
+      "src/projects/session_link.ts",
+      [
+        "export function buildAssignmentOutput(ownerId: string) {",
+        "  return 'assignment output ' + ownerId;",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/projects/tasks.ts",
+      [
+        "import { buildAssignmentOutput } from '@/projects/session_link';",
+        "",
+        "export function assignTaskToOwner(ownerId: string, title: string) {",
+        "  const output = buildAssignmentOutput(ownerId);",
+        "  return { title, ownerId, output };",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/audit/session_link.ts",
+      [
+        "export function buildAssignmentOutput(ownerId: string) {",
+        "  return 'assignment output ' + ownerId;",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "test/tasks.fixture.ts",
+      [
+        "import { assignTaskToOwner } from '../src/projects/tasks';",
+        "",
+        "export function assignmentFixture() {",
+        "  return assignTaskToOwner('user-1', 'Review sprint plan');",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "if assignment output changes what implementation files need review",
+      { limit: 5 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual(
+      expect.arrayContaining([
+        "src/projects/session_link.ts",
+        "src/audit/session_link.ts",
+      ]),
+    );
+    expect(returnedFiles.indexOf("src/projects/session_link.ts")).toBeLessThan(
+      returnedFiles.indexOf("src/audit/session_link.ts"),
+    );
+  });
+
   test("search total_results reports matches beyond the returned limit", async () => {
     await write("src/needle-a.ts", "export function sharedNeedleAlpha() {}");
     await write("src/needle-b.ts", "export function sharedNeedleBeta() {}");
