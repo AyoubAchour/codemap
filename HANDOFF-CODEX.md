@@ -119,11 +119,12 @@ The sequence is:
 10. task-066 - optimization baseline and coverage audit
 11. task-067 - distractor-aware source ranking
 12. task-068 - budget-aware context packing
+13. task-069 - query context budget packing
 
 Keep the principle crisp: Codemap may capture evidence automatically, but graph
 memory stays explicit, curated, and anchored to real repo files.
 
-Tasks 058-068 are now implemented. `benchmark-retrieval` has a `recall` profile
+Tasks 058-069 are now implemented. `benchmark-retrieval` has a `recall` profile
 for compact benchmark defaults plus payload/latency gates, `recall_context`
 provides compact budgeted recall, capture hooks can append rebuildable evidence,
 `suggest_writeback` can consume captured session evidence, `capture-summary`
@@ -143,9 +144,13 @@ weak-result floor. The Taskflow fixture's compact recall forbidden-file
 violation rate drops from `0.6000` to `0.0000` without adding runtime semantic
 retrieval. Task 068 makes `recall_context` spend mixed recall budget more
 predictably by interleaving graph, source, then optional capture-summary
-evidence and reporting compact per-lane packing stats. The next natural slice is
-budget-aware packing for the larger `query_context` planning surface, or release
-bookkeeping if the user wants to ship the post-0.8 work first.
+evidence and reporting compact per-lane packing stats. Task 069 adds opt-in
+byte-budget packing for the larger `query_context` planning surface through MCP
+`budget_bytes`, `codemap context --budget`, and
+`benchmark-retrieval --context-budget-bytes`, with per-lane packing stats while
+leaving unbudgeted planning output unchanged. The next natural slice is either
+another measured retrieval-quality optimization from the benchmark suite, or
+release bookkeeping if the user wants to ship the post-0.8 work first.
 
 ## How to work in this repo (the conventions)
 

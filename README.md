@@ -186,7 +186,7 @@ per turn to prevent graph spam.
 | Tool | Purpose |
 | --- | --- |
 | `set_active_topic` | Mark the current task and reset the per-turn emit budget. |
-| `query_context` | Preferred planning tool. Combines quality-ranked graph memory, source search, repo map rankings, staleness, match reasons, dependencies, impact context, and next steps. Supports `compact`, `standard`, and `full` response modes. |
+| `query_context` | Preferred planning tool. Combines quality-ranked graph memory, source search, repo map rankings, staleness, match reasons, dependencies, impact context, and next steps. Supports `compact`, `standard`, and `full` response modes plus optional byte-budget packing. |
 | `recall_context` | Compact recall tool. Returns a byte-budgeted packet with explicit graph/source provenance, optional capture-summary evidence, trust/freshness warnings, source anchors, omitted-result counts, and per-lane packing stats. |
 | `changes_context` | Diff-aware planning tool. Maps git changes to source impact context, repo map rankings, stale graph anchors, likely tests/docs, and read-only writeback prompts. |
 | `query_graph` | Search curated graph memory for relevant nodes, edges, match reasons, and trust metadata. |
@@ -234,6 +234,7 @@ codemap watch --once                  # Refresh once if the index is stale/missi
 codemap watch --status                # Report watcher/source-index freshness
 codemap context "auth guard"          # Graph + source context for planning
 codemap context "auth guard" --mode compact
+codemap context "auth guard" --budget 65000
 codemap recall-context "auth guard" --budget 2000
 codemap recall-context "auth guard" --file src/auth.ts --symbol requireActiveUser
 codemap recall-context "auth guard" --include-capture-summary
@@ -242,6 +243,7 @@ codemap capture-session s1            # Summarize rebuildable capture evidence
 codemap capture-summary s1            # Refresh session summaries and project profile
 codemap capture-report --session s1 --json
 codemap benchmark-retrieval           # Evaluate local retrieval against a suite
+codemap benchmark-retrieval --context-budget-bytes 65000 --response-budget-bytes 65000
 codemap changes-context               # Diff impact, stale graph anchors, tests/docs
 codemap suggest-writeback --summary "what changed"
 codemap suggest-writeback --capture-session s1 --summary "what changed"

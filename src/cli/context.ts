@@ -14,6 +14,7 @@ export interface ContextFlags {
   refreshIndex?: SourceRefreshMode;
   includeImpact?: boolean;
   impactLimit?: number;
+  budgetBytes?: number;
 }
 
 export async function context(
@@ -31,6 +32,7 @@ export async function context(
       refreshIndex: flags.refreshIndex,
       includeImpact: flags.includeImpact,
       impactLimit: flags.impactLimit,
+      budgetBytes: flags.budgetBytes,
     });
 
     return {
