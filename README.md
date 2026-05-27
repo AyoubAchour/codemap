@@ -187,7 +187,7 @@ per turn to prevent graph spam.
 | --- | --- |
 | `set_active_topic` | Mark the current task and reset the per-turn emit budget. |
 | `query_context` | Preferred planning tool. Combines quality-ranked graph memory, source search, repo map rankings, staleness, match reasons, dependencies, impact context, and next steps. Supports `compact`, `standard`, and `full` response modes. |
-| `recall_context` | Compact recall tool. Returns a byte-budgeted packet with explicit graph/source provenance, optional capture-summary evidence, trust/freshness warnings, source anchors, and omitted-result counts. |
+| `recall_context` | Compact recall tool. Returns a byte-budgeted packet with explicit graph/source provenance, optional capture-summary evidence, trust/freshness warnings, source anchors, omitted-result counts, and per-lane packing stats. |
 | `changes_context` | Diff-aware planning tool. Maps git changes to source impact context, repo map rankings, stale graph anchors, likely tests/docs, and read-only writeback prompts. |
 | `query_graph` | Search curated graph memory for relevant nodes, edges, match reasons, and trust metadata. |
 | `get_node` | Fetch one node by id or alias. |
@@ -262,6 +262,9 @@ than full planning context. It supports `--mode mixed|graph|source`, `--limit`,
 `--budget`, `--file`, `--symbol`, `--refresh-index`, and
 `--include-capture-summary`. Every result says whether it came from curated
 graph memory, the rebuildable source index, or rebuildable capture summaries.
+Budget metadata includes compact per-lane packing stats so agents can audit
+which participating evidence lanes were selected, omitted, or dropped to stay
+within the byte budget.
 
 Use `codemap capture-event` to append auditable session evidence such as prompts,
 files inspected, files modified, Codemap calls, recall hits, suggestions, and
