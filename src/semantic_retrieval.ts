@@ -1,6 +1,15 @@
+import {
+	createLocalHashSemanticAdapter,
+	LOCAL_HASH_SEMANTIC_PROVIDER,
+	type LocalHashSemanticProvider,
+} from "./local_semantic_provider.js";
 import { normalizeRepoPath } from "./util/repo_path.js";
 
 export type SemanticProviderKind = "none" | "local" | "cloud" | "custom";
+export type SemanticRetrievalProviderOption =
+	| "disabled"
+	| LocalHashSemanticProvider;
+export type SemanticRerankerProviderOption = "disabled";
 
 export interface SemanticRetrievalFileHit {
 	file_path: string;
@@ -46,12 +55,12 @@ export interface SemanticRerankAdapter {
 }
 
 export interface SemanticRetrievalBenchmarkOptions {
-	provider?: "disabled";
+	provider?: SemanticRetrievalProviderOption;
 	fileAdapter?: SemanticRetrievalAdapter;
 }
 
 export interface SemanticRerankBenchmarkOptions {
-	provider?: "disabled";
+	provider?: SemanticRerankerProviderOption;
 	fileReranker?: SemanticRerankAdapter;
 }
 
@@ -90,7 +99,23 @@ export interface SemanticRerankRun {
 export function resolveSemanticRetrieval(
 	options?: SemanticRetrievalBenchmarkOptions,
 ): ResolvedSemanticRetrieval {
-	if (options?.provider === "disabled" || !options?.fileAdapter) {
+	if (!options || options.provider === "disabled") {
+		return {
+			enabled: false,
+			provider: "disabled",
+			provider_kind: "none",
+		};
+	}
+	if (options.provider === LOCAL_HASH_SEMANTIC_PROVIDER) {
+		const fileAdapter = createLocalHashSemanticAdapter();
+		return {
+			enabled: true,
+			provider: fileAdapter.name,
+			provider_kind: fileAdapter.kind,
+			fileAdapter,
+		};
+	}
+	if (!options.fileAdapter) {
 		return {
 			enabled: false,
 			provider: "disabled",
@@ -139,16 +164,23 @@ export async function runSemanticFileRetrieval(
 	}
 
 	const startedAt = Date.now();
-	const hits = normalizeSemanticHits(
-		await semantic.fileAdapter.searchFiles(input),
-		input.limit,
-	);
+	let hits: SemanticRetrievalFileHit[] = [];
+	let failureWarning: string | undefined;
+	try {
+		hits = normalizeSemanticHits(
+			await semantic.fileAdapter.searchFiles(input),
+			input.limit,
+		);
+	} catch (err) {
+		failureWarning = `Semantic retrieval provider ${semantic.provider} failed: ${String(err)}`;
+	}
 	const warnings =
 		semantic.provider_kind === "cloud"
 			? [
 					`Cloud semantic retrieval provider ${semantic.provider} is opt-in; default Codemap benchmark runs remain local-only.`,
 				]
 			: [];
+	if (failureWarning) warnings.push(failureWarning);
 
 	return {
 		enabled: true,

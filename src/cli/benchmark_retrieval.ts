@@ -4,6 +4,10 @@ import {
   type RetrievalBenchmarkProfile,
 } from "../retrieval_benchmark.js";
 import type { QueryContextMode, SourceRefreshMode } from "../query_context.js";
+import type {
+  SemanticRerankerProviderOption,
+  SemanticRetrievalProviderOption,
+} from "../semantic_retrieval.js";
 import type { CommandResult, GlobalOptions } from "./_types.js";
 
 export interface BenchmarkRetrievalFlags {
@@ -22,8 +26,8 @@ export interface BenchmarkRetrievalFlags {
   minPayloadBudgetCompliance?: number;
   maxAverageResponseBytes?: number;
   maxAverageLatencyMs?: number;
-  semanticProvider?: "disabled";
-  rerankerProvider?: "disabled";
+  semanticProvider?: SemanticRetrievalProviderOption;
+  rerankerProvider?: SemanticRerankerProviderOption;
 }
 
 export async function benchmarkRetrieval(

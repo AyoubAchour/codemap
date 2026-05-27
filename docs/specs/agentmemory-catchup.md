@@ -230,9 +230,16 @@ Static HTML remains deferred until the JSON shape is stable in dogfood.
 
 ### Optional local semantic provider
 
-Build on the existing adapter-gated semantic retrieval work. The next step is a
-local, benchmark-only provider experiment. Runtime enablement should remain
-explicitly opt-in until benchmark and install costs are proven acceptable.
+Task 065 adds a dependency-free `local-hash` semantic provider for
+`benchmark-retrieval --semantic-provider local-hash`. It is a benchmark-only
+hashing-vector comparison point over source-index paths, symbols, imports,
+exports, and text. It does not add model dependencies or runtime recall
+behavior.
+
+The first experiment did not beat lexical recall on the Codemap recall suite, so
+runtime enablement remains deferred. A heavier local model provider should be a
+future opt-in experiment only if benchmark misses justify the install and
+maintenance cost.
 
 ## Task Sequence
 

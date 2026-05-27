@@ -88,6 +88,10 @@ import type {
   RecallContextMode,
   RecallRefreshMode,
 } from "../src/recall_context.js";
+import type {
+  SemanticRerankerProviderOption,
+  SemanticRetrievalProviderOption,
+} from "../src/semantic_retrieval.js";
 import type { SetupClient } from "../src/setup.js";
 
 class CommandCompleted extends Error {
@@ -138,10 +142,17 @@ function parseUnitInterval(value: string): number {
   return parsed;
 }
 
-function parseDisabledProvider(value: string): "disabled" {
+function parseSemanticProvider(value: string): SemanticRetrievalProviderOption {
+  if (value === "disabled" || value === "local-hash") return value;
+  throw new InvalidArgumentError(
+    'semantic provider must be one of "disabled", "local-hash".',
+  );
+}
+
+function parseRerankerProvider(value: string): SemanticRerankerProviderOption {
   if (value === "disabled") return "disabled";
   throw new InvalidArgumentError(
-    'semantic provider must be "disabled" in this build; adapter experiments are available through the benchmark API.',
+    'reranker provider must be "disabled" in this build.',
   );
 }
 
@@ -810,13 +821,13 @@ program
   )
   .option(
     "--semantic-provider <provider>",
-    "Semantic retrieval provider for benchmark experiments. Current CLI build supports: disabled.",
-    parseDisabledProvider,
+    "Semantic retrieval provider for benchmark experiments. Supports: disabled, local-hash.",
+    parseSemanticProvider,
   )
   .option(
     "--reranker-provider <provider>",
     "Reranker provider for benchmark experiments. Current CLI build supports: disabled.",
-    parseDisabledProvider,
+    parseRerankerProvider,
   )
   .action(
     async (suite: string | undefined, cmdOpts: Record<string, unknown>) => {
@@ -841,8 +852,12 @@ program
           | number
           | undefined,
         maxAverageLatencyMs: cmdOpts.maxAverageLatencyMs as number | undefined,
-        semanticProvider: cmdOpts.semanticProvider as "disabled" | undefined,
-        rerankerProvider: cmdOpts.rerankerProvider as "disabled" | undefined,
+        semanticProvider: cmdOpts.semanticProvider as
+          | SemanticRetrievalProviderOption
+          | undefined,
+        rerankerProvider: cmdOpts.rerankerProvider as
+          | SemanticRerankerProviderOption
+          | undefined,
       };
       emit(await benchmarkRetrieval(flags, { repoRoot: opts.repo }));
     },

@@ -292,13 +292,14 @@ of brittle config edits.
 `codemap benchmark-retrieval` looks for `benchmarks/retrieval.codemap.json` or
 `.codemap/retrieval-benchmark.json` and reports offline baseline metrics for
 the current retrieval stack: hit rate, precision/recall@K, MRR, diversity,
-latency, and response size. The bundled suite includes semantic, typo,
-cross-file impact, renamed-symbol, stale-graph, docs, and tests cases, plus a
-small non-Codemap fixture under `benchmarks/fixtures/`. Use it before adding
-heavier retrieval machinery. Semantic retrieval and reranking are disabled by
-default; the CLI currently accepts only `--semantic-provider disabled` and
-`--reranker-provider disabled`, while adapter experiments can be benchmarked
-programmatically.
+latency, response size, and lexical/graph/mixed/local-vector variant results.
+The bundled suite includes semantic, typo, cross-file impact, renamed-symbol,
+stale-graph, docs, and tests cases, plus a small non-Codemap fixture under
+`benchmarks/fixtures/`. Use it before adding heavier retrieval machinery.
+Semantic retrieval and reranking are disabled by default. The CLI accepts
+`--semantic-provider disabled`, `--semantic-provider local-hash`, and
+`--reranker-provider disabled`; `local-hash` is a dependency-free benchmark-only
+hashing-vector experiment over the existing source index.
 
 ## Graph Health
 

@@ -1872,6 +1872,48 @@ describe("CLI: source index", () => {
     expect(out.summary.limit).toBe(5);
   });
 
+  test("benchmark-retrieval enables local hash semantic experiments", async () => {
+    await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "source_index.ts"),
+      "export const SOURCE_INDEX_FRESHNESS = 'search chunks symbols stale files';\n",
+    );
+    await fs.writeFile(
+      path.join(tmpRoot, "retrieval-suite.json"),
+      JSON.stringify({
+        version: 1,
+        name: "CLI local hash semantic suite",
+        queries: [
+          {
+            id: "source-index-typo",
+            query: "sorce indx frshness seach chunks symbols stale files",
+            expected_files: ["src/source_index.ts"],
+          },
+        ],
+      }),
+    );
+    await scan({}, { repoRoot: tmpRoot });
+
+    const result = await benchmarkRetrieval(
+      {
+        suite: "retrieval-suite.json",
+        semanticProvider: "local-hash",
+      },
+      { repoRoot: tmpRoot },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout!);
+    expect(out.summary.experimental.semantic_retrieval).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        provider: "local-hash",
+        provider_kind: "local",
+      }),
+    );
+    expect(out.summary.variants.local_vector_files.hit_rate_at_k).toBe(1);
+  });
+
   test("benchmark-retrieval accepts payload and latency budget flags", async () => {
     await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
     await fs.writeFile(
@@ -1937,7 +1979,7 @@ describe("CLI: source index", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain(
-      'semantic provider must be "disabled" in this build',
+      'semantic provider must be one of "disabled", "local-hash"',
     );
   });
 });

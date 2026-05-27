@@ -16,6 +16,10 @@ All notable user-facing changes to Codemap are documented here.
 - Read-only capture audit reports via `codemap capture-report`, including
   session timelines, recall hits, writeback suggestions, graph writes, ignored
   capture lines, stale anchors, and captured budget fields.
+- Benchmark-only local semantic retrieval via
+  `codemap benchmark-retrieval --semantic-provider local-hash`, plus
+  lexical/graph/mixed/local-vector variant metrics. The provider is
+  dependency-free and remains outside runtime recall.
 
 ## 0.8.0 - 2026-05-11
 

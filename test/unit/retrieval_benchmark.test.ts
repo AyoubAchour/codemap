@@ -310,6 +310,67 @@ describe("retrieval benchmark", () => {
     );
   });
 
+  test("benchmarks the built-in local hash semantic provider", async () => {
+    await write(
+      "src/source_index.ts",
+      [
+        "export function refreshSourceIndex() {",
+        "  return 'search chunks symbols stale files freshness';",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    await write(
+      "src/noise.ts",
+      "export function invoiceWorkflow() { return 'billing checkout'; }\n",
+    );
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "local hash semantic suite",
+          queries: [
+            {
+              id: "typo-source-index",
+              query: "sorce indx frshness seach chunks symbols stale files",
+              expected_files: ["src/source_index.ts"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 3,
+      semantic: { provider: "local-hash" },
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.summary.experimental.embeddings).toBe("adapter");
+    expect(response.summary.experimental.semantic_retrieval).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        provider: "local-hash",
+        provider_kind: "local",
+      }),
+    );
+    expect(
+      response.summary.variants.local_vector_files.hit_rate_at_k,
+    ).toBe(1);
+    expect(response.results[0]?.semantic.hits[0]).toEqual(
+      expect.objectContaining({
+        file_path: "src/source_index.ts",
+        reason: expect.stringContaining("local hash-vector similarity"),
+      }),
+    );
+  });
+
   test("provider disabled prevents injected semantic and reranker adapters from running", async () => {
     await write(
       "src/auth.ts",
