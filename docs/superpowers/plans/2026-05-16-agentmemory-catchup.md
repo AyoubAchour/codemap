@@ -119,6 +119,22 @@ existing source index, existing retrieval benchmark harness.
 - [x] Keep fixture additions small and focused on lifecycle, payload, and
       distractor pressure.
 
+## Phase 10 - Distractor-Aware Source Ranking
+
+- [x] Implement task 067.
+- [x] Use the task-066 Taskflow guardrail miss as the primary before/after
+      benchmark.
+- [x] Filter query stop words before structured source-field boosts.
+- [x] Match path, symbol, import, export, and related-node fields by tokens
+      rather than arbitrary substrings.
+- [x] Demote archive-like content unless the query asks for it.
+- [x] Demote disconnected files for explicit impact/review queries while
+      preserving files named directly by the query.
+- [x] Add a weak-result floor so demoted distractors do not refill compact
+      source context.
+- [x] Verify Taskflow forbidden violations drop from `0.6000` to `0.0000`
+      without hit/recall/MRR regression.
+
 ## Done When
 
 - [x] Codemap has a compact recall surface with hard budget tests.
@@ -128,5 +144,7 @@ existing source index, existing retrieval benchmark harness.
 - [x] Benchmarks make retrieval quality, latency, and payload tradeoffs visible.
 - [x] Optimization work can start from measured guardrail misses instead of
       guessing at ranking changes.
+- [x] The first measured ranking optimization reduces distractors without
+      promoting semantic retrieval into runtime behavior.
 - [x] README/HANDOFF/ROADMAP describe the sequence without implying automatic
       graph writes.

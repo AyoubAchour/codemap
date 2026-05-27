@@ -117,11 +117,12 @@ The sequence is:
 8. task-064 - observability and replay report
 9. task-065 - local semantic provider experiment
 10. task-066 - optimization baseline and coverage audit
+11. task-067 - distractor-aware source ranking
 
 Keep the principle crisp: Codemap may capture evidence automatically, but graph
 memory stays explicit, curated, and anchored to real repo files.
 
-Tasks 058-066 are now implemented. `benchmark-retrieval` has a `recall` profile
+Tasks 058-067 are now implemented. `benchmark-retrieval` has a `recall` profile
 for compact benchmark defaults plus payload/latency gates, `recall_context`
 provides compact budgeted recall, capture hooks can append rebuildable evidence,
 `suggest_writeback` can consume captured session evidence, `capture-summary`
@@ -133,10 +134,15 @@ hashing-vector experiment over the source index, plus lexical/graph/mixed/local
 variant metrics. The first local-vector experiment did not beat lexical recall,
 so semantic retrieval stays benchmark-only. Task 066 adds optimization guardrail
 metrics: forbidden file/node expectations, expected warning and result-source
-coverage, latency p50/p95, and small distractor/payload cases. The next natural
-slice is a targeted retrieval/ranking optimization chosen from those measured
-misses, or release bookkeeping if the user wants to ship the post-0.8 work
-first.
+coverage, latency p50/p95, and small distractor/payload cases. Task 067 uses
+those measured misses to tune local source ranking: stop-word filtered
+structured boosts, token-aware path/symbol/import/export matching, archive-like
+content demotion, disconnected-file demotion for impact/review queries, and a
+weak-result floor. The Taskflow fixture's compact recall forbidden-file
+violation rate drops from `0.6000` to `0.0000` without adding runtime semantic
+retrieval. The next natural slice is budget-aware context packing across graph,
+source, repo-map, and capture-summary evidence, or release bookkeeping if the
+user wants to ship the post-0.8 work first.
 
 ## How to work in this repo (the conventions)
 

@@ -768,6 +768,168 @@ describe("source index", () => {
     ).toEqual(new Set(["src/auth-many.ts", "src/billing-needle.ts"]));
   });
 
+  test("search does not boost structured fields from stop-word substrings", async () => {
+    await write(
+      "src/notifications/slack.ts",
+      [
+        "export function sendSlackAssignmentNote(channel: string, title: string): string {",
+        "  return 'assignment note output';",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "if task assignment notification output changes what implementation and test files need review",
+      { limit: 6 },
+    );
+    const slackResult = response.results.find(
+      (result) => result.file_path === "src/notifications/slack.ts",
+    );
+
+    expect(slackResult).toBeDefined();
+    expect(slackResult?.match_reasons).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          detail: expect.stringContaining('"if"'),
+        }),
+      ]),
+    );
+  });
+
+  test("search demotes archive-like documents unless the query asks for archives", async () => {
+    await write(
+      "docs/operations.md",
+      [
+        "# Current Operations",
+        "",
+        "The handoff queue confirms the service level target for overdue task digest policy.",
+        "Use this current runbook when a query asks where the digest policy is documented.",
+      ].join("\n"),
+    );
+    await write(
+      "docs/archive.md",
+      [
+        "# Archive",
+        "",
+        "This archived operations note mentions service reviews and handoff meetings.",
+        "It is a distractor for overdue task digest policy questions.",
+      ].join("\n"),
+    );
+    await write(
+      "src/notifications/email.ts",
+      [
+        "export function sendTaskDigest(ownerId: string, titles: string[]): string {",
+        "  return 'task digest output';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/projects/tasks.ts",
+      [
+        "import { sendTaskDigest } from '../notifications/email';",
+        "",
+        "export function assignTaskToOwner(ownerId: string, title: string) {",
+        "  sendTaskDigest(ownerId, [title]);",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const currentPolicy = await searchSourceIndex(
+      tmpRoot,
+      "where is the service level target for overdue task digest handoff documented",
+      { limit: 5 },
+    );
+    const archiveQuery = await searchSourceIndex(
+      tmpRoot,
+      "archived service review handoff note",
+      { limit: 5 },
+    );
+
+    expect(currentPolicy.results.map((result) => result.file_path)).not.toContain(
+      "docs/archive.md",
+    );
+    expect(archiveQuery.results[0]?.file_path).toBe("docs/archive.md");
+  });
+
+  test("search demotes disconnected files below connected implementation review hits", async () => {
+    await write(
+      "src/notifications/email.ts",
+      [
+        "export function sendTaskDigest(ownerId: string, titles: string[]): string {",
+        "  return 'task digest output';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/notifications/slack.ts",
+      [
+        "export function sendSlackAssignmentNote(channel: string, title: string): string {",
+        "  return 'assignment note output';",
+        "}",
+        "",
+        "export function describeSlackDigest(): string {",
+        "  return 'slack digest notices are informational';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/projects/rename.ts",
+      [
+        "export interface ProjectTaskDraft { title: string; ownerId: string }",
+        "export function createProjectTask(draft: ProjectTaskDraft) {",
+        "  return { ...draft, status: 'open' as const };",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/projects/tasks.ts",
+      [
+        "import { sendTaskDigest } from '../notifications/email';",
+        "import { createProjectTask, type ProjectTaskDraft } from './rename';",
+        "",
+        "export function assignTaskToOwner(ownerId: string, draft: ProjectTaskDraft) {",
+        "  const task = createProjectTask(draft);",
+        "  sendTaskDigest(ownerId, [task.title]);",
+        "  return task;",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "test/tasks.fixture.ts",
+      [
+        "import { assignTaskToOwner } from '../src/projects/tasks';",
+        "",
+        "export function assignmentFixture() {",
+        "  return assignTaskToOwner('user-1', { title: 'Review sprint plan', ownerId: 'user-2' });",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "if task assignment notification output changes what implementation and test files need review",
+      { limit: 5 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    const expectedFiles = [
+      "src/projects/tasks.ts",
+      "src/notifications/email.ts",
+      "test/tasks.fixture.ts",
+    ];
+    const slackIndex = returnedFiles.indexOf("src/notifications/slack.ts");
+
+    expect(returnedFiles).toEqual(expect.arrayContaining(expectedFiles));
+    expect(slackIndex).toBeGreaterThan(-1);
+    for (const filePath of expectedFiles) {
+      expect(returnedFiles.indexOf(filePath)).toBeLessThan(slackIndex);
+    }
+  });
+
   test("search total_results reports matches beyond the returned limit", async () => {
     await write("src/needle-a.ts", "export function sharedNeedleAlpha() {}");
     await write("src/needle-b.ts", "export function sharedNeedleBeta() {}");

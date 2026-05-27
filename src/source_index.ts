@@ -53,6 +53,81 @@ const GENERATED_PATTERNS = [
   /(^|\/)__generated__(\/|$)/,
   /(^|\/)generated(\/|$)/,
 ];
+const QUERY_STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "be",
+  "before",
+  "by",
+  "can",
+  "for",
+  "from",
+  "how",
+  "if",
+  "in",
+  "into",
+  "is",
+  "it",
+  "of",
+  "on",
+  "or",
+  "should",
+  "that",
+  "the",
+  "this",
+  "to",
+  "what",
+  "when",
+  "where",
+  "whether",
+  "which",
+  "who",
+  "whom",
+  "whose",
+  "why",
+  "with",
+  "without",
+]);
+const ARCHIVAL_TOKENS = new Set([
+  "archive",
+  "archived",
+  "archives",
+  "deprecated",
+  "legacy",
+  "obsolete",
+]);
+const IMPACT_REVIEW_TOKENS = new Set([
+  "affected",
+  "affects",
+  "change",
+  "changes",
+  "changing",
+  "files",
+  "impact",
+  "implementation",
+  "implementations",
+  "review",
+  "reviews",
+  "test",
+  "tests",
+  "touch",
+  "touches",
+  "touching",
+]);
+const GENERIC_PATH_TOKENS = new Set([
+  "app",
+  "index",
+  "lib",
+  "source",
+  "src",
+  "test",
+  "tests",
+]);
+const ARCHIVAL_DEMOTION_MULTIPLIER = 0.05;
+const DISCONNECTED_IMPACT_MULTIPLIER = 0.08;
 
 export interface SourceSymbol {
   name: string;
@@ -604,16 +679,24 @@ export async function searchSourceIndex(
 
   const searchReady = getSearchReadySnapshot(repoRoot, index, searchReadyInput);
   const relatedNodesByFile = await loadRelatedNodesByFile(repoRoot);
+  const queryTokens = searchQueryTokens(trimmedQuery);
+  const needsRelationshipRanking = isImpactReviewQuery(queryTokens);
   const reverseImportIndex =
-    dependencyLimit > 0 || includeImpact
+    dependencyLimit > 0 || includeImpact || needsRelationshipRanking
       ? buildReverseImportIndex(index)
       : new Map();
   const allRanked = rankChunks(
     trimmedQuery,
     searchReady,
     relatedNodesByFile,
-  ).filter(({ score }) => score > 0);
-  const ranked = diversifyRankedChunks(allRanked, limit)
+    {
+      queryTokens,
+      reverseImportIndex,
+      needsRelationshipRanking,
+    },
+  );
+  const filteredRanked = filterWeakRankedChunks(allRanked);
+  const ranked = diversifyRankedChunks(filteredRanked, limit)
     .map(({ chunk, score, score_breakdown, match_reasons, related_nodes }) => ({
       file_path: chunk.file_path,
       start_line: chunk.start_line,
@@ -655,7 +738,7 @@ export async function searchSourceIndex(
     query,
     index_updated_at: index.updated_at,
     search_time_ms: Date.now() - startedAt,
-    total_results: allRanked.length,
+    total_results: filteredRanked.length,
     results: ranked,
     warnings: warnings.length > 0 ? warnings : undefined,
   };
@@ -1599,8 +1682,16 @@ function rankChunks(
     string,
     Array<Pick<Node, "id" | "kind" | "name" | "summary">>
   >,
+  options: {
+    queryTokens?: string[];
+    reverseImportIndex?: ReverseImportIndex;
+    needsRelationshipRanking?: boolean;
+  } = {},
 ): RankedChunk[] {
-  const queryTokens = tokenize(query);
+  const queryTokens = options.queryTokens ?? searchQueryTokens(query);
+  const reverseImportIndex = options.reverseImportIndex ?? new Map();
+  const needsRelationshipRanking =
+    options.needsRelationshipRanking ?? isImpactReviewQuery(queryTokens);
   const bm25Scores = bm25ScoresForQuery(queryTokens, searchReady);
 
   return searchReady.chunks
@@ -1614,7 +1705,7 @@ function rankChunks(
         relatedNodes,
         bm25Score,
       );
-      const score =
+      const baseScore =
         fieldScore.score_breakdown.bm25 +
         fieldScore.score_breakdown.content +
         fieldScore.score_breakdown.export +
@@ -1622,6 +1713,12 @@ function rankChunks(
         fieldScore.score_breakdown.path +
         fieldScore.score_breakdown.related_graph_node +
         fieldScore.score_breakdown.symbol;
+      const score = adjustSourceScore(baseScore, {
+        chunk,
+        queryTokens,
+        reverseImportIndex,
+        needsRelationshipRanking,
+      });
       return {
         chunk,
         score,
@@ -1689,6 +1786,8 @@ function scoreSourceFields(
   const queryLower = query.toLowerCase();
   const pathLower = chunk.file_path.toLowerCase();
   const contentLower = chunk.content.toLowerCase();
+  const contentTokens = new Set(tokenize(chunk.content));
+  const pathTokens = new Set(tokenize(chunk.file_path));
   const score_breakdown: SourceScoreBreakdown = {
     bm25: bm25Score,
     content: 0,
@@ -1741,7 +1840,7 @@ function scoreSourceFields(
 
   if (bm25Score > 0) {
     const matchedTokens = queryTokens.filter((token) =>
-      contentLower.includes(token),
+      contentTokens.has(token),
     );
     if (matchedTokens.length > 0) {
       addReason(
@@ -1755,29 +1854,29 @@ function scoreSourceFields(
   }
 
   for (const token of queryTokens) {
-    if (pathLower.includes(token)) {
+    if (pathTokens.has(token)) {
       addReason("path", chunk.file_path, 1.5, `path contains "${token}"`);
     }
     const symbol = chunk.symbols.find((entry) =>
-      entry.name.toLowerCase().includes(token),
+      tokenMatchesStructuredText(entry.name, token),
     );
     if (symbol) {
       addReason("symbol", symbol.name, 3, `symbol contains "${token}"`);
     }
     const sourceImport = chunk.imports.find((entry) =>
-      entry.module.toLowerCase().includes(token),
+      tokenMatchesStructuredText(entry.module, token),
     );
     if (sourceImport) {
       addReason("import", sourceImport.module, 1, `import contains "${token}"`);
     }
     const sourceExport = chunk.exports.find((entry) =>
-      entry.toLowerCase().includes(token),
+      tokenMatchesStructuredText(entry, token),
     );
     if (sourceExport) {
       addReason("export", sourceExport, 1, `export contains "${token}"`);
     }
     const relatedNode = relatedNodes.find((node) =>
-      `${node.name} ${node.summary}`.toLowerCase().includes(token),
+      tokenMatchesStructuredText(`${node.name} ${node.summary}`, token),
     );
     if (relatedNode) {
       addReason(
@@ -1825,6 +1924,88 @@ function diversifyRankedChunks(
   for (const candidate of ranked) add(candidate, Number.POSITIVE_INFINITY);
 
   return selected;
+}
+
+function filterWeakRankedChunks(ranked: RankedChunk[]): RankedChunk[] {
+  const positive = ranked.filter(({ score }) => score > 0);
+  const topScore = positive[0]?.score ?? 0;
+  if (topScore <= 0) return [];
+
+  const scoreFloor = Math.min(1, Math.max(0.25, topScore * 0.05));
+  return positive.filter(
+    (candidate, index) => index === 0 || candidate.score >= scoreFloor,
+  );
+}
+
+function adjustSourceScore(
+  score: number,
+  input: {
+    chunk: SourceChunk;
+    queryTokens: string[];
+    reverseImportIndex: ReverseImportIndex;
+    needsRelationshipRanking: boolean;
+  },
+): number {
+  if (score <= 0) return score;
+  let adjusted = score;
+
+  if (
+    isArchivalChunk(input.chunk) &&
+    !input.queryTokens.some((token) => ARCHIVAL_TOKENS.has(token))
+  ) {
+    adjusted *= ARCHIVAL_DEMOTION_MULTIPLIER;
+  }
+
+  if (
+    input.needsRelationshipRanking &&
+    isDisconnectedImplementationCandidate(
+      input.chunk,
+      input.reverseImportIndex,
+      input.queryTokens,
+    )
+  ) {
+    adjusted *= DISCONNECTED_IMPACT_MULTIPLIER;
+  }
+
+  return adjusted;
+}
+
+function isArchivalChunk(chunk: SourceChunk): boolean {
+  const pathTokens = tokenize(chunk.file_path);
+  if (pathTokens.some((token) => ARCHIVAL_TOKENS.has(token))) return true;
+
+  const contentTokens = tokenize(chunk.content);
+  return contentTokens.some((token) => ARCHIVAL_TOKENS.has(token));
+}
+
+function isDisconnectedImplementationCandidate(
+  chunk: SourceChunk,
+  reverseImportIndex: ReverseImportIndex,
+  queryTokens?: string[],
+): boolean {
+  if (chunk.language === "markdown") return false;
+  if (
+    queryTokens &&
+    hasExplicitPathTokenMatch(chunk.file_path, queryTokens)
+  ) {
+    return false;
+  }
+  if ((reverseImportIndex.get(chunk.file_path)?.length ?? 0) > 0) return false;
+  return !chunk.imports.some((entry) => entry.module.startsWith("."));
+}
+
+function hasExplicitPathTokenMatch(
+  filePath: string,
+  queryTokens: string[],
+): boolean {
+  const fileName = path.posix.basename(
+    filePath,
+    path.posix.extname(filePath),
+  );
+  const pathTokens = new Set(tokenize(fileName));
+  return queryTokens.some(
+    (token) => pathTokens.has(token) && !GENERIC_PATH_TOKENS.has(token),
+  );
 }
 
 function roundScoreBreakdown(
@@ -2435,6 +2616,18 @@ function tokenize(value: string): string[] {
     .toLowerCase()
     .split(/[^a-z0-9_$]+/)
     .filter((token) => token.length > 1);
+}
+
+function searchQueryTokens(value: string): string[] {
+  return tokenize(value).filter((token) => !QUERY_STOP_WORDS.has(token));
+}
+
+function tokenMatchesStructuredText(value: string, token: string): boolean {
+  return tokenize(value).includes(token);
+}
+
+function isImpactReviewQuery(queryTokens: string[]): boolean {
+  return queryTokens.some((token) => IMPACT_REVIEW_TOKENS.has(token));
 }
 
 function isGeneratedPath(relativePath: string): boolean {
