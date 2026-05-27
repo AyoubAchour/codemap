@@ -264,6 +264,18 @@ This drops the Taskflow fixture's compact recall forbidden-file violation rate
 from `0.6000` to `0.0000` while preserving hit rate, recall, MRR, and payload
 compliance. Semantic retrieval remains benchmark-only.
 
+### Budget-aware context packing
+
+Task 068 makes `recall_context` spend compact mixed-mode budget by evidence
+lane. Ranked graph, source, and optional capture-summary candidates are
+interleaved by lane depth so capture summaries add session evidence without
+crowding out source snippets. Responses also include compact `budget.packing`
+metadata for participating lanes, including candidate, selected, omitted,
+omitted-by-budget, and used-byte counts.
+
+This remains deterministic and local. It does not add LLM packing, hosted
+reranking, runtime semantic retrieval, or automatic graph writes.
+
 ## Task Sequence
 
 1. Task 057 - Agentmemory catch-up planning.
@@ -277,6 +289,7 @@ compliance. Semantic retrieval remains benchmark-only.
 9. Task 065 - Local semantic provider experiment.
 10. Task 066 - Optimization baseline and coverage audit.
 11. Task 067 - Distractor-aware source ranking.
+12. Task 068 - Budget-aware context packing.
 
 ## Gates
 
@@ -293,6 +306,8 @@ compliance. Semantic retrieval remains benchmark-only.
 - Optimization work starts from measured guardrail misses: false positives,
   missing warnings, absent evidence lanes, payload pressure, or latency
   regressions.
+- Compact recall makes budget allocation visible by participating evidence
+  lane.
 
 ## Risks
 

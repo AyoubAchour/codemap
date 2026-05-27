@@ -135,6 +135,19 @@ existing source index, existing retrieval benchmark harness.
 - [x] Verify Taskflow forbidden violations drop from `0.6000` to `0.0000`
       without hit/recall/MRR regression.
 
+## Phase 11 - Budget-Aware Context Packing
+
+- [x] Implement task 068.
+- [x] Interleave mixed `recall_context` evidence by lane so graph and source
+      hits are selected before optional capture summaries at the same rank
+      depth.
+- [x] Report compact `budget.packing` stats for participating graph, source,
+      and capture-summary lanes.
+- [x] Re-fit tight recall responses after warnings and packing metadata are
+      applied.
+- [x] Keep the change deterministic and local; do not add runtime semantic
+      retrieval or automatic graph writes.
+
 ## Done When
 
 - [x] Codemap has a compact recall surface with hard budget tests.
@@ -146,5 +159,7 @@ existing source index, existing retrieval benchmark harness.
       guessing at ranking changes.
 - [x] The first measured ranking optimization reduces distractors without
       promoting semantic retrieval into runtime behavior.
+- [x] Compact recall explains budget allocation across participating evidence
+      lanes.
 - [x] README/HANDOFF/ROADMAP describe the sequence without implying automatic
       graph writes.

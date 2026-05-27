@@ -90,6 +90,21 @@ export type RecallResult =
   | RecallSourceResult
   | RecallCaptureSummaryResult;
 
+export type RecallResultKind = RecallResult["kind"];
+
+export interface RecallPackingLaneStats {
+  candidates: number;
+  selected: number;
+  omitted: number;
+  omitted_by_budget: number;
+  used_bytes: number;
+}
+
+export interface RecallPackingSummary {
+  strategy: "balanced_relevance_density_v1";
+  lanes: Partial<Record<RecallResultKind, RecallPackingLaneStats>>;
+}
+
 export interface RecallContextResponse {
   ok: true;
   mode: RecallContextMode;
@@ -109,6 +124,7 @@ export interface RecallContextResponse {
       source: number;
       capture_summary: number;
     };
+    packing: RecallPackingSummary;
   };
   results: RecallResult[];
   warnings: string[];
@@ -126,7 +142,7 @@ export interface RecallContextResponse {
 }
 
 interface RecallCandidate {
-  kind: RecallResult["kind"];
+  kind: RecallResultKind;
   result: RecallResult;
   rank: number;
 }
@@ -229,7 +245,6 @@ export async function buildRecallContext(
     graphCandidates,
     sourceCandidates,
     captureCandidates,
-    limit,
   );
 
   if (candidates.length === 0) {
@@ -242,6 +257,7 @@ export async function buildRecallContext(
     files,
     symbols,
     budgetBytes,
+    limit,
     candidates,
     totalGraphCandidates: graphCandidates.length,
     totalSourceCandidates: sourceCandidates.length,
@@ -617,28 +633,25 @@ function selectCandidates(
   graphCandidates: RecallCandidate[],
   sourceCandidates: RecallCandidate[],
   captureCandidates: RecallCandidate[],
-  limit: number,
 ): RecallCandidate[] {
-  if (mode === "graph") return graphCandidates.slice(0, limit);
-  if (mode === "source") return sourceCandidates.slice(0, limit);
+  if (mode === "graph") return graphCandidates;
+  if (mode === "source") return sourceCandidates;
 
-  const selected: RecallCandidate[] = [];
+  const ordered: RecallCandidate[] = [];
   const maxLength = Math.max(
     graphCandidates.length,
-    captureCandidates.length,
     sourceCandidates.length,
+    captureCandidates.length,
   );
-  for (let index = 0; index < maxLength && selected.length < limit; index += 1) {
+  for (let index = 0; index < maxLength; index += 1) {
     const graph = graphCandidates[index];
-    if (graph) selected.push(graph);
-    if (selected.length >= limit) break;
-    const capture = captureCandidates[index];
-    if (capture) selected.push(capture);
-    if (selected.length >= limit) break;
+    if (graph) ordered.push(graph);
     const source = sourceCandidates[index];
-    if (source) selected.push(source);
+    if (source) ordered.push(source);
+    const capture = captureCandidates[index];
+    if (capture) ordered.push(capture);
   }
-  return selected.slice(0, limit);
+  return ordered;
 }
 
 function fitBudget(input: {
@@ -647,6 +660,7 @@ function fitBudget(input: {
   files: string[];
   symbols: string[];
   budgetBytes: number;
+  limit: number;
   candidates: RecallCandidate[];
   totalGraphCandidates: number;
   totalSourceCandidates: number;
@@ -656,9 +670,10 @@ function fitBudget(input: {
   refreshed: boolean;
 }): RecallContextResponse {
   const results: RecallResult[] = [];
-  let omittedForBudget = false;
+  const omittedForBudget = zeroKindCounts();
 
   for (const candidate of input.candidates) {
+    if (results.length >= input.limit) break;
     const tentativeResults = [...results, candidate.result];
     const omitted = omittedCounts({
       results: tentativeResults,
@@ -666,33 +681,80 @@ function fitBudget(input: {
       totalSourceCandidates: input.totalSourceCandidates,
       totalCaptureCandidates: input.totalCaptureCandidates,
     });
-    const warnings = buildBudgetWarnings(input.warnings, false, tentativeResults);
+    const warnings = buildBudgetWarnings(
+      input.warnings,
+      false,
+      tentativeResults,
+    );
     const tentative = finalizeBudget(
       baseResponse({
         ...input,
         results: tentativeResults,
         warnings,
         omitted,
+        omittedForBudget,
       }),
     );
     if (tentative.budget.used_bytes <= input.budgetBytes) {
       results.push(candidate.result);
     } else {
-      omittedForBudget = true;
+      omittedForBudget[candidate.kind] += 1;
     }
   }
 
+  let finalResults = results;
+  let finalResponse = recallResponseForResults({
+    ...input,
+    results: finalResults,
+    omittedForBudget,
+  });
+
+  while (
+    finalResponse.budget.used_bytes > input.budgetBytes &&
+    finalResults.length > 0
+  ) {
+    const omittedResult = finalResults[finalResults.length - 1];
+    if (!omittedResult) break;
+    omittedForBudget[omittedResult.kind] += 1;
+    finalResults = finalResults.slice(0, -1);
+    finalResponse = recallResponseForResults({
+      ...input,
+      results: finalResults,
+      omittedForBudget,
+    });
+  }
+  return finalResponse;
+}
+
+function recallResponseForResults(input: {
+  mode: RecallContextMode;
+  question: string;
+  files: string[];
+  symbols: string[];
+  budgetBytes: number;
+  results: RecallResult[];
+  totalGraphCandidates: number;
+  totalSourceCandidates: number;
+  totalCaptureCandidates: number;
+  omittedForBudget: Record<RecallResultKind, number>;
+  warnings: string[];
+  sourceStatus: SourceIndexStatus;
+  refreshed: boolean;
+}): RecallContextResponse {
   const omitted = omittedCounts({
-    results,
+    results: input.results,
     totalGraphCandidates: input.totalGraphCandidates,
     totalSourceCandidates: input.totalSourceCandidates,
     totalCaptureCandidates: input.totalCaptureCandidates,
   });
-  const warnings = buildBudgetWarnings(input.warnings, omittedForBudget, results);
+  const warnings = buildBudgetWarnings(
+    input.warnings,
+    hasBudgetOmissions(input.omittedForBudget),
+    input.results,
+  );
   return finalizeBudget(
     baseResponse({
       ...input,
-      results,
       warnings,
       omitted,
     }),
@@ -707,6 +769,7 @@ function baseResponse(input: {
   budgetBytes: number;
   results: RecallResult[];
   omitted: { graph: number; source: number; capture_summary: number };
+  omittedForBudget: Record<RecallResultKind, number>;
   warnings: string[];
   sourceStatus: SourceIndexStatus;
   refreshed: boolean;
@@ -729,6 +792,11 @@ function baseResponse(input: {
         input.omitted.source > 0 ||
         input.omitted.capture_summary > 0,
       omitted: input.omitted,
+      packing: packingSummary({
+        results: input.results,
+        omitted: input.omitted,
+        omittedForBudget: input.omittedForBudget,
+      }),
     },
     results: input.results,
     warnings: dedupe(input.warnings),
@@ -785,7 +853,7 @@ function omittedCounts(input: {
   totalGraphCandidates: number;
   totalSourceCandidates: number;
   totalCaptureCandidates: number;
-}): { graph: number; source: number; capture_summary: number } {
+}): Record<RecallResultKind, number> {
   const graph = input.results.filter((result) => result.kind === "graph").length;
   const source = input.results.filter((result) => result.kind === "source")
     .length;
@@ -796,6 +864,65 @@ function omittedCounts(input: {
     graph: Math.max(0, input.totalGraphCandidates - graph),
     source: Math.max(0, input.totalSourceCandidates - source),
     capture_summary: Math.max(0, input.totalCaptureCandidates - capture),
+  };
+}
+
+function zeroKindCounts(): Record<RecallResultKind, number> {
+  return {
+    graph: 0,
+    source: 0,
+    capture_summary: 0,
+  };
+}
+
+function hasBudgetOmissions(counts: Record<RecallResultKind, number>): boolean {
+  return counts.graph > 0 || counts.source > 0 || counts.capture_summary > 0;
+}
+
+function packingSummary(input: {
+  results: RecallResult[];
+  omitted: Record<RecallResultKind, number>;
+  omittedForBudget: Record<RecallResultKind, number>;
+}): RecallPackingSummary {
+  const lanes: Partial<Record<RecallResultKind, RecallPackingLaneStats>> = {};
+  for (const kind of recallResultKinds()) {
+    const stats = packingLaneStats(kind, input);
+    if (stats.candidates > 0 || stats.omitted_by_budget > 0) {
+      lanes[kind] = stats;
+    }
+  }
+  return {
+    strategy: "balanced_relevance_density_v1",
+    lanes,
+  };
+}
+
+function recallResultKinds(): RecallResultKind[] {
+  return ["graph", "source", "capture_summary"];
+}
+
+function packingLaneStats(
+  kind: RecallResultKind,
+  input: {
+    results: RecallResult[];
+    omitted: Record<RecallResultKind, number>;
+    omittedForBudget: Record<RecallResultKind, number>;
+  },
+): RecallPackingLaneStats {
+  const selectedResults = input.results.filter(
+    (result) => result.kind === kind,
+  );
+  const selected = selectedResults.length;
+  const omitted = input.omitted[kind] ?? 0;
+  return {
+    candidates: selected + omitted,
+    selected,
+    omitted,
+    omitted_by_budget: input.omittedForBudget[kind] ?? 0,
+    used_bytes: selectedResults.reduce(
+      (total, result) => total + responseBytes(result),
+      0,
+    ),
   };
 }
 

@@ -233,6 +233,68 @@ describe("buildRecallContext", () => {
     expect(result.budget.used_bytes).toBeLessThanOrEqual(3200);
   });
 
+  test("packs source evidence before optional capture summaries in mixed recall", async () => {
+    await seedRecallFixture();
+    await appendCaptureEvent(tmpRoot, {
+      session_id: "session-a",
+      kind: "prompt",
+      payload: { text: "Investigate requireActiveUser behavior." },
+    });
+    await appendCaptureEvent(tmpRoot, {
+      session_id: "session-a",
+      kind: "file_modified",
+      anchors: [{ file_path: "src/auth.ts", line_range: [1, 6] }],
+    });
+
+    const result = await buildRecallContext(tmpRoot, "requireActiveUser", {
+      budgetBytes: 3600,
+      limit: 3,
+      refreshIndex: "if_missing",
+      includeCaptureSummary: true,
+    });
+
+    expect(result.results.map((entry) => entry.kind)).toEqual([
+      "graph",
+      "source",
+      "capture_summary",
+    ]);
+  });
+
+  test("reports recall budget packing by evidence lane", async () => {
+    await seedRecallFixture();
+    await appendCaptureEvent(tmpRoot, {
+      session_id: "session-a",
+      kind: "prompt",
+      payload: { text: "Investigate requireActiveUser behavior." },
+    });
+    await appendCaptureEvent(tmpRoot, {
+      session_id: "session-a",
+      kind: "file_modified",
+      anchors: [{ file_path: "src/auth.ts", line_range: [1, 6] }],
+    });
+
+    const result = await buildRecallContext(tmpRoot, "requireActiveUser", {
+      budgetBytes: 3600,
+      limit: 3,
+      refreshIndex: "if_missing",
+      includeCaptureSummary: true,
+    });
+
+    expect(result.budget.packing.strategy).toBe(
+      "balanced_relevance_density_v1",
+    );
+    expect(result.budget.packing.lanes.graph?.selected).toBeGreaterThan(0);
+    expect(result.budget.packing.lanes.source?.selected).toBeGreaterThan(0);
+    expect(
+      result.budget.packing.lanes.capture_summary?.selected,
+    ).toBeGreaterThan(0);
+    expect(result.budget.packing.lanes.graph?.used_bytes).toBeGreaterThan(0);
+    expect(result.budget.packing.lanes.source?.used_bytes).toBeGreaterThan(0);
+    expect(
+      result.budget.packing.lanes.capture_summary?.used_bytes,
+    ).toBeGreaterThan(0);
+  });
+
   test("keeps graph and source recall when capture summaries are unreadable", async () => {
     await seedRecallFixture();
     const logPath = captureEventPath(tmpRoot);
