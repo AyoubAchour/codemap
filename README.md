@@ -297,6 +297,9 @@ lexical/graph/mixed/local-vector variant results. The bundled suite includes
 semantic, typo, cross-file impact, renamed-symbol, stale-graph, docs, tests,
 lifecycle, payload, and distractor cases, plus a small non-Codemap fixture under
 `benchmarks/fixtures/`. Use it before adding heavier retrieval machinery.
+Source search ranking remains lexical and local: structured boosts ignore common
+query stop words, archive-like material is demoted unless requested, and
+disconnected files are de-prioritized for impact/review questions.
 Semantic retrieval and reranking are disabled by default. The CLI accepts
 `--semantic-provider disabled`, `--semantic-provider local-hash`, and
 `--reranker-provider disabled`; `local-hash` is a dependency-free benchmark-only

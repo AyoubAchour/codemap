@@ -78,6 +78,13 @@ Queries may also include guardrail expectations:
 These guardrails are metrics, not default threshold failures. Use them to decide
 which ranking or packaging optimization deserves a follow-up task.
 
+The first follow-up optimization is deliberately local and lexical. Source
+search filters common query stop words before path/symbol/import/export boosts,
+matches those structured fields by tokens instead of arbitrary substrings,
+demotes archive-like content unless requested, and de-prioritizes disconnected
+files for explicit impact/review queries. This keeps compact context from being
+filled by weak distractors before any semantic provider is considered.
+
 Queries may include `response_budget_bytes` when a specific case needs its own
 payload gate. The `--response-budget-bytes` CLI flag applies one budget to every
 query in the run.

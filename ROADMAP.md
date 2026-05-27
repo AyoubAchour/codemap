@@ -293,6 +293,8 @@ replay/observability, setup polish, and benchmarked retrieval quality.
   earns opt-in runtime support.
 - Task 066: add an optimization baseline and coverage audit before tuning
   ranking or runtime retrieval defaults.
+- Task 067: tune local lexical ranking against the measured distractor misses
+  before considering runtime semantic retrieval.
 
 Tasks 057-066 are now implemented. The local semantic experiment added a
 dependency-free `local-hash` benchmark provider and lexical/graph/mixed/local
@@ -301,6 +303,13 @@ semantic retrieval remains benchmark-only. The optimization baseline adds
 forbidden-target, provenance, payload, distractor, and latency-percentile
 metrics so the next retrieval changes can be chosen from measured misses rather
 than guesswork.
+
+Task 067 implements the first measured optimization from that baseline:
+stop-word filtered structured boosts, archive-like content demotion,
+disconnected-file demotion for impact/review queries, and a weak-result floor.
+On the Taskflow fixture this drops compact recall forbidden-file violations
+from `0.6000` to `0.0000` while preserving hit rate, recall, MRR, and payload
+compliance.
 
 This order is intentional: benchmark the gap, ship compact recall, then add
 capture and observability. Automatic capture must improve suggestions and

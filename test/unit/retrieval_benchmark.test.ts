@@ -108,6 +108,29 @@ describe("retrieval benchmark", () => {
     ).toEqual(expect.arrayContaining(["semantic", "typo", "docs", "tests"]));
   });
 
+  test("taskflow fixture keeps distractors out of compact recall guardrails", async () => {
+    await fs.rm(tmpRoot, { recursive: true, force: true });
+    await fs.cp(
+      path.join(repoRoot, "benchmarks", "fixtures", "taskflow-app"),
+      tmpRoot,
+      { recursive: true },
+    );
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "benchmarks/retrieval.fixture.json",
+      profile: "recall",
+      refreshIndex: "if_stale",
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.summary.files.hit_rate_at_k).toBe(1);
+    expect(response.summary.files.recall_at_k).toBe(1);
+    expect(response.summary.files.mrr).toBe(1);
+    expect(response.summary.files.forbidden_violation_rate).toBe(0);
+    expect(response.summary.files.false_positive_rate_at_k).toBe(0);
+  });
+
   test("runs a local suite and reports file/node retrieval metrics", async () => {
     const authSource = [
       "export function requireActiveUser(token: string) {",

@@ -24,6 +24,13 @@ All notable user-facing changes to Codemap are documented here.
   file/node expectations, expected warning and result-source coverage, p50/p95
   latency metrics, and small distractor/payload cases in the bundled suites.
 
+### Improved
+
+- Source search ranking now filters query stop words before structured-field
+  boosts, demotes archive-like content unless requested, and de-prioritizes
+  disconnected files for impact/review queries. The Taskflow fixture's compact
+  recall forbidden-file violation rate drops from `0.6000` to `0.0000`.
+
 ## 0.8.0 - 2026-05-11
 
 This release makes Codemap more agentic in everyday repository work. It adds

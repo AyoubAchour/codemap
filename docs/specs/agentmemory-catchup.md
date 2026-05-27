@@ -251,6 +251,19 @@ ranking. The latency summary also reports p50/p95, and the bundled suites add
 small lifecycle, payload, and distractor cases without turning this into a large
 external benchmark.
 
+### Distractor-aware source ranking
+
+Task 067 implements the first optimization selected from those guardrails. It
+keeps retrieval local and lexical: query stop words no longer drive
+path/symbol/import/export boosts, structured fields match by tokens instead of
+substrings, archive-like material is demoted unless requested, and disconnected
+files are de-prioritized for impact/review queries. A weak-result floor prevents
+demoted distractors from refilling compact context.
+
+This drops the Taskflow fixture's compact recall forbidden-file violation rate
+from `0.6000` to `0.0000` while preserving hit rate, recall, MRR, and payload
+compliance. Semantic retrieval remains benchmark-only.
+
 ## Task Sequence
 
 1. Task 057 - Agentmemory catch-up planning.
@@ -263,6 +276,7 @@ external benchmark.
 8. Task 064 - Observability and replay report.
 9. Task 065 - Local semantic provider experiment.
 10. Task 066 - Optimization baseline and coverage audit.
+11. Task 067 - Distractor-aware source ranking.
 
 ## Gates
 
