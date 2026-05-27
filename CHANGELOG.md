@@ -20,6 +20,9 @@ All notable user-facing changes to Codemap are documented here.
   `codemap benchmark-retrieval --semantic-provider local-hash`, plus
   lexical/graph/mixed/local-vector variant metrics. The provider is
   dependency-free and remains outside runtime recall.
+- Retrieval benchmark guardrails for optimization work, including forbidden
+  file/node expectations, expected warning and result-source coverage, p50/p95
+  latency metrics, and small distractor/payload cases in the bundled suites.
 
 ## 0.8.0 - 2026-05-11
 

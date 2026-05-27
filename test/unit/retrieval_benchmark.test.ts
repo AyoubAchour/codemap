@@ -51,6 +51,8 @@ describe("retrieval benchmark", () => {
         "stale-graph",
         "docs",
         "tests",
+        "guardrail",
+        "provenance",
       ]),
     );
     expect([...ids].sort()).toEqual(
@@ -189,6 +191,179 @@ describe("retrieval benchmark", () => {
     expect(response.results[0]?.nodes.returned).toContain("auth/active-user");
   });
 
+  test("evaluates forbidden targets, warnings, and result sources", async () => {
+    const authSource = [
+      "export function requireActiveUser(token: string) {",
+      "  return { id: token, scope: 'active' };",
+      "}",
+      "",
+    ].join("\n");
+    await write("src/auth.ts", authSource);
+    await write(
+      "src/noise.ts",
+      "export function createInvoice() { return 'billing'; }\n",
+    );
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "optimization guardrail suite",
+          queries: [
+            {
+              id: "auth-guardrails",
+              query: "active user auth invariant",
+              expected_files: ["src/auth.ts"],
+              expected_nodes: ["auth/active-user"],
+              forbidden_files: ["src/noise.ts"],
+              forbidden_nodes: ["billing/noise"],
+              expected_warnings: ["Graph matches are curated repo memory"],
+              expected_result_sources: ["graph", "source"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+    await seed([
+      makeNode({
+        id: "auth/active-user",
+        name: "Active user auth invariant",
+        summary: "requireActiveUser returns an active authenticated actor.",
+        sources: [
+          {
+            file_path: "src/auth.ts",
+            line_range: [1, 3],
+            content_hash: hashBuffer(Buffer.from(authSource)),
+          },
+        ],
+      }),
+    ]);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 5,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    const result = response.results[0];
+    expect(result?.files.clean).toBe(true);
+    expect(result?.files.forbidden).toEqual(["src/noise.ts"]);
+    expect(result?.files.forbidden_matched).toEqual([]);
+    expect(result?.nodes.clean).toBe(true);
+    expect(result?.warning_expectations.matched).toEqual([
+      "Graph matches are curated repo memory",
+    ]);
+    expect(result?.warning_expectations.missing).toEqual([]);
+    expect(result?.result_sources.matched.sort()).toEqual(["graph", "source"]);
+    expect(response.summary.files.forbidden_evaluated_queries).toBe(1);
+    expect(response.summary.files.forbidden_violation_rate).toBe(0);
+    expect(response.summary.nodes.forbidden_evaluated_queries).toBe(1);
+    expect(response.summary.warning_expectations.hit_rate_at_k).toBe(1);
+    expect(response.summary.result_sources.recall_at_k).toBe(1);
+  });
+
+  test("surfaces forbidden result violations", async () => {
+    const authSource = "export const AUTH_SCOPE = 'active';\n";
+    await write("src/auth.ts", authSource);
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "forbidden violation suite",
+          queries: [
+            {
+              id: "auth-violation",
+              query: "active auth scope",
+              expected_files: ["src/auth.ts"],
+              expected_nodes: ["auth/active-user"],
+              forbidden_files: ["src/auth.ts"],
+              forbidden_nodes: ["auth/active-user"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+    await seed([
+      makeNode({
+        id: "auth/active-user",
+        name: "Active auth scope",
+        summary: "AUTH_SCOPE is the active auth marker.",
+        sources: [
+          {
+            file_path: "src/auth.ts",
+            line_range: [1, 1],
+            content_hash: hashBuffer(Buffer.from(authSource)),
+          },
+        ],
+      }),
+    ]);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 3,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.results[0]?.files.clean).toBe(false);
+    expect(response.results[0]?.files.forbidden_matched).toEqual([
+      "src/auth.ts",
+    ]);
+    expect(response.results[0]?.nodes.clean).toBe(false);
+    expect(response.results[0]?.nodes.forbidden_matched).toEqual([
+      "auth/active-user",
+    ]);
+    expect(response.summary.files.forbidden_violation_rate).toBe(1);
+    expect(response.summary.files.false_positive_rate_at_k).toBe(1);
+    expect(response.summary.nodes.forbidden_violation_rate).toBe(1);
+    expect(response.next_steps.join("\n")).toContain("forbidden file hits");
+    expect(response.next_steps.join("\n")).toContain("forbidden graph hits");
+  });
+
+  test("accepts forbidden-only guardrail cases", async () => {
+    await write("src/auth.ts", "export const AUTH_SCOPE = 'active';\n");
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "forbidden only suite",
+          queries: [
+            {
+              id: "guardrail-only",
+              query: "active auth scope",
+              forbidden_files: ["src/noise.ts"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 3,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.results[0]?.files.evaluated).toBe(false);
+    expect(response.results[0]?.files.clean).toBe(true);
+    expect(response.summary.files.evaluated_queries).toBe(0);
+    expect(response.summary.files.forbidden_evaluated_queries).toBe(1);
+    expect(response.summary.files.forbidden_violation_rate).toBe(0);
+  });
+
   test("recall profile uses compact defaults without changing planning defaults", async () => {
     await write(
       "src/auth.ts",
@@ -253,6 +428,7 @@ describe("retrieval benchmark", () => {
               id: "semantic-auth",
               query: "person access policy",
               expected_files: ["src/auth.ts"],
+              expected_result_sources: ["semantic"],
             },
           ],
         },
@@ -308,6 +484,8 @@ describe("retrieval benchmark", () => {
         reason: "test semantic synonym match",
       }),
     );
+    expect(response.results[0]?.result_sources.matched).toContain("semantic");
+    expect(response.summary.result_sources.hit_rate_at_k).toBe(1);
   });
 
   test("benchmarks the built-in local hash semantic provider", async () => {
@@ -496,6 +674,7 @@ describe("retrieval benchmark", () => {
               id: "rerank-auth",
               query: "require active user token",
               expected_files: ["src/auth.ts"],
+              expected_result_sources: ["source", "reranker"],
             },
           ],
         },
@@ -534,6 +713,10 @@ describe("retrieval benchmark", () => {
     expect(response.summary.experimental.reranker.files.hit_rate_at_k).toBe(1);
     expect(response.results[0]?.reranker.files.returned).toEqual([
       "src/auth.ts",
+    ]);
+    expect(response.results[0]?.result_sources.matched.sort()).toEqual([
+      "reranker",
+      "source",
     ]);
   });
 
@@ -772,7 +955,21 @@ describe("retrieval benchmark", () => {
     expect(response.summary.latency.average_latency_ms).toEqual(
       expect.any(Number),
     );
+    expect(response.summary.latency.p50_latency_ms).toEqual(expect.any(Number));
+    expect(response.summary.latency.p95_latency_ms).toEqual(expect.any(Number));
     expect(response.summary.latency.max_latency_ms).toEqual(expect.any(Number));
+    expect(response.summary.latency.p50_latency_ms).toBeLessThanOrEqual(
+      response.summary.latency.p95_latency_ms,
+    );
+    expect(response.summary.latency.p95_latency_ms).toBeLessThanOrEqual(
+      response.summary.latency.max_latency_ms,
+    );
+    expect(response.summary.latency.p50_latency_ms).toBe(
+      response.results[0]?.latency_ms,
+    );
+    expect(response.summary.latency.p95_latency_ms).toBe(
+      response.results[0]?.latency_ms,
+    );
     expect(response.summary.thresholds.passed).toBe(false);
     expect(response.summary.thresholds.failed).toEqual(
       expect.arrayContaining(["payload_budget.average_response_bytes"]),
@@ -813,7 +1010,7 @@ describe("retrieval benchmark", () => {
     expect(response.summary.thresholds.failed).toEqual(["nodes.hit_rate_at_k"]);
   });
 
-  test("rejects suites without expected files or nodes", async () => {
+  test("rejects suites without any expectations", async () => {
     await write(
       "retrieval-suite.json",
       JSON.stringify({
@@ -830,6 +1027,32 @@ describe("retrieval benchmark", () => {
     expect(response.ok).toBe(false);
     if (response.ok) throw new Error("expected invalid suite");
     expect(response.error.code).toBe("SUITE_INVALID");
+  });
+
+  test("rejects invalid expected result sources", async () => {
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify({
+        version: 1,
+        name: "invalid result source suite",
+        queries: [
+          {
+            id: "bad-source",
+            query: "anything",
+            expected_result_sources: ["capture"],
+          },
+        ],
+      }),
+    );
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+    });
+
+    expect(response.ok).toBe(false);
+    if (response.ok) throw new Error("expected invalid suite");
+    expect(response.error.code).toBe("SUITE_INVALID");
+    expect(response.error.message).toContain("expected_result_sources");
   });
 });
 

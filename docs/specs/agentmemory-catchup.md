@@ -241,6 +241,16 @@ runtime enablement remains deferred. A heavier local model provider should be a
 future opt-in experiment only if benchmark misses justify the install and
 maintenance cost.
 
+### Optimization baseline follow-up
+
+Task 066 extends the retrieval benchmark from positive hit-rate checks into an
+optimization audit surface. Suites can now declare forbidden files/nodes,
+expected provenance warnings, and expected result-source categories so Codemap
+can measure irrelevant context and missing evidence lanes before tuning
+ranking. The latency summary also reports p50/p95, and the bundled suites add
+small lifecycle, payload, and distractor cases without turning this into a large
+external benchmark.
+
 ## Task Sequence
 
 1. Task 057 - Agentmemory catch-up planning.
@@ -252,6 +262,7 @@ maintenance cost.
 7. Task 063 - Session summaries and recall profiles.
 8. Task 064 - Observability and replay report.
 9. Task 065 - Local semantic provider experiment.
+10. Task 066 - Optimization baseline and coverage audit.
 
 ## Gates
 
@@ -265,6 +276,9 @@ maintenance cost.
 - Report/replay output is useful from local files alone.
 - Optional semantic retrieval stays disabled by default until benchmark evidence
   justifies changing that posture.
+- Optimization work starts from measured guardrail misses: false positives,
+  missing warnings, absent evidence lanes, payload pressure, or latency
+  regressions.
 
 ## Risks
 

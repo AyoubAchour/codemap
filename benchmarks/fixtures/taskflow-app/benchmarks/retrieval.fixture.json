@@ -9,7 +9,11 @@
       "expected_files": [
         "src/auth/session.ts"
       ],
-      "tags": ["semantic", "auth"]
+      "forbidden_files": [
+        "src/notifications/email.ts"
+      ],
+      "expected_result_sources": ["source"],
+      "tags": ["semantic", "auth", "guardrail"]
     },
     {
       "id": "typo-task-creation",
@@ -37,7 +41,14 @@
       "expected_files": [
         "docs/operations.md"
       ],
-      "tags": ["docs", "semantic"]
+      "forbidden_files": [
+        "docs/archive.md"
+      ],
+      "expected_warnings": [
+        "Source hits come from the rebuildable local index"
+      ],
+      "expected_result_sources": ["source"],
+      "tags": ["docs", "semantic", "provenance"]
     },
     {
       "id": "notification-digest",
@@ -45,7 +56,11 @@
       "expected_files": [
         "src/notifications/email.ts"
       ],
-      "tags": ["semantic", "notifications"]
+      "forbidden_files": [
+        "src/auth/session.ts"
+      ],
+      "expected_result_sources": ["source"],
+      "tags": ["semantic", "notifications", "guardrail"]
     },
     {
       "id": "test-discovery",
@@ -54,6 +69,34 @@
         "test/tasks.fixture.ts"
       ],
       "tags": ["tests"]
+    },
+    {
+      "id": "distractor-runbook-policy",
+      "query": "where is the service level target for overdue task digest handoff documented",
+      "expected_files": [
+        "docs/operations.md"
+      ],
+      "forbidden_files": [
+        "docs/archive.md"
+      ],
+      "response_budget_bytes": 16000,
+      "expected_result_sources": ["source"],
+      "tags": ["docs", "distractor", "payload", "semantic", "guardrail"]
+    },
+    {
+      "id": "assignment-noisy-impact",
+      "query": "if task assignment notification output changes what implementation and test files need review",
+      "expected_files": [
+        "src/projects/tasks.ts",
+        "src/notifications/email.ts",
+        "test/tasks.fixture.ts"
+      ],
+      "forbidden_files": [
+        "src/notifications/slack.ts"
+      ],
+      "response_budget_bytes": 16000,
+      "expected_result_sources": ["source"],
+      "tags": ["impact", "distractor", "tests", "payload", "guardrail"]
     }
   ]
 }

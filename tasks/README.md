@@ -143,6 +143,7 @@ Maintained manually. Update status as tasks land.
 | 063 | Recall profiles and session summaries | done | Phase 4 / recall | [task-063-recall-profile-and-session-summaries.md](task-063-recall-profile-and-session-summaries.md) |
 | 064 | Observability and replay report | done | Phase 4 / observability | [task-064-observability-and-replay-report.md](task-064-observability-and-replay-report.md) |
 | 065 | Local semantic provider experiment | done | Phase 4 / retrieval | [task-065-local-semantic-provider-experiment.md](task-065-local-semantic-provider-experiment.md) |
+| 066 | Optimization baseline and coverage audit | done | Phase 4 / evaluation | [task-066-optimization-baseline.md](task-066-optimization-baseline.md) |
 
 ---
 
