@@ -102,13 +102,13 @@ existing source index, existing retrieval benchmark harness.
 
 ## Phase 8 - Local Semantic Provider Experiment
 
-- [ ] Implement task 065.
-- [ ] Add a local embedding provider behind the existing semantic retrieval
+- [x] Implement task 065.
+- [x] Add a local embedding provider behind the existing semantic retrieval
       adapter interface.
-- [ ] Keep it benchmark-only at first.
-- [ ] Compare lexical-only, graph-only, mixed, and local-vector variants on the
+- [x] Keep it benchmark-only at first.
+- [x] Compare lexical-only, graph-only, mixed, and local-vector variants on the
       same benchmark suite.
-- [ ] Promote only if recall/payload gains beat install and maintenance cost.
+- [x] Promote only if recall/payload gains beat install and maintenance cost.
 
 ## Done When
 
@@ -116,6 +116,6 @@ existing source index, existing retrieval benchmark harness.
 - [x] Codemap can capture session evidence automatically without graph writes.
 - [x] `suggest_writeback` can use capture evidence while remaining read-only.
 - [x] A local report makes capture and recall auditable.
-- [ ] Benchmarks make retrieval quality, latency, and payload tradeoffs visible.
-- [ ] README/HANDOFF/ROADMAP describe the sequence without implying automatic
+- [x] Benchmarks make retrieval quality, latency, and payload tradeoffs visible.
+- [x] README/HANDOFF/ROADMAP describe the sequence without implying automatic
       graph writes.

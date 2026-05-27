@@ -101,6 +101,7 @@ export interface RetrievalBenchmarkQueryResult {
   source_file_diversity: number;
   files: RetrievalTargetEvaluation;
   nodes: RetrievalTargetEvaluation;
+  variants: RetrievalBenchmarkVariantResult;
   semantic: RetrievalBenchmarkSemanticResult;
   reranker: RetrievalBenchmarkRerankerResult;
   warnings: string[];
@@ -148,6 +149,7 @@ export interface RetrievalBenchmarkSummary {
   average_source_file_diversity: number;
   files: RetrievalBenchmarkAggregate;
   nodes: RetrievalBenchmarkAggregate;
+  variants: RetrievalBenchmarkVariantSummary;
   thresholds: {
     min_file_hit_rate?: number;
     min_node_hit_rate?: number;
@@ -165,6 +167,20 @@ export interface RetrievalBenchmarkSummary {
     semantic_retrieval: RetrievalBenchmarkSemanticSummary;
     reranker: RetrievalBenchmarkRerankerSummary;
   };
+}
+
+export interface RetrievalBenchmarkVariantResult {
+  lexical_files: RetrievalTargetEvaluation;
+  graph_files: RetrievalTargetEvaluation;
+  mixed_files: RetrievalTargetEvaluation;
+  local_vector_files: RetrievalTargetEvaluation;
+}
+
+export interface RetrievalBenchmarkVariantSummary {
+  lexical_files: RetrievalBenchmarkAggregate;
+  graph_files: RetrievalBenchmarkAggregate;
+  mixed_files: RetrievalBenchmarkAggregate;
+  local_vector_files: RetrievalBenchmarkAggregate;
 }
 
 export interface RetrievalBenchmarkSemanticResult {
@@ -303,6 +319,11 @@ export async function runRetrievalBenchmark(
       : [];
     const returnedFiles = unique(sourceResults.map((result) => result.file_path));
     const returnedNodes = context.graph.nodes.map((node) => node.id);
+    const returnedGraphFiles = unique(
+      context.graph.nodes.flatMap((node) =>
+        node.sources.map((source) => normalizeRepoPath(source.file_path)),
+      ),
+    );
     const sourceFileDiversity =
       sourceResults.length === 0 ? 0 : returnedFiles.length / sourceResults.length;
     const expectedFiles = (benchmarkQuery.expected_files ?? []).map(normalizeRepoPath);
@@ -330,6 +351,28 @@ export async function runRetrievalBenchmark(
     for (const warning of rerankRun.warnings) {
       if (!warnings.includes(warning)) warnings.push(warning);
     }
+    const lexicalFiles = evaluateTargets(
+      expectedFiles,
+      returnedFiles.map(normalizeRepoPath),
+    );
+    const graphFiles = evaluateTargets(expectedFiles, returnedGraphFiles);
+    const mixedFiles = evaluateTargets(
+      expectedFiles,
+      unique([
+        ...returnedFiles.map(normalizeRepoPath),
+        ...returnedGraphFiles,
+      ]),
+    );
+    const semanticFiles = evaluateTargets(
+      semanticRun.enabled ? expectedFiles : [],
+      semanticRun.hits.map((hit) => hit.file_path),
+    );
+    const localVectorFiles = evaluateTargets(
+      semanticRun.enabled && semanticRun.provider_kind === "local"
+        ? expectedFiles
+        : [],
+      semanticRun.hits.map((hit) => hit.file_path),
+    );
 
     results.push({
       id: benchmarkQuery.id,
@@ -340,21 +383,21 @@ export async function runRetrievalBenchmark(
       payload: evaluatePayloadBudget(responseBytes, responseBudgetBytes),
       source_result_count: sourceResults.length,
       source_file_diversity: round4(sourceFileDiversity),
-      files: evaluateTargets(
-        expectedFiles,
-        returnedFiles.map(normalizeRepoPath),
-      ),
+      files: lexicalFiles,
       nodes: evaluateTargets(benchmarkQuery.expected_nodes ?? [], returnedNodes),
+      variants: {
+        lexical_files: lexicalFiles,
+        graph_files: graphFiles,
+        mixed_files: mixedFiles,
+        local_vector_files: localVectorFiles,
+      },
       semantic: {
         enabled: semanticRun.enabled,
         provider: semanticRun.provider,
         provider_kind: semanticRun.provider_kind,
         latency_ms: semanticRun.latency_ms,
         hits: semanticRun.hits,
-        files: evaluateTargets(
-          semanticRun.enabled ? expectedFiles : [],
-          semanticRun.hits.map((hit) => hit.file_path),
-        ),
+        files: semanticFiles,
         warnings: semanticRun.warnings,
       },
       reranker: {
@@ -584,6 +627,20 @@ function summarizeResults(
 ): RetrievalBenchmarkSummary {
   const files = aggregateEvaluations(results.map((result) => result.files));
   const nodes = aggregateEvaluations(results.map((result) => result.nodes));
+  const variants: RetrievalBenchmarkVariantSummary = {
+    lexical_files: aggregateEvaluations(
+      results.map((result) => result.variants.lexical_files),
+    ),
+    graph_files: aggregateEvaluations(
+      results.map((result) => result.variants.graph_files),
+    ),
+    mixed_files: aggregateEvaluations(
+      results.map((result) => result.variants.mixed_files),
+    ),
+    local_vector_files: aggregateEvaluations(
+      results.map((result) => result.variants.local_vector_files),
+    ),
+  };
   const averageLatencyMs = average(results.map((result) => result.latency_ms));
   const averageResponseBytes = average(
     results.map((result) => result.response_bytes),
@@ -656,6 +713,7 @@ function summarizeResults(
     ),
     files,
     nodes,
+    variants,
     thresholds: {
       min_file_hit_rate: input.minFileHitRate,
       min_node_hit_rate: input.minNodeHitRate,
@@ -792,6 +850,15 @@ function benchmarkNextSteps(summary: RetrievalBenchmarkSummary): string[] {
   }
   if (summary.thresholds.failed.length > 0) {
     steps.push(`Thresholds failed: ${summary.thresholds.failed.join(", ")}.`);
+  }
+  if (summary.variants.local_vector_files.evaluated_queries > 0) {
+    const localRecall = summary.variants.local_vector_files.recall_at_k;
+    const lexicalRecall = summary.variants.lexical_files.recall_at_k;
+    if (localRecall <= lexicalRecall) {
+      steps.push(
+        "Local-vector recall did not beat lexical recall; keep semantic retrieval benchmark-only unless another provider improves the tradeoff.",
+      );
+    }
   }
   return steps;
 }

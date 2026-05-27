@@ -120,15 +120,19 @@ The sequence is:
 Keep the principle crisp: Codemap may capture evidence automatically, but graph
 memory stays explicit, curated, and anchored to real repo files.
 
-Tasks 058-064 are now implemented. `benchmark-retrieval` has a `recall` profile
+Tasks 058-065 are now implemented. `benchmark-retrieval` has a `recall` profile
 for compact benchmark defaults plus payload/latency gates, `recall_context`
 provides compact budgeted recall, capture hooks can append rebuildable evidence,
 `suggest_writeback` can consume captured session evidence, `capture-summary`
 builds rebuildable session/profile summaries, and `capture-report` audits
 captured timelines, recall hits, writeback suggestions, graph writes, ignored
-events, and captured budget fields without touching graph memory. The next
-implementation slice is task 065, the benchmark-only local semantic provider
-experiment.
+events, and captured budget fields without touching graph memory. Task 065 adds
+`benchmark-retrieval --semantic-provider local-hash`, a dependency-free local
+hashing-vector experiment over the source index, plus lexical/graph/mixed/local
+variant metrics. The first local-vector experiment did not beat lexical recall,
+so semantic retrieval stays benchmark-only. The next natural slice is release
+bookkeeping for the post-0.8.0 Agentmemory catch-up work unless a follow-up
+semantic provider experiment is explicitly chosen first.
 
 ## How to work in this repo (the conventions)
 

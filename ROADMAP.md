@@ -292,6 +292,11 @@ replay/observability, setup polish, and benchmarked retrieval quality.
 - Task 065: benchmark a local semantic provider before deciding whether it
   earns opt-in runtime support.
 
+Tasks 057-065 are now implemented. The local semantic experiment added a
+dependency-free `local-hash` benchmark provider and lexical/graph/mixed/local
+variant metrics, but it did not beat lexical recall on the Codemap suite, so
+semantic retrieval remains benchmark-only.
+
 This order is intentional: benchmark the gap, ship compact recall, then add
 capture and observability. Automatic capture must improve suggestions and
 recall, not bypass explicit graph writeback.
