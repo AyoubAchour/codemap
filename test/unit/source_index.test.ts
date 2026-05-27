@@ -1304,6 +1304,88 @@ describe("source index", () => {
     );
   });
 
+  test("dependency context does not resolve bare external package imports to local files", async () => {
+    await write(
+      "src/react.ts",
+      [
+        "export function localReactHelper() {",
+        "  return 'local helper';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/view.ts",
+      [
+        "import React from 'react';",
+        "",
+        "export function renderWidget() {",
+        "  return React.createElement('div', null, 'widget');",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(tmpRoot, "render widget", {
+      limit: 3,
+      dependencyLimit: 3,
+    });
+    const viewResult = response.results.find(
+      (result) => result.file_path === "src/view.ts",
+    );
+
+    expect(viewResult).toBeDefined();
+    expect(viewResult?.dependency_context).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          direction: "imports",
+          file_path: "src/react.ts",
+          module: "react",
+        }),
+      ]),
+    );
+  });
+
+  test("dependency context does not resolve single-segment package imports to workspace folders", async () => {
+    await write(
+      "packages/react/index.ts",
+      [
+        "export function localReactPackage() {",
+        "  return 'local package';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/view.ts",
+      [
+        "import React from 'react';",
+        "",
+        "export function renderWidget() {",
+        "  return React.createElement('div', null, 'widget');",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(tmpRoot, "render widget", {
+      limit: 3,
+      dependencyLimit: 3,
+    });
+    const viewResult = response.results.find(
+      (result) => result.file_path === "src/view.ts",
+    );
+
+    expect(viewResult).toBeDefined();
+    expect(viewResult?.dependency_context).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          direction: "imports",
+          file_path: "packages/react/index.ts",
+          module: "react",
+        }),
+      ]),
+    );
+  });
+
   test("search can include symbol impact context", async () => {
     await write(
       "src/auth.ts",

@@ -128,6 +128,7 @@ const GENERIC_PATH_TOKENS = new Set([
 ]);
 const ARCHIVAL_DEMOTION_MULTIPLIER = 0.05;
 const DISCONNECTED_IMPACT_MULTIPLIER = 0.08;
+const LOCAL_ROOT_IMPORT_PREFIXES = ["src/", "packages/", "apps/", "libs/"];
 
 export interface SourceSymbol {
   name: string;
@@ -2635,24 +2636,12 @@ function nonRelativeImportBaseCandidates(moduleSpecifier: string): string[] {
     return bases;
   }
 
-  add(moduleSpecifier);
-  add(`src/${moduleSpecifier}`);
-
-  const workspaceParts = moduleSpecifier.split("/");
-  const packageName =
-    moduleSpecifier.startsWith("@") && workspaceParts.length >= 2
-      ? workspaceParts[1]
-      : workspaceParts[0];
-  const packageSubpath =
-    moduleSpecifier.startsWith("@") && workspaceParts.length >= 3
-      ? workspaceParts.slice(2).join("/")
-      : workspaceParts.slice(1).join("/");
-
-  if (packageName) {
-    for (const root of ["packages", "apps", "libs"]) {
-      add(path.posix.join(root, packageName, packageSubpath));
-      add(path.posix.join(root, packageName, "src", packageSubpath));
-    }
+  if (
+    LOCAL_ROOT_IMPORT_PREFIXES.some((prefix) =>
+      moduleSpecifier.startsWith(prefix),
+    )
+  ) {
+    add(moduleSpecifier);
   }
 
   return bases;
