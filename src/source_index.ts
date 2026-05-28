@@ -1801,12 +1801,15 @@ function rankChunks(
       };
     })
     .filter((result) => result.score > 0)
-    .sort(
-      (a, b) =>
-        b.score - a.score ||
-        a.chunk.file_path.localeCompare(b.chunk.file_path) ||
-        a.chunk.start_line - b.chunk.start_line,
-    );
+    .sort(compareRankedChunks);
+}
+
+function compareRankedChunks(a: RankedChunk, b: RankedChunk): number {
+  return (
+    b.score - a.score ||
+    a.chunk.file_path.localeCompare(b.chunk.file_path) ||
+    a.chunk.start_line - b.chunk.start_line
+  );
 }
 
 function bm25ScoresForQuery(
@@ -2064,7 +2067,7 @@ function expandRankedWithCompanionChunks(
     }
   }
 
-  return expanded;
+  return expanded.sort(compareRankedChunks);
 }
 
 function companionCandidatesForRankedChunk(
@@ -2152,10 +2155,14 @@ function rankedChunkForCompanion(
   const chunk = companionChunkForFile(companion.file, options.queryTokens);
   if (!chunk) return null;
 
+  const companionSignalScore = companionChunkSignalScore(
+    chunk,
+    options.queryTokens,
+  );
   const score = Math.max(
     COMPANION_SCORE_FLOOR,
     seed.score * COMPANION_SCORE_MULTIPLIER,
-  );
+  ) + companionSignalScore;
   const score_breakdown = zeroScoreBreakdown();
   score_breakdown.path = score;
 

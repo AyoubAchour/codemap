@@ -1103,6 +1103,48 @@ describe("source index", () => {
     );
   });
 
+  test("search keeps stronger direct hits ahead of lower-scored companions", async () => {
+    await write(
+      "src/alpha_retrieval.ts",
+      [
+        "export function alphaRetrievalAnchor() {",
+        "  return 'ultramarine quartz beacon';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "test/unit/alpha_retrieval.test.ts",
+      [
+        "import { alphaRetrievalAnchor } from '../../src/alpha_retrieval';",
+        "",
+        "export function alphaRetrievalFixture() {",
+        "  return alphaRetrievalAnchor();",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/beta_retrieval.ts",
+      [
+        "export function betaRetrievalAnchor() {",
+        "  return 'ultramarine quartz beacon';",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "ultramarine quartz beacon",
+      { limit: 2 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual([
+      "src/alpha_retrieval.ts",
+      "src/beta_retrieval.ts",
+    ]);
+  });
+
   test("search surfaces a non-TS unit test companion for matching source implementation", async () => {
     await write(
       "src/view_widget.tsx",
