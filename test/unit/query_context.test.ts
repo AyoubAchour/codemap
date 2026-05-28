@@ -201,4 +201,52 @@ describe("buildQueryContext", () => {
       result.budget?.packing.lanes.graph?.omitted_by_budget,
     ).toBeGreaterThan(0);
   });
+
+  test("recomputes graph quality after budget trims graph source anchors", async () => {
+    const missingSources = Array.from({ length: 80 }, (_value, index) => ({
+      file_path: `src/missing-anchor-${index}.ts`,
+      line_range: [1, 1] as [number, number],
+      content_hash: `sha256:${index.toString(16).padStart(64, "0")}`,
+    }));
+    await seedGraphNode({
+      id: "budget/source-trim-quality",
+      name: "Source trim quality metadata",
+      summary: "Budget trimming must recompute quality after source anchors are removed.",
+      aliases: ["source trim quality"],
+      tags: ["budgeting", "quality"],
+      sources: missingSources,
+    });
+
+    const result = await buildQueryContext(
+      tmpRoot,
+      "source trim quality metadata budget",
+      {
+        graphLimit: 1,
+        sourceLimit: 0,
+        refreshIndex: "never",
+        budgetBytes: 4250,
+      },
+    );
+
+    const node = result.graph.nodes[0];
+    const match = result.graph.matches.find(
+      (entry) => entry.node_id === node?.id,
+    );
+    const summary = result.summary.graph_memories.find(
+      (entry) => entry.id === node?.id,
+    );
+
+    expect(node?.id).toBe("budget/source-trim-quality");
+    expect(node?.sources).toHaveLength(0);
+    expect(result.budget?.within_budget).toBe(true);
+    expect(result.graph.staleness.checked_sources).toBe(0);
+    expect(result.graph.staleness.stale_sources).toHaveLength(0);
+    expect(match?.quality?.checked_sources).toBe(0);
+    expect(match?.quality?.stale_sources).toBe(0);
+    expect(match?.quality?.freshness).toBe("no_sources");
+    expect(summary?.freshness).toBe("no_sources");
+    expect(summary?.quality_reasons).toContain("no source anchors to verify");
+    expect(result.warnings.join("\n")).not.toContain("stale source anchors");
+    expect(result.warnings.join("\n")).not.toContain("low-trust");
+  });
 });

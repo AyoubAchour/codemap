@@ -189,6 +189,12 @@ const DEFAULT_REFRESH_INDEX: SourceRefreshMode = "if_missing";
 const DEFAULT_MODE: QueryContextMode = "standard";
 const REPO_MAP_CAVEAT =
   "Repo map rankings are rebuildable source-index signals; use them to choose files to inspect, not as durable memory.";
+const GRAPH_MEMORY_WARNING =
+  "Graph matches are curated repo memory; prefer fresh graph decisions/invariants/gotchas over re-deriving them.";
+const STALE_GRAPH_MEMORY_WARNING =
+  "Some returned graph nodes have stale source anchors; re-read those files before relying on them.";
+const LOW_TRUST_GRAPH_MEMORY_WARNING =
+  "Some graph nodes are low-trust; inspect their source anchors before relying on them.";
 const QUERY_CONTEXT_BUDGET_WARNING =
   "Query context was trimmed to stay within the configured byte budget.";
 const TRUNCATION_MARKER = "\n... omitted for query_context budget ...";
@@ -284,19 +290,13 @@ export async function buildQueryContext(
   );
   const memoryQuality = summarizeGraphMemoryQuality(graphResult);
   if (graphResult.nodes.length > 0) {
-    warnings.push(
-      "Graph matches are curated repo memory; prefer fresh graph decisions/invariants/gotchas over re-deriving them.",
-    );
+    warnings.push(GRAPH_MEMORY_WARNING);
   }
   if (staleness.stale_sources.length > 0) {
-    warnings.push(
-      "Some returned graph nodes have stale source anchors; re-read those files before relying on them.",
-    );
+    warnings.push(STALE_GRAPH_MEMORY_WARNING);
   }
   if (memoryQuality.low_trust_node_ids.length > 0) {
-    warnings.push(
-      "Some graph nodes are low-trust; inspect their source anchors before relying on them.",
-    );
+    warnings.push(LOW_TRUST_GRAPH_MEMORY_WARNING);
   }
 
   let sourceStatus = await getSourceIndexStatus(repoRoot);
@@ -935,6 +935,9 @@ function trimSourceResults(
 
 function syncGraphNodeDependents(response: QueryContextResponse): void {
   const graphNodeIds = new Set(response.graph.nodes.map((node) => node.id));
+  const expansionById = new Map(
+    response.expansion.graph_nodes.map((entry) => [entry.id, entry]),
+  );
   response.graph.matches = response.graph.matches.filter((match) =>
     graphNodeIds.has(match.node_id),
   );
@@ -950,13 +953,46 @@ function syncGraphNodeDependents(response: QueryContextResponse): void {
     response.graph.staleness,
     response.graph.nodes,
   );
+  const rerankedGraph = rankGraphResultByQuality(
+    response.graph,
+    response.graph.staleness,
+    {
+      limit: response.graph.nodes.length,
+      sourceChecksEnabled: true,
+    },
+  );
+  response.graph.nodes = rerankedGraph.nodes;
+  response.graph.matches = rerankedGraph.matches;
+  response.graph.edges = rerankedGraph.edges;
   response.graph.memory_quality = summarizeGraphMemoryQuality(response.graph);
+  syncGraphWarnings(response);
+  const graphNodes: QueryContextExpansion["graph_nodes"] = [];
+  for (const node of response.graph.nodes) {
+    const entry = expansionById.get(node.id);
+    if (entry) graphNodes.push(entry);
+  }
   response.expansion = {
     ...response.expansion,
-    graph_nodes: response.expansion.graph_nodes.filter((entry) =>
-      graphNodeIds.has(entry.id),
-    ),
+    graph_nodes: graphNodes,
   };
+}
+
+function syncGraphWarnings(response: QueryContextResponse): void {
+  const nonGraphWarnings = response.warnings.filter(
+    (warning) =>
+      warning !== GRAPH_MEMORY_WARNING &&
+      warning !== STALE_GRAPH_MEMORY_WARNING &&
+      warning !== LOW_TRUST_GRAPH_MEMORY_WARNING,
+  );
+  const graphWarnings: string[] = [];
+  if (response.graph.nodes.length > 0) graphWarnings.push(GRAPH_MEMORY_WARNING);
+  if (response.graph.staleness.stale_sources.length > 0) {
+    graphWarnings.push(STALE_GRAPH_MEMORY_WARNING);
+  }
+  if (response.graph.memory_quality.low_trust_node_ids.length > 0) {
+    graphWarnings.push(LOW_TRUST_GRAPH_MEMORY_WARNING);
+  }
+  response.warnings = [...graphWarnings, ...nonGraphWarnings];
 }
 
 function filterStalenessReportForRetainedSources(
