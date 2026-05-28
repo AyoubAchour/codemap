@@ -25,6 +25,8 @@ All notable user-facing changes to Codemap are documented here.
   latency metrics, and small distractor/payload cases in the bundled suites.
 - Retrieval benchmark miss audits in `summary.audit`, grouping exact query
   misses, forbidden hits, noisy variants, payload overruns, and issue tags.
+- Retrieval benchmark `supporting_files` expectations, keeping secondary
+  context visible without lowering primary file hit-rate or recall gates.
 - Opt-in planning-context budgets via `query_context` `budget_bytes`,
   `codemap context --budget`, and
   `codemap benchmark-retrieval --context-budget-bytes`.

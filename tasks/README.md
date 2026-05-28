@@ -149,6 +149,7 @@ Maintained manually. Update status as tasks land.
 | 069 | Query context budget packing | done | Phase 4 / retrieval | [task-069-query-context-budget-packing.md](task-069-query-context-budget-packing.md) |
 | 070 | Reliability gate | done | Phase 4 / evaluation | [task-070-reliability-gate.md](task-070-reliability-gate.md) |
 | 071 | Benchmark miss audit | done | Phase 4 / evaluation | [task-071-benchmark-miss-audit.md](task-071-benchmark-miss-audit.md) |
+| 072 | Benchmark audit triage | done | Phase 4 / evaluation | [task-072-benchmark-audit-triage.md](task-072-benchmark-audit-triage.md) |
 
 ---
 
