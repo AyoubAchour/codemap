@@ -373,6 +373,10 @@ export async function runRetrievalBenchmark(
     const responseBytes = Buffer.byteLength(JSON.stringify(context), "utf8");
     const responseBudgetBytes =
       options.responseBudgetBytes ?? benchmarkQuery.response_budget_bytes;
+    const payloadBudgetBytes = effectivePayloadBudgetBytes(
+      responseBudgetBytes,
+      options.contextBudgetBytes,
+    );
     const semanticRun = await runSemanticFileRetrieval(semantic, {
       repoRoot: resolvedRepoRoot,
       suitePath: suiteResolution.relativePath,
@@ -439,7 +443,7 @@ export async function runRetrievalBenchmark(
       tags: benchmarkQuery.tags ?? [],
       latency_ms: latencyMs,
       response_bytes: responseBytes,
-      payload: evaluatePayloadBudget(responseBytes, responseBudgetBytes),
+      payload: evaluatePayloadBudget(responseBytes, payloadBudgetBytes),
       source_result_count: sourceResults.length,
       source_file_diversity: round4(sourceFileDiversity),
       files: lexicalFiles,
@@ -948,6 +952,15 @@ function evaluatePayloadBudget(
         ? 0
         : Math.max(0, responseBytes - responseBudgetBytes),
   };
+}
+
+function effectivePayloadBudgetBytes(
+  responseBudgetBytes?: number,
+  contextBudgetBytes?: number,
+): number | undefined {
+  if (responseBudgetBytes === undefined) return contextBudgetBytes;
+  if (contextBudgetBytes === undefined) return responseBudgetBytes;
+  return Math.min(responseBudgetBytes, contextBudgetBytes);
 }
 
 function aggregatePayloadBudgets(
