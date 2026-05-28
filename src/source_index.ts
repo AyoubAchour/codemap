@@ -2131,13 +2131,14 @@ function companionCandidatesForRankedChunk(
     );
   }
 
+  const writebackQuery = isWritebackQuery(options.queryTokens);
   if (
-    isAgentGuidanceQuery(options.queryTokens) &&
+    (isAgentGuidanceQuery(options.queryTokens) || writebackQuery) &&
     isAgentGuidanceSeed(rankedChunk.chunk.file_path)
   ) {
     add("AGENTS.md", "generated agent guidance for lifecycle queries", 80);
     add("src/guidance.ts", "client guidance companion for lifecycle queries", 79);
-    if (isWritebackQuery(options.queryTokens)) {
+    if (writebackQuery) {
       add(
         "src/tools/suggest_writeback.ts",
         "writeback tool companion for lifecycle queries",
