@@ -999,13 +999,16 @@ function filterStalenessReportForRetainedSources(
   staleness: StalenessReport,
   nodes: Node[],
 ): StalenessReport {
-  const retainedSources = new Set(
-    nodes.flatMap((node) =>
-      node.sources.map(
-        (source) => `${node.id}\0${source.file_path}\0${source.content_hash}`,
-      ),
-    ),
-  );
+  const retainedSources = new Set<string>();
+  let retainedSourceCount = 0;
+  for (const node of nodes) {
+    for (const source of node.sources) {
+      retainedSourceCount += 1;
+      retainedSources.add(
+        `${node.id}\0${source.file_path}\0${source.content_hash}`,
+      );
+    }
+  }
   const stale_sources = staleness.stale_sources.filter((source) =>
     retainedSources.has(
       `${source.node_id}\0${source.file_path}\0${source.stored_hash}`,
@@ -1017,7 +1020,7 @@ function filterStalenessReportForRetainedSources(
     ),
   );
   return {
-    checked_sources: stale_sources.length + range_fresh_sources.length,
+    checked_sources: retainedSourceCount,
     stale_sources,
     range_fresh_sources,
   };

@@ -249,4 +249,53 @@ describe("buildQueryContext", () => {
     expect(result.warnings.join("\n")).not.toContain("stale source anchors");
     expect(result.warnings.join("\n")).not.toContain("low-trust");
   });
+
+  test("preserves checked source counts for retained fresh graph anchors", async () => {
+    const sources = [];
+    for (let index = 0; index < 40; index += 1) {
+      const filePath = `src/fresh-anchor-${index}.ts`;
+      const source = `export const freshAnchor${index} = "fresh source budget marker ${index}";\n`;
+      await writeRepoFile(filePath, source);
+      sources.push({
+        file_path: filePath,
+        line_range: [1, 1] as [number, number],
+        content_hash: hashBuffer(Buffer.from(source)),
+        range_hash: hashSourceRange(source, [1, 1]),
+      });
+    }
+    await seedGraphNode({
+      id: "budget/fresh-source-count",
+      name: "Fresh source count budget metadata",
+      summary: "Budget trimming must preserve checked source counts for fresh anchors.",
+      aliases: ["fresh source count"],
+      tags: ["budgeting", "quality"],
+      sources,
+    });
+
+    const result = await buildQueryContext(
+      tmpRoot,
+      "fresh source count budget metadata",
+      {
+        graphLimit: 1,
+        sourceLimit: 0,
+        refreshIndex: "never",
+        budgetBytes: 4500,
+      },
+    );
+
+    const node = result.graph.nodes[0];
+    const retainedSourceCount = node?.sources.length ?? 0;
+    const match = result.graph.matches.find(
+      (entry) => entry.node_id === node?.id,
+    );
+
+    expect(node?.id).toBe("budget/fresh-source-count");
+    expect(retainedSourceCount).toBeGreaterThan(0);
+    expect(retainedSourceCount).toBeLessThan(sources.length);
+    expect(result.graph.staleness.stale_sources).toHaveLength(0);
+    expect(result.graph.staleness.range_fresh_sources).toHaveLength(0);
+    expect(result.graph.staleness.checked_sources).toBe(retainedSourceCount);
+    expect(match?.quality?.checked_sources).toBe(retainedSourceCount);
+    expect(match?.quality?.freshness).toBe("fresh");
+  });
 });
