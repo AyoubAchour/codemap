@@ -142,6 +142,7 @@ const LOCAL_ROOT_IMPORT_PREFIXES = ["src/", "packages/", "apps/", "libs/"];
 const MAX_COMPANION_CONTEXT_CANDIDATES = 4;
 const COMPANION_SCORE_MULTIPLIER = 0.72;
 const COMPANION_SCORE_FLOOR = 0.25;
+const COMPANION_SCORE_DIRECT_CEILING_MULTIPLIER = 0.999_999;
 const AGENT_GUIDANCE_QUERY_TOKENS = new Set([
   "agent",
   "agents",
@@ -2159,10 +2160,11 @@ function rankedChunkForCompanion(
     chunk,
     options.queryTokens,
   );
-  const score = Math.max(
-    COMPANION_SCORE_FLOOR,
-    seed.score * COMPANION_SCORE_MULTIPLIER,
-  ) + companionSignalScore;
+  const score = Math.min(
+    Math.max(COMPANION_SCORE_FLOOR, seed.score * COMPANION_SCORE_MULTIPLIER) +
+      companionSignalScore,
+    seed.score * COMPANION_SCORE_DIRECT_CEILING_MULTIPLIER,
+  );
   const score_breakdown = zeroScoreBreakdown();
   score_breakdown.path = score;
 

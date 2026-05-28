@@ -1118,7 +1118,7 @@ describe("source index", () => {
         "import { alphaRetrievalAnchor } from '../../src/alpha_retrieval';",
         "",
         "export function alphaRetrievalFixture() {",
-        "  return alphaRetrievalAnchor();",
+        "  return `${alphaRetrievalAnchor()} ultramarine quartz beacon`;",
         "}",
       ].join("\n"),
     );
