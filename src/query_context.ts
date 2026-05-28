@@ -534,8 +534,41 @@ function fitQueryContextBudget(
   );
   if (budgeted.budget?.within_budget) return budgeted;
 
+  for (const maxChars of [1200, 800, 500, 240, 120]) {
+    omittedByBudget.graph += trimGraphNodeSummaries(response, maxChars);
+    budgeted = attachQueryContextBudget(
+      response,
+      budgetBytes,
+      originalCounts,
+      omittedByBudget,
+    );
+    if (budgeted.budget?.within_budget) return budgeted;
+  }
+
+  for (const sourceLimit of [3, 1, 0]) {
+    omittedByBudget.graph += trimGraphNodeSources(response, sourceLimit);
+    budgeted = attachQueryContextBudget(
+      response,
+      budgetBytes,
+      originalCounts,
+      omittedByBudget,
+    );
+    if (budgeted.budget?.within_budget) return budgeted;
+  }
+
   for (const limit of [5, 3, 1, 0]) {
     omittedByBudget.source += trimSourceResults(response, limit);
+    budgeted = attachQueryContextBudget(
+      response,
+      budgetBytes,
+      originalCounts,
+      omittedByBudget,
+    );
+    if (budgeted.budget?.within_budget) return budgeted;
+  }
+
+  for (const limit of [5, 3, 1, 0]) {
+    omittedByBudget.graph += trimGraphNodes(response, limit);
     budgeted = attachQueryContextBudget(
       response,
       budgetBytes,
@@ -835,6 +868,51 @@ function trimGraphMatchDetails(response: QueryContextResponse): number {
   return changed;
 }
 
+function trimGraphNodeSummaries(
+  response: QueryContextResponse,
+  maxChars: number,
+): number {
+  let changed = 0;
+  for (const node of response.graph.nodes) {
+    const trimmed = truncateBudgetText(node.summary, maxChars);
+    if (trimmed !== node.summary) {
+      node.summary = trimmed;
+      changed += 1;
+    }
+  }
+  if (changed > 0) syncQueryContextSummary(response);
+  return changed;
+}
+
+function trimGraphNodeSources(
+  response: QueryContextResponse,
+  sourceLimit: number,
+): number {
+  let omitted = 0;
+  for (const node of response.graph.nodes) {
+    omitted += Math.max(0, node.sources.length - sourceLimit);
+    node.sources = node.sources.slice(0, sourceLimit);
+  }
+  if (omitted > 0) {
+    syncGraphNodeDependents(response);
+    syncQueryContextSummary(response);
+  }
+  return omitted;
+}
+
+function trimGraphNodes(
+  response: QueryContextResponse,
+  limit: number,
+): number {
+  const omitted = Math.max(0, response.graph.nodes.length - limit);
+  if (omitted > 0) {
+    response.graph.nodes = response.graph.nodes.slice(0, limit);
+    syncGraphNodeDependents(response);
+    syncQueryContextSummary(response);
+  }
+  return omitted;
+}
+
 function trimSourceResults(
   response: QueryContextResponse,
   limit: number,
@@ -855,6 +933,60 @@ function trimSourceResults(
   return omitted;
 }
 
+function syncGraphNodeDependents(response: QueryContextResponse): void {
+  const graphNodeIds = new Set(response.graph.nodes.map((node) => node.id));
+  response.graph.matches = response.graph.matches.filter((match) =>
+    graphNodeIds.has(match.node_id),
+  );
+  response.graph.edges = response.graph.edges.filter(
+    (edge) => graphNodeIds.has(edge.from) && graphNodeIds.has(edge.to),
+  );
+  response.graph.staleness = filterStalenessReportForNodes(
+    response.graph.staleness,
+    response.graph.nodes,
+    true,
+  );
+  response.graph.staleness = filterStalenessReportForRetainedSources(
+    response.graph.staleness,
+    response.graph.nodes,
+  );
+  response.graph.memory_quality = summarizeGraphMemoryQuality(response.graph);
+  response.expansion = {
+    ...response.expansion,
+    graph_nodes: response.expansion.graph_nodes.filter((entry) =>
+      graphNodeIds.has(entry.id),
+    ),
+  };
+}
+
+function filterStalenessReportForRetainedSources(
+  staleness: StalenessReport,
+  nodes: Node[],
+): StalenessReport {
+  const retainedSources = new Set(
+    nodes.flatMap((node) =>
+      node.sources.map(
+        (source) => `${node.id}\0${source.file_path}\0${source.content_hash}`,
+      ),
+    ),
+  );
+  const stale_sources = staleness.stale_sources.filter((source) =>
+    retainedSources.has(
+      `${source.node_id}\0${source.file_path}\0${source.stored_hash}`,
+    ),
+  );
+  const range_fresh_sources = staleness.range_fresh_sources.filter((source) =>
+    retainedSources.has(
+      `${source.node_id}\0${source.file_path}\0${source.stored_hash}`,
+    ),
+  );
+  return {
+    checked_sources: stale_sources.length + range_fresh_sources.length,
+    stale_sources,
+    range_fresh_sources,
+  };
+}
+
 function truncateBudgetText(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   if (maxChars <= TRUNCATION_MARKER.length + 20) {
@@ -869,6 +1001,7 @@ function addWarning(response: QueryContextResponse, warning: string): void {
 
 function syncQueryContextSummary(response: QueryContextResponse): void {
   const currentSourceResults = sourceResults(response);
+  response.summary.graph_memories = summarizeGraphMemories(response.graph);
   response.summary.source_hits = currentSourceResults.slice(0, 5).map((result) => ({
     file_path: result.file_path,
     start_line: result.start_line,
@@ -898,6 +1031,31 @@ function responseBytes(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value), "utf8");
 }
 
+function summarizeGraphMemories(
+  graphResult: QueryResult,
+): QueryContextGraphMemorySummary[] {
+  const matchesById = new Map(
+    graphResult.matches.map((match) => [match.node_id, match]),
+  );
+  return graphResult.nodes.slice(0, 5).map((node) => {
+    const match = matchesById.get(node.id);
+    return {
+      id: node.id,
+      kind: node.kind,
+      name: node.name,
+      trust: match?.quality?.trust,
+      freshness: match?.quality?.freshness,
+      score: match?.score,
+      ranking_score: match?.ranking_score,
+      match_reasons: (match?.match_reasons ?? []).slice(0, 3).map(
+        (reason) => `${reason.field}:${reason.value}`,
+      ),
+      quality_reasons: match?.quality?.reasons.slice(0, 3) ?? [],
+      quality_signals: match?.quality?.signals,
+    };
+  });
+}
+
 function buildSummary(input: {
   graphResult: QueryResult;
   relatedNodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
@@ -908,30 +1066,11 @@ function buildSummary(input: {
   staleness: StalenessReport;
   warnings: string[];
 }): QueryContextSummary {
-  const matchesById = new Map(
-    input.graphResult.matches.map((match) => [match.node_id, match]),
-  );
   const sourceResults =
     input.sourceSearch?.ok === true ? input.sourceSearch.results : [];
 
   return {
-    graph_memories: input.graphResult.nodes.slice(0, 5).map((node) => {
-      const match = matchesById.get(node.id);
-      return {
-        id: node.id,
-        kind: node.kind,
-        name: node.name,
-        trust: match?.quality?.trust,
-        freshness: match?.quality?.freshness,
-        score: match?.score,
-        ranking_score: match?.ranking_score,
-        match_reasons: (match?.match_reasons ?? []).slice(0, 3).map(
-          (reason) => `${reason.field}:${reason.value}`,
-        ),
-        quality_reasons: match?.quality?.reasons.slice(0, 3) ?? [],
-        quality_signals: match?.quality?.signals,
-      };
-    }),
+    graph_memories: summarizeGraphMemories(input.graphResult),
     source_hits: sourceResults.slice(0, 5).map((result) => ({
       file_path: result.file_path,
       start_line: result.start_line,

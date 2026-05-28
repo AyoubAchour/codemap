@@ -163,4 +163,42 @@ describe("buildQueryContext", () => {
       "Query context was trimmed to stay within the configured byte budget.",
     );
   });
+
+  test("fits explicit budget by trimming oversized graph memory payloads", async () => {
+    const hugeSummary = Array.from(
+      { length: 520 },
+      (_value, index) =>
+        `oversized graph budget marker ${index} planning memory payload`,
+    ).join(" ");
+    await seedGraphNode({
+      id: "budget/oversized-graph-memory",
+      name: "Oversized graph budget memory",
+      summary: hugeSummary,
+      aliases: ["oversized graph budget"],
+      tags: ["budgeting", "query-context"],
+    });
+
+    const result = await buildQueryContext(
+      tmpRoot,
+      "oversized graph budget planning memory",
+      {
+        graphLimit: 1,
+        sourceLimit: 0,
+        refreshIndex: "never",
+        budgetBytes: 6500,
+      },
+    );
+
+    expect(result.budget?.budget_bytes).toBe(6500);
+    expect(result.budget?.used_bytes).toBeLessThanOrEqual(6500);
+    expect(result.budget?.within_budget).toBe(true);
+    expect(responseBytes(result)).toBeLessThanOrEqual(6500);
+    expect(result.graph.nodes[0]?.id).toBe("budget/oversized-graph-memory");
+    expect(result.graph.nodes[0]?.summary.length).toBeLessThan(
+      hugeSummary.length,
+    );
+    expect(
+      result.budget?.packing.lanes.graph?.omitted_by_budget,
+    ).toBeGreaterThan(0);
+  });
 });
