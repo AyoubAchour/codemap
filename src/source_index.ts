@@ -451,6 +451,11 @@ interface CompanionCandidate {
   priority: number;
 }
 
+interface TestCompanionCandidate {
+  filePath: string;
+  requiresImportMatch: boolean;
+}
+
 interface SearchReadySnapshot {
   chunks: SourceChunk[];
   document_frequencies: Map<string, number>;
@@ -2094,8 +2099,25 @@ function companionCandidatesForRankedChunk(
     });
   }
 
-  for (const filePath of testCompanionPaths(rankedChunk.chunk.file_path)) {
-    add(filePath, `test companion for ${rankedChunk.chunk.file_path}`, 70);
+  const importerFilePaths = new Set(
+    (options.reverseImportIndex.get(rankedChunk.chunk.file_path) ?? []).map(
+      ({ importer }) => importer.file_path,
+    ),
+  );
+  for (const companion of testCompanionCandidates(
+    rankedChunk.chunk.file_path,
+  )) {
+    if (
+      companion.requiresImportMatch &&
+      !importerFilePaths.has(companion.filePath)
+    ) {
+      continue;
+    }
+    add(
+      companion.filePath,
+      `test companion for ${rankedChunk.chunk.file_path}`,
+      70,
+    );
   }
 
   const importers =
@@ -2242,7 +2264,7 @@ function companionFileSignalScore(
   );
 }
 
-function testCompanionPaths(filePath: string): string[] {
+function testCompanionCandidates(filePath: string): TestCompanionCandidate[] {
   const extension = path.posix.extname(filePath);
   const withoutExtension = extension
     ? filePath.slice(0, -extension.length)
@@ -2251,23 +2273,44 @@ function testCompanionPaths(filePath: string): string[] {
   const srcRelative = withoutExtension.startsWith("src/")
     ? withoutExtension.slice("src/".length)
     : withoutExtension;
-  const testStems = [
+  const pathPreservingStems = [
     `test/unit/${srcRelative}.test`,
     `test/${srcRelative}.test`,
     `tests/${srcRelative}.test`,
+  ];
+  const basenameFallbackStems = [
     `test/unit/${basename}.test`,
     `test/${basename}.test`,
     `tests/${basename}.test`,
   ];
-  const candidates = testStems.flatMap((stem) =>
-    TEST_COMPANION_EXTENSIONS.map((extension) => `${stem}${extension}`),
-  );
+  const candidates: TestCompanionCandidate[] = [
+    ...pathPreservingStems.flatMap((stem) =>
+      TEST_COMPANION_EXTENSIONS.map((extension) => ({
+        filePath: `${stem}${extension}`,
+        requiresImportMatch: false,
+      })),
+    ),
+    ...basenameFallbackStems.flatMap((stem) =>
+      TEST_COMPANION_EXTENSIONS.map((extension) => ({
+        filePath: `${stem}${extension}`,
+        requiresImportMatch: true,
+      })),
+    ),
+  ];
 
   if (filePath.startsWith("src/cli/")) {
-    candidates.push("test/unit/cli.test.ts");
+    candidates.push({
+      filePath: "test/unit/cli.test.ts",
+      requiresImportMatch: false,
+    });
   }
 
-  return Array.from(new Set(candidates));
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    if (seen.has(candidate.filePath)) return false;
+    seen.add(candidate.filePath);
+    return true;
+  });
 }
 
 function isCliOrToolCompanionPath(filePath: string): boolean {

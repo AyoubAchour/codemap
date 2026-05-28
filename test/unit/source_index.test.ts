@@ -1145,6 +1145,92 @@ describe("source index", () => {
     ]);
   });
 
+  test("search skips unrelated basename-only test companions", async () => {
+    await write(
+      "src/feature/index.ts",
+      [
+        "export function primaryCatalogAnchor() {",
+        "  return 'cobalt amber lattice cobalt amber lattice';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/secondary_catalog.ts",
+      [
+        "export function secondaryCatalogAnchor() {",
+        "  return 'cobalt';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/unrelated_catalog.ts",
+      [
+        "export function unrelatedCatalogFixture() {",
+        "  return 'unrelated flat index fixture';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "test/unit/index.test.ts",
+      [
+        "import { unrelatedCatalogFixture } from '../../src/unrelated_catalog';",
+        "",
+        "export function flatIndexFixture() {",
+        "  return unrelatedCatalogFixture();",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "cobalt amber lattice",
+      { limit: 2 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual([
+      "src/feature/index.ts",
+      "src/secondary_catalog.ts",
+    ]);
+  });
+
+  test("search surfaces basename-only test companions that import the source", async () => {
+    await write(
+      "src/feature/index.ts",
+      [
+        "export function runFeatureIndexFixture() {",
+        "  return 'magenta river checksum';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "test/unit/index.test.ts",
+      [
+        "import { runFeatureIndexFixture } from '../../src/feature';",
+        "",
+        "export function featureIndexFixture() {",
+        "  return runFeatureIndexFixture();",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "magenta river checksum",
+      { limit: 2 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual(
+      expect.arrayContaining([
+        "src/feature/index.ts",
+        "test/unit/index.test.ts",
+      ]),
+    );
+  });
+
   test("search surfaces a non-TS unit test companion for matching source implementation", async () => {
     await write(
       "src/view_widget.tsx",
