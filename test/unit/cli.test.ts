@@ -33,6 +33,7 @@ import { setup } from "../../src/cli/setup.js";
 import { show } from "../../src/cli/show.js";
 import { suggestWriteback } from "../../src/cli/suggest_writeback.js";
 import { validate } from "../../src/cli/validate.js";
+import { watchLive } from "../../src/cli/watch.js";
 import { GraphStore } from "../../src/graph.js";
 import {
   GUIDANCE_POLICY_HASH,
@@ -896,9 +897,17 @@ describe("CLI: source index", () => {
       "export const WATCH_VALUE = 'old';\n",
     );
     await scan({}, { repoRoot: tmpRoot });
-    const unreadablePath = path.join(tmpRoot, "src", "unreadable.ts");
-    await fs.writeFile(unreadablePath, "export const UNREADABLE = true;\n");
-    await fs.chmod(unreadablePath, 0);
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "new-watch.ts"),
+      "export const NEW_WATCH_VALUE = true;\n",
+    );
+    const blockedTmpPath = path.join(
+      tmpRoot,
+      ".codemap",
+      "index",
+      "source.json.tmp",
+    );
+    await fs.mkdir(blockedTmpPath, { recursive: true });
 
     try {
       const result = await runCodemapBin([
@@ -912,11 +921,11 @@ describe("CLI: source index", () => {
       const out = JSON.parse(result.stdout);
       expect(out.ok).toBe(true);
       expect(out.watcher.last_result).toBe("error");
-      expect(out.watcher.last_error).toContain("EACCES");
+      expect(out.watcher.last_error).toContain("source.json.tmp");
       expect(out.source_after.indexed).toBe(true);
       expect(out.source_after.error).toBeUndefined();
     } finally {
-      await fs.chmod(unreadablePath, 0o600);
+      await fs.rm(blockedTmpPath, { recursive: true, force: true });
     }
   });
 
@@ -947,7 +956,7 @@ describe("CLI: source index", () => {
     expect(out.watcher.active).toBe(false);
   });
 
-  test("watch exits after SIGINT without a trailing one-shot refresh", async () => {
+  test("watch live exits after abort without a trailing one-shot refresh", async () => {
     await fs.mkdir(path.join(tmpRoot, "src"), { recursive: true });
     await fs.writeFile(
       path.join(tmpRoot, "src", "watch.ts"),
@@ -955,50 +964,44 @@ describe("CLI: source index", () => {
     );
     await scan({}, { repoRoot: tmpRoot });
 
-    const child = spawn(
-      process.execPath,
-      [
-        "run",
-        path.join(projectRoot, "bin/codemap.ts"),
-        "--repo",
-        tmpRoot,
-        "watch",
-        "--interval-ms",
-        "1000",
-      ],
-      {
-        cwd: projectRoot,
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
+    const controller = new AbortController();
     let stdout = "";
-    let stderr = "";
+    let watchResult!: ReturnType<typeof watchLive>;
     const firstLine = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        child.kill("SIGKILL");
+        controller.abort();
         reject(new Error("timed out waiting for watch output"));
       }, 5000);
-      child.stdout.on("data", (chunk) => {
-        stdout += chunk;
-        if (stdout.includes("\n")) {
-          clearTimeout(timeout);
-          resolve();
-        }
-      });
-      child.stderr.on("data", (chunk) => {
-        stderr += chunk;
-      });
+      void timeout.unref?.();
+      watchResult = watchLive(
+        { intervalMs: 1000 },
+        {
+          repoRoot: tmpRoot,
+          signal: controller.signal,
+          write: (text) => {
+            stdout += text;
+            if (stdout.includes("\n")) {
+              clearTimeout(timeout);
+              controller.abort();
+              resolve();
+            }
+          },
+        },
+      );
+      watchResult.then(
+        (commandResult) => {
+          if (!stdout.includes("\n")) {
+            clearTimeout(timeout);
+            reject(new Error(`watch exited early with ${commandResult.exitCode}`));
+          }
+        },
+        reject,
+      );
     });
 
     await firstLine;
-    child.kill("SIGINT");
-    const exitCode = await new Promise<number>((resolve, reject) => {
-      child.on("error", reject);
-      child.on("close", (code) => resolve(code ?? 1));
-    });
-
-    expect(stderr).toBe("");
-    expect(exitCode).toBe(0);
+    const result = await watchResult;
+    expect(result.exitCode).toBe(0);
     const lines = stdout.trim().split("\n");
     expect(lines).toHaveLength(1);
     expect(JSON.parse(lines[0])).toEqual(

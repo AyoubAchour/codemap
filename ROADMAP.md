@@ -299,8 +299,11 @@ replay/observability, setup polish, and benchmarked retrieval quality.
   source, and optional capture-summary evidence.
 - Task 069: add opt-in byte-budget packing and lane accounting for the larger
   `query_context` planning surface.
+- Task 070: stabilize the full reliability gate after optimization work,
+  including platform-stable watch tests and generated guidance path output.
 
-Tasks 057-069 are now implemented. The local semantic experiment added a
+Tasks 057-069 are now implemented. Task 070 is the follow-up reliability gate
+before more retrieval tuning. The local semantic experiment added a
 dependency-free `local-hash` benchmark provider and lexical/graph/mixed/local
 variant metrics, but it did not beat lexical recall on the Codemap suite, so
 semantic retrieval remains benchmark-only. The optimization baseline adds

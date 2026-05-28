@@ -290,6 +290,13 @@ detail, graph match detail, and only then low-ranked source results. Responses
 include per-lane `budget.packing` metadata so agents can see what was kept,
 what was omitted, and which lane consumed the response budget.
 
+### Reliability gate
+
+Task 070 stabilizes the test and benchmark gate before more retrieval tuning.
+The focus is platform-stable coverage for source-index watch failures, live
+watch abort handling, and generated repo guidance path output. This keeps the
+optimization loop trustworthy on Windows as well as POSIX-like environments.
+
 ## Task Sequence
 
 1. Task 057 - Agentmemory catch-up planning.
@@ -305,6 +312,7 @@ what was omitted, and which lane consumed the response budget.
 11. Task 067 - Distractor-aware source ranking.
 12. Task 068 - Budget-aware context packing.
 13. Task 069 - Query context budget packing.
+14. Task 070 - Reliability gate.
 
 ## Gates
 

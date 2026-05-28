@@ -5,20 +5,21 @@ import * as path from "node:path";
 import packageJson from "../package.json" with { type: "json" };
 import { GraphStore } from "./graph.js";
 import {
-  scoreGraphMemoryQuality,
   type GraphMemoryFreshness,
   type GraphMemoryTrust,
+  scoreGraphMemoryQuality,
 } from "./graph_quality.js";
+import { buildRepoMap, type RepoMap } from "./repo_map.js";
 import {
   getSourceIndexStatus,
-  loadSourceIndex,
   type IndexedSourceFile,
+  loadSourceIndex,
   type SourceIndexStatus,
   type SourceSymbol,
 } from "./source_index.js";
-import { buildRepoMap, type RepoMap } from "./repo_map.js";
 import { checkSourceStaleness } from "./staleness.js";
 import type { Node } from "./types.js";
+import { normalizeRepoPath } from "./util/repo_path.js";
 
 const DEFAULT_OUTPUT = ".codemap/skills/codemap-repo/SKILL.md";
 const AREA_HASHES_RE = /<!--\s*codemap:area-hashes\s+(\{[^\n]*\})\s*-->/;
@@ -158,8 +159,8 @@ export async function generateRepoSkills(
 
   const response = {
     ok: true as const,
-    target_path: path.relative(repoRoot, targetPath),
-    generated_files: render.files.map((file) => path.relative(repoRoot, file.path)),
+    target_path: repoRelativePath(repoRoot, targetPath),
+    generated_files: render.files.map((file) => repoRelativePath(repoRoot, file.path)),
     wrote,
     current,
     source: render.sourceStatus,
@@ -170,7 +171,7 @@ export async function generateRepoSkills(
       areas: render.areas.map((area) => area.name),
       area_files: render.areas.map((area) => ({
         name: area.name,
-        file_path: path.relative(repoRoot, area.filePath),
+        file_path: repoRelativePath(repoRoot, area.filePath),
         hash: area.hash,
         files: area.files.length,
         symbols: area.symbols,
@@ -651,6 +652,10 @@ function repoSkillNextSteps(input: {
     steps.push("Generated repo guidance is current.");
   }
   return steps;
+}
+
+function repoRelativePath(repoRoot: string, filePath: string): string {
+  return normalizeRepoPath(path.relative(repoRoot, filePath));
 }
 
 function sourceAreasForNode(node: Node): string[] {

@@ -40,6 +40,11 @@ All notable user-facing changes to Codemap are documented here.
   budget while preserving default unbudgeted behavior and reporting per-lane
   packing metadata.
 
+### Fixed
+
+- Generated repo guidance JSON now reports repo-relative `/` paths on Windows,
+  matching source-index and graph path conventions.
+
 ## 0.8.0 - 2026-05-11
 
 This release makes Codemap more agentic in everyday repository work. It adds
