@@ -1103,6 +1103,42 @@ describe("source index", () => {
     );
   });
 
+  test("search surfaces a non-TS unit test companion for matching source implementation", async () => {
+    await write(
+      "src/view_widget.tsx",
+      [
+        "export function assembleControlFixture() {",
+        "  return ['palette', 'focus', 'hydration'];",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "test/unit/view_widget.test.tsx",
+      [
+        "import { assembleControlFixture } from '../../src/view_widget';",
+        "",
+        "export function mountFixture() {",
+        "  return assembleControlFixture();",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "palette focus hydration implementation",
+      { limit: 2 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual(
+      expect.arrayContaining([
+        "src/view_widget.tsx",
+        "test/unit/view_widget.test.tsx",
+      ]),
+    );
+  });
+
   test("search surfaces generated agent guidance for lifecycle queries", async () => {
     await write(
       "src/instructions.ts",

@@ -27,6 +27,16 @@ const SUPPORTED_EXTENSIONS = new Map<string, string>([
   [".ts", "typescript"],
   [".tsx", "typescript"],
 ]);
+const TEST_COMPANION_EXTENSIONS = [
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mts",
+  ".cts",
+  ".mjs",
+  ".cjs",
+];
 
 const SKIP_DIRS = new Set([
   ".cache",
@@ -2232,14 +2242,17 @@ function testCompanionPaths(filePath: string): string[] {
   const srcRelative = withoutExtension.startsWith("src/")
     ? withoutExtension.slice("src/".length)
     : withoutExtension;
-  const candidates = [
-    `test/unit/${srcRelative}.test.ts`,
-    `test/${srcRelative}.test.ts`,
-    `tests/${srcRelative}.test.ts`,
-    `test/unit/${basename}.test.ts`,
-    `test/${basename}.test.ts`,
-    `tests/${basename}.test.ts`,
+  const testStems = [
+    `test/unit/${srcRelative}.test`,
+    `test/${srcRelative}.test`,
+    `tests/${srcRelative}.test`,
+    `test/unit/${basename}.test`,
+    `test/${basename}.test`,
+    `tests/${basename}.test`,
   ];
+  const candidates = testStems.flatMap((stem) =>
+    TEST_COMPANION_EXTENSIONS.map((extension) => `${stem}${extension}`),
+  );
 
   if (filePath.startsWith("src/cli/")) {
     candidates.push("test/unit/cli.test.ts");
