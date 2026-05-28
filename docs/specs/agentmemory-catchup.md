@@ -297,6 +297,14 @@ The focus is platform-stable coverage for source-index watch failures, live
 watch abort handling, and generated repo guidance path output. This keeps the
 optimization loop trustworthy on Windows as well as POSIX-like environments.
 
+### Benchmark miss audit
+
+Task 071 adds bounded `summary.audit` output to `benchmark-retrieval`. It
+groups exact file/node misses, warning and result-source misses, forbidden
+hits, noisy graph/mixed/local-vector variants, payload overruns, and issue
+tags. The goal is diagnosis only: future ranking or semantic-provider changes
+should start from these concrete misses instead of aggregate rates alone.
+
 ## Task Sequence
 
 1. Task 057 - Agentmemory catch-up planning.
@@ -313,6 +321,7 @@ optimization loop trustworthy on Windows as well as POSIX-like environments.
 12. Task 068 - Budget-aware context packing.
 13. Task 069 - Query context budget packing.
 14. Task 070 - Reliability gate.
+15. Task 071 - Benchmark miss audit.
 
 ## Gates
 

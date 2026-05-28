@@ -23,6 +23,8 @@ All notable user-facing changes to Codemap are documented here.
 - Retrieval benchmark guardrails for optimization work, including forbidden
   file/node expectations, expected warning and result-source coverage, p50/p95
   latency metrics, and small distractor/payload cases in the bundled suites.
+- Retrieval benchmark miss audits in `summary.audit`, grouping exact query
+  misses, forbidden hits, noisy variants, payload overruns, and issue tags.
 - Opt-in planning-context budgets via `query_context` `budget_bytes`,
   `codemap context --budget`, and
   `codemap benchmark-retrieval --context-budget-bytes`.

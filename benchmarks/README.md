@@ -56,6 +56,8 @@ The JSON summary reports:
 - average, p50, p95, and max latency
 - source-file diversity
 - optional semantic/reranker adapter results
+- bounded `summary.audit` groups for query-level misses, forbidden hits,
+  noisy graph/mixed/local-vector variants, payload overruns, and issue tags
 
 Semantic retrieval and reranking are disabled by default. The CLI currently
 accepts `--semantic-provider disabled`, `--semantic-provider local-hash`, and
@@ -76,8 +78,8 @@ more than happy-path symbol lookup:
 
 Each query must include at least one positive expectation, forbidden
 expectation, warning expectation, or result-source expectation. Use `tags` to
-label the scenario family so aggregate misses can be grouped manually after a
-run.
+label the scenario family; `summary.audit.issue_tags` groups missed, noisy, or
+over-budget queries by those tags after a run.
 
 Queries may also include guardrail expectations:
 
