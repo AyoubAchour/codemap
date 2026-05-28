@@ -35,6 +35,9 @@ const DEFAULT_RECALL_MAX_CONTENT_CHARS = 120;
 const DEFAULT_DEPENDENCY_LIMIT = 0;
 const DEFAULT_IMPACT_LIMIT = 3;
 const DEFAULT_REFRESH_INDEX: SourceRefreshMode = "if_stale";
+const BENCHMARK_AUDIT_ITEM_LIMIT = 12;
+const BENCHMARK_AUDIT_RETURNED_LIMIT = 12;
+const BENCHMARK_AUDIT_TAG_LIMIT = 10;
 const DEFAULT_SUITE_PATHS = [
   "benchmarks/retrieval.codemap.json",
   ".codemap/retrieval-benchmark.json",
@@ -93,6 +96,7 @@ export interface RetrievalTargetEvaluation {
   expected: string[];
   returned: string[];
   matched: string[];
+  missing: string[];
   forbidden: string[];
   forbidden_matched: string[];
   hit: boolean;
@@ -166,6 +170,52 @@ export interface RetrievalPayloadBudgetSummary {
   max_over_budget_bytes: number;
 }
 
+export type RetrievalBenchmarkVariantName = keyof RetrievalBenchmarkVariantResult;
+
+export interface RetrievalBenchmarkAuditIssue {
+  id: string;
+  query: string;
+  tags: string[];
+  expected?: string[];
+  returned?: string[];
+  returned_truncated?: boolean;
+  matched?: string[];
+  missing?: string[];
+  forbidden?: string[];
+  forbidden_matched?: string[];
+  first_match_rank?: number | null;
+  precision_at_k?: number;
+  recall_at_k?: number;
+  response_bytes?: number;
+  response_budget_bytes?: number;
+  over_budget_bytes?: number;
+}
+
+export interface RetrievalBenchmarkVariantAuditIssue
+  extends RetrievalBenchmarkAuditIssue {
+  variant: RetrievalBenchmarkVariantName;
+}
+
+export interface RetrievalBenchmarkIssueTag {
+  tag: string;
+  issue_count: number;
+  query_ids: string[];
+}
+
+export interface RetrievalBenchmarkAuditSummary {
+  file_misses: RetrievalBenchmarkAuditIssue[];
+  node_misses: RetrievalBenchmarkAuditIssue[];
+  warning_misses: RetrievalBenchmarkAuditIssue[];
+  result_source_misses: RetrievalBenchmarkAuditIssue[];
+  forbidden_file_hits: RetrievalBenchmarkAuditIssue[];
+  forbidden_node_hits: RetrievalBenchmarkAuditIssue[];
+  variant_file_misses: RetrievalBenchmarkVariantAuditIssue[];
+  variant_forbidden_file_hits: RetrievalBenchmarkVariantAuditIssue[];
+  payload_over_budget: RetrievalBenchmarkAuditIssue[];
+  issue_tags: RetrievalBenchmarkIssueTag[];
+  truncated: boolean;
+}
+
 export interface RetrievalLatencySummary {
   average_latency_ms: number;
   p50_latency_ms: number;
@@ -189,6 +239,7 @@ export interface RetrievalBenchmarkSummary {
   warning_expectations: RetrievalExpectationAggregate;
   result_sources: RetrievalExpectationAggregate;
   variants: RetrievalBenchmarkVariantSummary;
+  audit: RetrievalBenchmarkAuditSummary;
   thresholds: {
     min_file_hit_rate?: number;
     min_node_hit_rate?: number;
@@ -714,6 +765,7 @@ function evaluateTargets(
   const forbiddenSet = new Set(forbidden);
   const uniqueReturned = unique(returned);
   const matched = uniqueReturned.filter((target) => expectedSet.has(target));
+  const missing = expected.filter((target) => !matched.includes(target));
   const forbiddenMatched = uniqueReturned.filter((target) =>
     forbiddenSet.has(target),
   );
@@ -726,6 +778,7 @@ function evaluateTargets(
     expected,
     returned: uniqueReturned,
     matched,
+    missing,
     forbidden,
     forbidden_matched: forbiddenMatched,
     hit: matched.length > 0,
@@ -818,6 +871,7 @@ function summarizeResults(
   const rerankerFiles = aggregateEvaluations(
     results.map((result) => result.reranker.files),
   );
+  const audit = summarizeAudit(results);
   const failed: string[] = [];
   if (
     input.minFileHitRate !== undefined &&
@@ -888,6 +942,7 @@ function summarizeResults(
     warning_expectations: warningExpectations,
     result_sources: resultSources,
     variants,
+    audit,
     thresholds: {
       min_file_hit_rate: input.minFileHitRate,
       min_node_hit_rate: input.minNodeHitRate,
@@ -936,6 +991,205 @@ function summarizeResults(
       },
     },
   };
+}
+
+function summarizeAudit(
+  results: RetrievalBenchmarkQueryResult[],
+): RetrievalBenchmarkAuditSummary {
+  const fileMisses = results
+    .filter((result) => result.files.evaluated && result.files.missing.length > 0)
+    .map((result) => targetAuditIssue(result, result.files));
+  const nodeMisses = results
+    .filter((result) => result.nodes.evaluated && result.nodes.missing.length > 0)
+    .map((result) => targetAuditIssue(result, result.nodes));
+  const warningMisses = results
+    .filter(
+      (result) =>
+        result.warning_expectations.evaluated &&
+        result.warning_expectations.missing.length > 0,
+    )
+    .map((result) =>
+      expectationAuditIssue(result, result.warning_expectations),
+    );
+  const resultSourceMisses = results
+    .filter(
+      (result) =>
+        result.result_sources.evaluated &&
+        result.result_sources.missing.length > 0,
+    )
+    .map((result) => expectationAuditIssue(result, result.result_sources));
+  const forbiddenFileHits = results
+    .filter((result) => result.files.forbidden_matched.length > 0)
+    .map((result) => targetAuditIssue(result, result.files));
+  const forbiddenNodeHits = results
+    .filter((result) => result.nodes.forbidden_matched.length > 0)
+    .map((result) => targetAuditIssue(result, result.nodes));
+  const variantFileMisses: RetrievalBenchmarkVariantAuditIssue[] = [];
+  const variantForbiddenFileHits: RetrievalBenchmarkVariantAuditIssue[] = [];
+  const fileVariants: RetrievalBenchmarkVariantName[] = [
+    "graph_files",
+    "mixed_files",
+    "local_vector_files",
+  ];
+  for (const result of results) {
+    for (const variant of fileVariants) {
+      const evaluation = result.variants[variant];
+      if (evaluation.evaluated && evaluation.missing.length > 0) {
+        variantFileMisses.push(variantAuditIssue(result, variant, evaluation));
+      }
+      if (evaluation.forbidden_matched.length > 0) {
+        variantForbiddenFileHits.push(
+          variantAuditIssue(result, variant, evaluation),
+        );
+      }
+    }
+  }
+  const payloadOverBudget = results
+    .filter((result) => result.payload.within_budget === false)
+    .map(payloadAuditIssue);
+  const allIssues: RetrievalBenchmarkAuditIssue[] = [
+    ...fileMisses,
+    ...nodeMisses,
+    ...warningMisses,
+    ...resultSourceMisses,
+    ...forbiddenFileHits,
+    ...forbiddenNodeHits,
+    ...variantFileMisses,
+    ...variantForbiddenFileHits,
+    ...payloadOverBudget,
+  ];
+  const issueTags = summarizeIssueTags(allIssues);
+
+  return {
+    file_misses: limitAuditItems(fileMisses),
+    node_misses: limitAuditItems(nodeMisses),
+    warning_misses: limitAuditItems(warningMisses),
+    result_source_misses: limitAuditItems(resultSourceMisses),
+    forbidden_file_hits: limitAuditItems(forbiddenFileHits),
+    forbidden_node_hits: limitAuditItems(forbiddenNodeHits),
+    variant_file_misses: limitAuditItems(variantFileMisses),
+    variant_forbidden_file_hits: limitAuditItems(variantForbiddenFileHits),
+    payload_over_budget: limitAuditItems(payloadOverBudget),
+    issue_tags: issueTags.slice(0, BENCHMARK_AUDIT_TAG_LIMIT),
+    truncated:
+      fileMisses.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
+      nodeMisses.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
+      warningMisses.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
+      resultSourceMisses.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
+      forbiddenFileHits.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
+      forbiddenNodeHits.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
+      variantFileMisses.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
+      variantForbiddenFileHits.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
+      payloadOverBudget.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
+      allIssues.some((issue) => issue.returned_truncated === true) ||
+      issueTags.length > BENCHMARK_AUDIT_TAG_LIMIT,
+  };
+}
+
+function targetAuditIssue(
+  result: RetrievalBenchmarkQueryResult,
+  evaluation: RetrievalTargetEvaluation,
+): RetrievalBenchmarkAuditIssue {
+  return {
+    id: result.id,
+    query: result.query,
+    tags: result.tags,
+    expected: evaluation.expected,
+    returned: limitAuditReturned(evaluation.returned),
+    returned_truncated:
+      evaluation.returned.length > BENCHMARK_AUDIT_RETURNED_LIMIT
+        ? true
+        : undefined,
+    matched: evaluation.matched,
+    missing: evaluation.missing,
+    forbidden: evaluation.forbidden,
+    forbidden_matched: evaluation.forbidden_matched,
+    first_match_rank: evaluation.first_match_rank,
+    precision_at_k: evaluation.precision_at_k,
+    recall_at_k: evaluation.recall_at_k,
+  };
+}
+
+function expectationAuditIssue(
+  result: RetrievalBenchmarkQueryResult,
+  evaluation: RetrievalExpectationEvaluation,
+): RetrievalBenchmarkAuditIssue {
+  return {
+    id: result.id,
+    query: result.query,
+    tags: result.tags,
+    expected: evaluation.expected,
+    returned: limitAuditReturned(evaluation.returned),
+    returned_truncated:
+      evaluation.returned.length > BENCHMARK_AUDIT_RETURNED_LIMIT
+        ? true
+        : undefined,
+    matched: evaluation.matched,
+    missing: evaluation.missing,
+    recall_at_k: evaluation.recall_at_k,
+  };
+}
+
+function variantAuditIssue(
+  result: RetrievalBenchmarkQueryResult,
+  variant: RetrievalBenchmarkVariantName,
+  evaluation: RetrievalTargetEvaluation,
+): RetrievalBenchmarkVariantAuditIssue {
+  return {
+    ...targetAuditIssue(result, evaluation),
+    variant,
+  };
+}
+
+function payloadAuditIssue(
+  result: RetrievalBenchmarkQueryResult,
+): RetrievalBenchmarkAuditIssue {
+  return {
+    id: result.id,
+    query: result.query,
+    tags: result.tags,
+    response_bytes: result.payload.response_bytes,
+    response_budget_bytes: result.payload.response_budget_bytes,
+    over_budget_bytes: result.payload.over_budget_bytes,
+  };
+}
+
+function limitAuditItems<T>(items: T[]): T[] {
+  return items.slice(0, BENCHMARK_AUDIT_ITEM_LIMIT);
+}
+
+function limitAuditReturned(values: string[]): string[] {
+  return values.slice(0, BENCHMARK_AUDIT_RETURNED_LIMIT);
+}
+
+function summarizeIssueTags(
+  issues: RetrievalBenchmarkAuditIssue[],
+): RetrievalBenchmarkIssueTag[] {
+  const tags = new Map<
+    string,
+    { issue_count: number; query_ids: Set<string> }
+  >();
+  for (const issue of issues) {
+    for (const tag of issue.tags) {
+      const entry = tags.get(tag) ?? {
+        issue_count: 0,
+        query_ids: new Set<string>(),
+      };
+      entry.issue_count += 1;
+      entry.query_ids.add(issue.id);
+      tags.set(tag, entry);
+    }
+  }
+  return [...tags.entries()]
+    .map(([tag, entry]) => ({
+      tag,
+      issue_count: entry.issue_count,
+      query_ids: [...entry.query_ids].sort().slice(0, BENCHMARK_AUDIT_ITEM_LIMIT),
+    }))
+    .sort(
+      (left, right) =>
+        right.issue_count - left.issue_count || left.tag.localeCompare(right.tag),
+    );
 }
 
 function evaluatePayloadBudget(
@@ -1075,6 +1329,11 @@ function benchmarkNextSteps(summary: RetrievalBenchmarkSummary): string[] {
   const steps = [
     "Compare these baseline metrics before adding embeddings or reranking.",
   ];
+  if (benchmarkAuditIssueCount(summary.audit) > 0) {
+    steps.push(
+      "Inspect summary.audit for per-query misses, noisy variants, and payload overruns before changing retrieval ranking.",
+    );
+  }
   if (summary.files.hit_rate_at_k < 1 && summary.files.evaluated_queries > 0) {
     steps.push("Inspect file misses and decide whether lexical/symbol ranking needs tuning.");
   }
@@ -1112,6 +1371,20 @@ function benchmarkNextSteps(summary: RetrievalBenchmarkSummary): string[] {
     }
   }
   return steps;
+}
+
+function benchmarkAuditIssueCount(audit: RetrievalBenchmarkAuditSummary): number {
+  return (
+    audit.file_misses.length +
+    audit.node_misses.length +
+    audit.warning_misses.length +
+    audit.result_source_misses.length +
+    audit.forbidden_file_hits.length +
+    audit.forbidden_node_hits.length +
+    audit.variant_file_misses.length +
+    audit.variant_forbidden_file_hits.length +
+    audit.payload_over_budget.length
+  );
 }
 
 function unique(values: string[]): string[] {

@@ -945,6 +945,108 @@ describe("retrieval benchmark", () => {
     );
   });
 
+  test("summarizes benchmark misses, noise, and payload overruns for audit", async () => {
+    const authSource = "export const AUTH_SCOPE = 'active auth scope';\n";
+    await write("src/auth.ts", authSource);
+    await write("src/noise.ts", "export const BILLING_SCOPE = 'invoice';\n");
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "benchmark audit suite",
+          queries: [
+            {
+              id: "audit-query",
+              query: "active auth scope missing memory",
+              expected_files: ["src/auth.ts", "src/missing.ts"],
+              expected_nodes: ["auth/missing"],
+              forbidden_files: ["src/noise.ts"],
+              forbidden_nodes: ["graph/noise"],
+              response_budget_bytes: 10,
+              tags: ["guardrail", "payload"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+    await seed([
+      makeNode({
+        id: "graph/noise",
+        name: "Active auth noisy memory",
+        summary: "Mentions active auth scope but points at an unrelated file.",
+        sources: [
+          {
+            file_path: "src/noise.ts",
+            line_range: [1, 1],
+            content_hash: hashBuffer(Buffer.from("stale-but-addressable")),
+          },
+        ],
+      }),
+    ]);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 5,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.results[0]?.files.missing).toEqual(["src/missing.ts"]);
+    expect(response.summary.audit.file_misses).toEqual([
+      expect.objectContaining({
+        id: "audit-query",
+        missing: ["src/missing.ts"],
+        matched: ["src/auth.ts"],
+        tags: ["guardrail", "payload"],
+      }),
+    ]);
+    expect(response.summary.audit.node_misses).toEqual([
+      expect.objectContaining({
+        id: "audit-query",
+        missing: ["auth/missing"],
+      }),
+    ]);
+    expect(response.summary.audit.forbidden_node_hits).toEqual([
+      expect.objectContaining({
+        id: "audit-query",
+        forbidden_matched: ["graph/noise"],
+      }),
+    ]);
+    expect(response.summary.audit.variant_forbidden_file_hits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "audit-query",
+          variant: "graph_files",
+          forbidden_matched: ["src/noise.ts"],
+        }),
+      ]),
+    );
+    expect(response.summary.audit.payload_over_budget).toEqual([
+      expect.objectContaining({
+        id: "audit-query",
+        response_budget_bytes: 10,
+        over_budget_bytes: expect.any(Number),
+      }),
+    ]);
+    expect(response.summary.audit.issue_tags).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tag: "guardrail",
+          query_ids: ["audit-query"],
+        }),
+        expect.objectContaining({
+          tag: "payload",
+          query_ids: ["audit-query"],
+        }),
+      ]),
+    );
+    expect(response.next_steps.join("\n")).toContain("summary.audit");
+  });
+
   test("passes explicit query context budgets into planning benchmark runs", async () => {
     await write(
       "src/auth.ts",

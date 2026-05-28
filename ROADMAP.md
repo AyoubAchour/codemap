@@ -301,9 +301,13 @@ replay/observability, setup polish, and benchmarked retrieval quality.
   `query_context` planning surface.
 - Task 070: stabilize the full reliability gate after optimization work,
   including platform-stable watch tests and generated guidance path output.
+- Task 071: add benchmark miss audits so retrieval failures point at exact
+  query ids, tags, noisy variants, and payload overruns.
 
-Tasks 057-069 are now implemented. Task 070 is the follow-up reliability gate
-before more retrieval tuning. The local semantic experiment added a
+Tasks 057-071 are now implemented. Task 070 stabilized the reliability gate
+before more retrieval tuning. Task 071 adds a bounded `summary.audit` packet to
+benchmark output so the next optimization step starts from exact misses and
+noise sources instead of aggregate rates alone. The local semantic experiment added a
 dependency-free `local-hash` benchmark provider and lexical/graph/mixed/local
 variant metrics, but it did not beat lexical recall on the Codemap suite, so
 semantic retrieval remains benchmark-only. The optimization baseline adds
