@@ -2222,7 +2222,7 @@ function companionChunkForFile(
       score > bestScore ||
       (score === bestScore &&
         bestChunk !== null &&
-        chunk.start_line < bestChunk.start_line)
+        compareCompanionChunkTie(chunk, bestChunk) < 0)
     ) {
       bestChunk = chunk;
       bestScore = score;
@@ -2230,6 +2230,17 @@ function companionChunkForFile(
   }
 
   return bestChunk;
+}
+
+function compareCompanionChunkTie(a: SourceChunk, b: SourceChunk): number {
+  const usefulDelta = companionChunkUsefulness(b) - companionChunkUsefulness(a);
+  return usefulDelta || a.start_line - b.start_line;
+}
+
+function companionChunkUsefulness(chunk: SourceChunk): number {
+  if (chunk.symbols.length > 0) return 2;
+  if (chunk.chunk_type === "file") return 1;
+  return 0;
 }
 
 function companionChunkSignalScore(

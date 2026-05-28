@@ -1065,6 +1065,17 @@ describe("source index", () => {
         "src/tools/companion_core.ts",
       ]),
     );
+
+    expect(
+      response.results.find(
+        (result) => result.file_path === "src/cli/companion_core.ts",
+      )?.content,
+    ).toContain("companionCoreCommand");
+    expect(
+      response.results.find(
+        (result) => result.file_path === "src/tools/companion_core.ts",
+      )?.content,
+    ).toContain("registerCompanionCoreTool");
   });
 
   test("search surfaces a unit test companion for matching source implementation", async () => {
