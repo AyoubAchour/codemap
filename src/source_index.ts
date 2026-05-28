@@ -129,6 +129,49 @@ const GENERIC_PATH_TOKENS = new Set([
 const ARCHIVAL_DEMOTION_MULTIPLIER = 0.05;
 const DISCONNECTED_IMPACT_MULTIPLIER = 0.08;
 const LOCAL_ROOT_IMPORT_PREFIXES = ["src/", "packages/", "apps/", "libs/"];
+const MAX_COMPANION_CONTEXT_CANDIDATES = 4;
+const COMPANION_SCORE_MULTIPLIER = 0.72;
+const COMPANION_SCORE_FLOOR = 0.25;
+const AGENT_GUIDANCE_QUERY_TOKENS = new Set([
+  "agent",
+  "agents",
+  "contract",
+  "emit",
+  "graph",
+  "guidance",
+  "instruction",
+  "instructions",
+  "lifecycle",
+  "memory",
+  "node",
+  "research",
+  "repo",
+  "repository",
+  "unrelated",
+  "writeback",
+]);
+const WRITEBACK_QUERY_TOKENS = new Set([
+  "suggest",
+  "suggest_writeback",
+  "writeback",
+  "writebacks",
+]);
+const AGENT_GUIDANCE_SEED_FILES = new Set([
+  "src/instructions.ts",
+  "src/setup.ts",
+  "src/cli/init.ts",
+  "src/tools/suggest_writeback.ts",
+]);
+const TASK_INDEX_QUERY_TOKENS = new Set([
+  "benchmark",
+  "benchmarks",
+  "docs",
+  "documentation",
+  "plan",
+  "roadmap",
+  "task",
+  "tasks",
+]);
 
 export interface SourceSymbol {
   name: string;
@@ -389,6 +432,12 @@ interface RankedChunk {
   score_breakdown: SourceScoreBreakdown;
   match_reasons: SourceMatchReason[];
   related_nodes: Array<Pick<Node, "id" | "kind" | "name" | "summary">>;
+}
+
+interface CompanionCandidate {
+  file: IndexedSourceFile;
+  reason: string;
+  priority: number;
 }
 
 interface SearchReadySnapshot {
@@ -687,13 +736,7 @@ export async function searchSourceIndex(
   const relatedNodesByFile = await loadRelatedNodesByFile(repoRoot);
   const queryTokens = searchQueryTokens(trimmedQuery);
   const needsRelationshipRanking = isImpactReviewQuery(queryTokens);
-  const importRelationships =
-    dependencyLimit > 0 || includeImpact || needsRelationshipRanking
-      ? buildImportRelationshipIndex(index)
-      : {
-          reverseImportIndex: new Map<string, ReverseImportReference[]>(),
-          localImportingFiles: new Set<string>(),
-        };
+  const importRelationships = buildImportRelationshipIndex(index);
   const allRanked = rankChunks(
     trimmedQuery,
     searchReady,
@@ -706,7 +749,14 @@ export async function searchSourceIndex(
     },
   );
   const filteredRanked = filterWeakRankedChunks(allRanked);
-  const ranked = diversifyRankedChunks(filteredRanked, limit)
+  const expandedRanked = expandRankedWithCompanionChunks(filteredRanked, {
+    index,
+    limit,
+    queryTokens,
+    relatedNodesByFile,
+    reverseImportIndex: importRelationships.reverseImportIndex,
+  });
+  const ranked = diversifyRankedChunks(expandedRanked, limit)
     .map(({ chunk, score, score_breakdown, match_reasons, related_nodes }) => ({
       file_path: chunk.file_path,
       start_line: chunk.start_line,
@@ -748,7 +798,7 @@ export async function searchSourceIndex(
     query,
     index_updated_at: index.updated_at,
     search_time_ms: Date.now() - startedAt,
-    total_results: filteredRanked.length,
+    total_results: countUniqueRankedChunks(expandedRanked),
     results: ranked,
     warnings: warnings.length > 0 ? warnings : undefined,
   };
@@ -1954,6 +2004,278 @@ function filterWeakRankedChunks(ranked: RankedChunk[]): RankedChunk[] {
   );
 }
 
+function expandRankedWithCompanionChunks(
+  ranked: RankedChunk[],
+  options: {
+    index: SourceIndex;
+    limit: number;
+    queryTokens: string[];
+    relatedNodesByFile: Map<
+      string,
+      Array<Pick<Node, "id" | "kind" | "name" | "summary">>
+    >;
+    reverseImportIndex: ReverseImportIndex;
+  },
+): RankedChunk[] {
+  if (options.limit <= 1 || ranked.length === 0) return ranked;
+
+  const expanded: RankedChunk[] = [];
+  const expandedFiles = new Set<string>();
+  const companionFiles = new Set<string>();
+  const seedLimit = Math.min(ranked.length, Math.max(3, options.limit));
+  const maxCompanions = Math.min(
+    MAX_COMPANION_CONTEXT_CANDIDATES,
+    Math.max(1, options.limit - 1),
+  );
+  let companionCount = 0;
+
+  for (const [index, rankedChunk] of ranked.entries()) {
+    expanded.push(rankedChunk);
+    expandedFiles.add(rankedChunk.chunk.file_path);
+    if (index >= seedLimit || companionCount >= maxCompanions) continue;
+
+    const companions = companionCandidatesForRankedChunk(rankedChunk, options);
+    for (const companion of companions) {
+      if (companionCount >= maxCompanions) break;
+      if (companion.file.file_path === rankedChunk.chunk.file_path) continue;
+      if (expandedFiles.has(companion.file.file_path)) continue;
+      if (companionFiles.has(companion.file.file_path)) continue;
+
+      const companionRanked = rankedChunkForCompanion(
+        rankedChunk,
+        companion,
+        options,
+      );
+      if (!companionRanked) continue;
+
+      expanded.push(companionRanked);
+      companionFiles.add(companion.file.file_path);
+      companionCount += 1;
+    }
+  }
+
+  return expanded;
+}
+
+function companionCandidatesForRankedChunk(
+  rankedChunk: RankedChunk,
+  options: {
+    index: SourceIndex;
+    queryTokens: string[];
+    reverseImportIndex: ReverseImportIndex;
+  },
+): CompanionCandidate[] {
+  const candidates: CompanionCandidate[] = [];
+  const seen = new Set<string>();
+
+  function add(filePath: string, reason: string, priority: number): void {
+    if (seen.has(filePath)) return;
+    const file = options.index.files[filePath];
+    if (!file) return;
+    seen.add(filePath);
+    candidates.push({
+      file,
+      reason,
+      priority: priority + companionFileSignalScore(file, options.queryTokens),
+    });
+  }
+
+  for (const filePath of testCompanionPaths(rankedChunk.chunk.file_path)) {
+    add(filePath, `test companion for ${rankedChunk.chunk.file_path}`, 70);
+  }
+
+  const importers =
+    options.reverseImportIndex.get(rankedChunk.chunk.file_path) ?? [];
+  for (const { importer } of importers) {
+    if (!isCliOrToolCompanionPath(importer.file_path)) continue;
+    add(
+      importer.file_path,
+      `local CLI/tool importer of ${rankedChunk.chunk.file_path}`,
+      importer.file_path.startsWith("src/tools/") ? 62 : 60,
+    );
+  }
+
+  if (
+    isAgentGuidanceQuery(options.queryTokens) &&
+    isAgentGuidanceSeed(rankedChunk.chunk.file_path)
+  ) {
+    add("AGENTS.md", "generated agent guidance for lifecycle queries", 80);
+    add("src/guidance.ts", "client guidance companion for lifecycle queries", 79);
+    if (isWritebackQuery(options.queryTokens)) {
+      add(
+        "src/tools/suggest_writeback.ts",
+        "writeback tool companion for lifecycle queries",
+        78,
+      );
+      add(
+        "src/writeback_suggestions.ts",
+        "writeback suggestion engine companion for lifecycle queries",
+        76,
+      );
+    }
+  }
+
+  if (
+    isTaskIndexQuery(options.queryTokens) &&
+    rankedChunk.chunk.file_path.startsWith("tasks/task-")
+  ) {
+    add("tasks/README.md", "task index companion for task documentation", 55);
+  }
+
+  return candidates.sort(
+    (a, b) =>
+      b.priority - a.priority || a.file.file_path.localeCompare(b.file.file_path),
+  );
+}
+
+function rankedChunkForCompanion(
+  seed: RankedChunk,
+  companion: CompanionCandidate,
+  options: {
+    queryTokens: string[];
+    relatedNodesByFile: Map<
+      string,
+      Array<Pick<Node, "id" | "kind" | "name" | "summary">>
+    >;
+  },
+): RankedChunk | null {
+  const chunk = companionChunkForFile(companion.file, options.queryTokens);
+  if (!chunk) return null;
+
+  const score = Math.max(
+    COMPANION_SCORE_FLOOR,
+    seed.score * COMPANION_SCORE_MULTIPLIER,
+  );
+  const score_breakdown = zeroScoreBreakdown();
+  score_breakdown.path = score;
+
+  return {
+    chunk,
+    score,
+    score_breakdown,
+    match_reasons: [
+      {
+        field: "path",
+        value: companion.file.file_path,
+        score,
+        detail: `bounded companion context: ${companion.reason}`,
+      },
+    ],
+    related_nodes:
+      options.relatedNodesByFile.get(companion.file.file_path)?.slice(0, 3) ??
+      [],
+  };
+}
+
+function companionChunkForFile(
+  file: IndexedSourceFile,
+  queryTokens: string[],
+): SourceChunk | null {
+  let bestChunk: SourceChunk | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const chunk of file.chunks) {
+    const score = companionChunkSignalScore(chunk, queryTokens);
+    if (
+      score > bestScore ||
+      (score === bestScore &&
+        bestChunk !== null &&
+        chunk.start_line < bestChunk.start_line)
+    ) {
+      bestChunk = chunk;
+      bestScore = score;
+    }
+  }
+
+  return bestChunk;
+}
+
+function companionChunkSignalScore(
+  chunk: SourceChunk,
+  queryTokens: string[],
+): number {
+  const tokens = new Set([
+    ...structuredPathTokens(chunk.file_path, queryTokens),
+    ...tokenize(chunk.content),
+    ...chunk.symbols.flatMap((symbol) => tokenize(symbol.name)),
+    ...chunk.imports.flatMap((entry) => tokenize(entry.module)),
+    ...chunk.exports.flatMap((entry) => tokenize(entry)),
+  ]);
+  return queryTokens.reduce(
+    (score, token) => score + (tokens.has(token) ? 1 : 0),
+    0,
+  );
+}
+
+function companionFileSignalScore(
+  file: IndexedSourceFile,
+  queryTokens: string[],
+): number {
+  const tokens = new Set([
+    ...structuredPathTokens(file.file_path, queryTokens),
+    ...file.symbols.flatMap((symbol) => tokenize(symbol.name)),
+    ...file.imports.flatMap((entry) => tokenize(entry.module)),
+    ...file.exports.flatMap((entry) => tokenize(entry)),
+  ]);
+  return queryTokens.reduce(
+    (score, token) => score + (tokens.has(token) ? 2 : 0),
+    0,
+  );
+}
+
+function testCompanionPaths(filePath: string): string[] {
+  const extension = path.posix.extname(filePath);
+  const withoutExtension = extension
+    ? filePath.slice(0, -extension.length)
+    : filePath;
+  const basename = path.posix.basename(withoutExtension);
+  const srcRelative = withoutExtension.startsWith("src/")
+    ? withoutExtension.slice("src/".length)
+    : withoutExtension;
+  const candidates = [
+    `test/unit/${srcRelative}.test.ts`,
+    `test/${srcRelative}.test.ts`,
+    `tests/${srcRelative}.test.ts`,
+    `test/unit/${basename}.test.ts`,
+    `test/${basename}.test.ts`,
+    `tests/${basename}.test.ts`,
+  ];
+
+  if (filePath.startsWith("src/cli/")) {
+    candidates.push("test/unit/cli.test.ts");
+  }
+
+  return Array.from(new Set(candidates));
+}
+
+function isCliOrToolCompanionPath(filePath: string): boolean {
+  return filePath.startsWith("src/cli/") || filePath.startsWith("src/tools/");
+}
+
+function isAgentGuidanceQuery(queryTokens: string[]): boolean {
+  return queryTokens.some((token) => AGENT_GUIDANCE_QUERY_TOKENS.has(token));
+}
+
+function isWritebackQuery(queryTokens: string[]): boolean {
+  return queryTokens.some((token) => WRITEBACK_QUERY_TOKENS.has(token));
+}
+
+function isAgentGuidanceSeed(filePath: string): boolean {
+  if (AGENT_GUIDANCE_SEED_FILES.has(filePath)) return true;
+  const basename = path.posix.basename(filePath, path.posix.extname(filePath));
+  return ["agentic_surfaces", "guidance", "instructions", "repo_guidance"].some(
+    (token) => basename.includes(token),
+  );
+}
+
+function isTaskIndexQuery(queryTokens: string[]): boolean {
+  return queryTokens.some((token) => TASK_INDEX_QUERY_TOKENS.has(token));
+}
+
+function countUniqueRankedChunks(ranked: RankedChunk[]): number {
+  return new Set(ranked.map(({ chunk }) => chunk.id)).size;
+}
+
 function adjustSourceScore(
   score: number,
   input: {
@@ -2027,6 +2349,18 @@ function hasExplicitPathTokenMatch(
   return queryTokens.some(
     (token) => pathTokens.has(token) && !GENERIC_PATH_TOKENS.has(token),
   );
+}
+
+function zeroScoreBreakdown(): SourceScoreBreakdown {
+  return {
+    bm25: 0,
+    content: 0,
+    export: 0,
+    import: 0,
+    path: 0,
+    related_graph_node: 0,
+    symbol: 0,
+  };
 }
 
 function roundScoreBreakdown(

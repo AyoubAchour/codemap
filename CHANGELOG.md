@@ -37,6 +37,10 @@ All notable user-facing changes to Codemap are documented here.
   boosts, demotes archive-like content unless requested, and de-prioritizes
   disconnected files for impact/review queries. The Taskflow fixture's compact
   recall forbidden-file violation rate drops from `0.6000` to `0.0000`.
+- Source search now adds bounded companion context for already-relevant hits:
+  nearby CLI/tool wrappers, same-stem tests, generated agent guidance,
+  writeback companions, and task indexes can surface without increasing
+  payload budgets or enabling runtime semantic retrieval.
 - `recall_context` now packs mixed evidence by lane so graph/source recall is
   selected before optional capture summaries at the same rank depth, and its
   budget metadata reports compact per-lane packing stats.

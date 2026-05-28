@@ -305,13 +305,19 @@ replay/observability, setup polish, and benchmarked retrieval quality.
   query ids, tags, noisy variants, and payload overruns.
 - Task 072: split primary benchmark expectations from supporting-file
   expectations so audit misses represent real must-return retrieval gaps.
+- Task 073: add bounded companion context so matching source files can carry
+  nearby CLI/tool wrappers, tests, guidance, and task-index files without
+  raising payload budgets.
 
-Tasks 057-072 are now implemented. Task 070 stabilized the reliability gate
+Tasks 057-073 are now implemented. Task 070 stabilized the reliability gate
 before more retrieval tuning. Task 071 adds a bounded `summary.audit` packet to
 benchmark output so the next optimization step starts from exact misses and
 noise sources instead of aggregate rates alone. Task 072 calibrates that signal
 by moving useful-but-secondary files into `supporting_files`; primary benchmark
-misses now mean the must-return context was absent. The local semantic experiment added a
+misses now mean the must-return context was absent. Task 073 uses those
+supporting misses to add a small companion lane in source search for local
+wrappers, tests, generated guidance, and task indexes while preserving primary
+hit-rate and payload gates. The local semantic experiment added a
 dependency-free `local-hash` benchmark provider and lexical/graph/mixed/local
 variant metrics, but it did not beat lexical recall on the Codemap suite, so
 semantic retrieval remains benchmark-only. The optimization baseline adds

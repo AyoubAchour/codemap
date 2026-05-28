@@ -313,6 +313,19 @@ under `summary.supporting_files` and `summary.audit.supporting_file_misses`
 without lowering primary `summary.files` metrics or thresholds. The bundled
 suite uses this split so primary misses represent must-return retrieval gaps.
 
+### Bounded companion context
+
+Task 073 uses the calibrated supporting-file misses to improve source retrieval
+without increasing result limits or enabling runtime semantic retrieval. Source
+search now adds a small bounded companion lane from already-relevant hits:
+local CLI/tool importers, same-stem unit tests, generated agent guidance for
+lifecycle-shaped queries, writeback companions for writeback-shaped queries,
+and the task index for task-documentation queries.
+
+This remains rebuildable source-index evidence. Companion hits are prompts for
+inspection, not curated graph memory, and benchmark gates still protect primary
+file recall, forbidden-file noise, and payload budgets.
+
 ## Task Sequence
 
 1. Task 057 - Agentmemory catch-up planning.
@@ -331,6 +344,7 @@ suite uses this split so primary misses represent must-return retrieval gaps.
 14. Task 070 - Reliability gate.
 15. Task 071 - Benchmark miss audit.
 16. Task 072 - Benchmark audit triage.
+17. Task 073 - Bounded companion context.
 
 ## Gates
 
