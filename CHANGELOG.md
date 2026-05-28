@@ -23,6 +23,9 @@ All notable user-facing changes to Codemap are documented here.
 - Retrieval benchmark guardrails for optimization work, including forbidden
   file/node expectations, expected warning and result-source coverage, p50/p95
   latency metrics, and small distractor/payload cases in the bundled suites.
+- Opt-in planning-context budgets via `query_context` `budget_bytes`,
+  `codemap context --budget`, and
+  `codemap benchmark-retrieval --context-budget-bytes`.
 
 ### Improved
 
@@ -33,6 +36,9 @@ All notable user-facing changes to Codemap are documented here.
 - `recall_context` now packs mixed evidence by lane so graph/source recall is
   selected before optional capture summaries at the same rank depth, and its
   budget metadata reports compact per-lane packing stats.
+- `query_context` can now trim bulky planning detail under an explicit byte
+  budget while preserving default unbudgeted behavior and reporting per-lane
+  packing metadata.
 
 ## 0.8.0 - 2026-05-11
 

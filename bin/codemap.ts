@@ -551,6 +551,11 @@ program
     parsePositiveInteger,
   )
   .option(
+    "--budget <n>",
+    "Maximum response bytes; trims bulky planning detail and reports packing metadata.",
+    parsePositiveInteger,
+  )
+  .option(
     "--refresh-index <mode>",
     "Source index refresh mode: never, if_missing, or if_stale.",
     parseRefreshIndex,
@@ -566,6 +571,7 @@ program
       refreshIndex: cmdOpts.refreshIndex as SourceRefreshMode | undefined,
       includeImpact: cmdOpts.includeImpact as boolean | undefined,
       impactLimit: cmdOpts.impactLimit as number | undefined,
+      budgetBytes: cmdOpts.budget as number | undefined,
     };
     emit(await context(question, flags, { repoRoot: opts.repo }));
   });
@@ -805,6 +811,11 @@ program
     parsePositiveInteger,
   )
   .option(
+    "--context-budget-bytes <n>",
+    "Pass an explicit response byte budget into query_context during each benchmark query.",
+    parsePositiveInteger,
+  )
+  .option(
     "--min-payload-budget-compliance <n>",
     "Exit 1 if the share of budget-compliant queries is below this 0..1 threshold.",
     parseUnitInterval,
@@ -845,6 +856,7 @@ program
         minFileHitRate: cmdOpts.minFileHitRate as number | undefined,
         minNodeHitRate: cmdOpts.minNodeHitRate as number | undefined,
         responseBudgetBytes: cmdOpts.responseBudgetBytes as number | undefined,
+        contextBudgetBytes: cmdOpts.contextBudgetBytes as number | undefined,
         minPayloadBudgetCompliance: cmdOpts.minPayloadBudgetCompliance as
           | number
           | undefined,

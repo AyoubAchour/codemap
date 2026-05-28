@@ -7,10 +7,6 @@ import {
   type SourceRefreshMode,
 } from "./query_context.js";
 import {
-  getSourceIndexStatus,
-  type SourceIndexStatus,
-} from "./source_index.js";
-import {
   type ResolvedSemanticReranker,
   type ResolvedSemanticRetrieval,
   resolveSemanticReranker,
@@ -23,6 +19,10 @@ import {
   type SemanticRetrievalBenchmarkOptions,
   type SemanticRetrievalFileHit,
 } from "./semantic_retrieval.js";
+import {
+  getSourceIndexStatus,
+  type SourceIndexStatus,
+} from "./source_index.js";
 import { normalizeRepoPath } from "./util/repo_path.js";
 
 const BENCHMARK_VERSION = 1 as const;
@@ -80,6 +80,7 @@ export interface RetrievalBenchmarkOptions {
   minFileHitRate?: number;
   minNodeHitRate?: number;
   responseBudgetBytes?: number;
+  contextBudgetBytes?: number;
   minPayloadBudgetCompliance?: number;
   maxAverageResponseBytes?: number;
   maxAverageLatencyMs?: number;
@@ -192,6 +193,7 @@ export interface RetrievalBenchmarkSummary {
     min_file_hit_rate?: number;
     min_node_hit_rate?: number;
     response_budget_bytes?: number;
+    context_budget_bytes?: number;
     min_payload_budget_compliance?: number;
     max_average_response_bytes?: number;
     max_average_latency_ms?: number;
@@ -350,6 +352,7 @@ export async function runRetrievalBenchmark(
       includeImpact,
       impactLimit,
       refreshIndex,
+      budgetBytes: options.contextBudgetBytes,
     });
     const latencyMs = Date.now() - queryStartedAt;
     const sourceResults = context.source.search?.ok
@@ -370,6 +373,10 @@ export async function runRetrievalBenchmark(
     const responseBytes = Buffer.byteLength(JSON.stringify(context), "utf8");
     const responseBudgetBytes =
       options.responseBudgetBytes ?? benchmarkQuery.response_budget_bytes;
+    const payloadBudgetBytes = effectivePayloadBudgetBytes(
+      responseBudgetBytes,
+      options.contextBudgetBytes,
+    );
     const semanticRun = await runSemanticFileRetrieval(semantic, {
       repoRoot: resolvedRepoRoot,
       suitePath: suiteResolution.relativePath,
@@ -436,7 +443,7 @@ export async function runRetrievalBenchmark(
       tags: benchmarkQuery.tags ?? [],
       latency_ms: latencyMs,
       response_bytes: responseBytes,
-      payload: evaluatePayloadBudget(responseBytes, responseBudgetBytes),
+      payload: evaluatePayloadBudget(responseBytes, payloadBudgetBytes),
       source_result_count: sourceResults.length,
       source_file_diversity: round4(sourceFileDiversity),
       files: lexicalFiles,
@@ -495,6 +502,7 @@ export async function runRetrievalBenchmark(
     minFileHitRate: options.minFileHitRate,
     minNodeHitRate: options.minNodeHitRate,
     responseBudgetBytes: options.responseBudgetBytes,
+    contextBudgetBytes: options.contextBudgetBytes,
     minPayloadBudgetCompliance: options.minPayloadBudgetCompliance,
     maxAverageResponseBytes: options.maxAverageResponseBytes,
     maxAverageLatencyMs: options.maxAverageLatencyMs,
@@ -767,6 +775,7 @@ function summarizeResults(
     minFileHitRate?: number;
     minNodeHitRate?: number;
     responseBudgetBytes?: number;
+    contextBudgetBytes?: number;
     minPayloadBudgetCompliance?: number;
     maxAverageResponseBytes?: number;
     maxAverageLatencyMs?: number;
@@ -883,6 +892,7 @@ function summarizeResults(
       min_file_hit_rate: input.minFileHitRate,
       min_node_hit_rate: input.minNodeHitRate,
       response_budget_bytes: input.responseBudgetBytes,
+      context_budget_bytes: input.contextBudgetBytes,
       min_payload_budget_compliance: minPayloadBudgetCompliance,
       max_average_response_bytes: input.maxAverageResponseBytes,
       max_average_latency_ms: input.maxAverageLatencyMs,
@@ -942,6 +952,15 @@ function evaluatePayloadBudget(
         ? 0
         : Math.max(0, responseBytes - responseBudgetBytes),
   };
+}
+
+function effectivePayloadBudgetBytes(
+  responseBudgetBytes?: number,
+  contextBudgetBytes?: number,
+): number | undefined {
+  if (responseBudgetBytes === undefined) return contextBudgetBytes;
+  if (contextBudgetBytes === undefined) return responseBudgetBytes;
+  return Math.min(responseBudgetBytes, contextBudgetBytes);
 }
 
 function aggregatePayloadBudgets(

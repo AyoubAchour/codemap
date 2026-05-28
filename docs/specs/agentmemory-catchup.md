@@ -276,6 +276,20 @@ omitted-by-budget, and used-byte counts.
 This remains deterministic and local. It does not add LLM packing, hosted
 reranking, runtime semantic retrieval, or automatic graph writes.
 
+### Query-context budget packing
+
+Task 069 extends the budget-packing idea to the larger `query_context` planning
+surface as an opt-in behavior. Callers can provide `budget_bytes` through MCP,
+`--budget` through `codemap context`, or `--context-budget-bytes` through
+`benchmark-retrieval`. Unbudgeted `query_context` keeps its existing planning
+shape.
+
+Budgeted planning trims bulky detail in a deterministic order: source content,
+source dependency/impact detail, repo map detail, related nodes, expansion
+detail, graph match detail, and only then low-ranked source results. Responses
+include per-lane `budget.packing` metadata so agents can see what was kept,
+what was omitted, and which lane consumed the response budget.
+
 ## Task Sequence
 
 1. Task 057 - Agentmemory catch-up planning.
@@ -290,6 +304,7 @@ reranking, runtime semantic retrieval, or automatic graph writes.
 10. Task 066 - Optimization baseline and coverage audit.
 11. Task 067 - Distractor-aware source ranking.
 12. Task 068 - Budget-aware context packing.
+13. Task 069 - Query context budget packing.
 
 ## Gates
 
@@ -308,6 +323,8 @@ reranking, runtime semantic retrieval, or automatic graph writes.
   regressions.
 - Compact recall makes budget allocation visible by participating evidence
   lane.
+- Budgeted planning context makes response-budget allocation visible without
+  changing default unbudgeted `query_context` behavior.
 
 ## Risks
 

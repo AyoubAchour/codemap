@@ -148,6 +148,16 @@ existing source index, existing retrieval benchmark harness.
 - [x] Keep the change deterministic and local; do not add runtime semantic
       retrieval or automatic graph writes.
 
+## Phase 12 - Query Context Budget Packing
+
+- [x] Implement task 069.
+- [x] Add opt-in `budget_bytes` / `--budget` support to `query_context` without
+      changing default unbudgeted planning output.
+- [x] Trim bulky planning detail deterministically before dropping source hits.
+- [x] Report per-lane `budget.packing` stats for planning responses.
+- [x] Add `benchmark-retrieval --context-budget-bytes` so planning packet size
+      can be measured separately from payload threshold gates.
+
 ## Done When
 
 - [x] Codemap has a compact recall surface with hard budget tests.
@@ -161,5 +171,7 @@ existing source index, existing retrieval benchmark harness.
       promoting semantic retrieval into runtime behavior.
 - [x] Compact recall explains budget allocation across participating evidence
       lanes.
+- [x] Budgeted query-context planning explains budget allocation across
+      planning evidence lanes.
 - [x] README/HANDOFF/ROADMAP describe the sequence without implying automatic
       graph writes.

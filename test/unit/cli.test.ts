@@ -5,16 +5,15 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 
-import { GraphStore } from "../../src/graph.js";
 import { benchmarkRetrieval } from "../../src/cli/benchmark_retrieval.js";
 import {
-  captureEvent,
   type CaptureEventFlags,
+  captureEvent,
 } from "../../src/cli/capture_event.js";
 import { captureReport } from "../../src/cli/capture_report.js";
 import {
-  captureSession,
   type CaptureSessionFlags,
+  captureSession,
 } from "../../src/cli/capture_session.js";
 import { changesContext } from "../../src/cli/changes_context.js";
 import { clearIndex } from "../../src/cli/clear_index.js";
@@ -26,14 +25,15 @@ import { generateSkills } from "../../src/cli/generate_skills.js";
 import { indexStatus } from "../../src/cli/index_status.js";
 import { init } from "../../src/cli/init.js";
 import { recallContext } from "../../src/cli/recall_context.js";
-import { rollup } from "../../src/cli/rollup.js";
 import { repairGraph } from "../../src/cli/repair_graph.js";
+import { rollup } from "../../src/cli/rollup.js";
 import { scan } from "../../src/cli/scan.js";
 import { searchSource } from "../../src/cli/search_source.js";
 import { setup } from "../../src/cli/setup.js";
 import { show } from "../../src/cli/show.js";
 import { suggestWriteback } from "../../src/cli/suggest_writeback.js";
 import { validate } from "../../src/cli/validate.js";
+import { GraphStore } from "../../src/graph.js";
 import {
   GUIDANCE_POLICY_HASH,
   SERVER_INSTRUCTIONS,
@@ -1075,6 +1075,47 @@ describe("CLI: source index", () => {
     });
     expect(out.results[0].file_path).toBe("src/auth.ts");
     expect(out.budget.used_bytes).toBeLessThanOrEqual(1800);
+  });
+
+  test("bin context wires an explicit response budget", async () => {
+    await fs.writeFile(
+      path.join(tmpRoot, "src", "auth.ts"),
+      [
+        "export interface SessionUser { id: string }",
+        "export function requireActiveUser(token: string): SessionUser {",
+        "  const auditTrail = [",
+        ...Array.from(
+          { length: 80 },
+          (_value, index) =>
+            `    "auth audit marker ${index} requireActiveUser active user budget",`,
+        ),
+        "  ];",
+        "  return { id: auditTrail.includes(token) ? token : token };",
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await runCodemapBin([
+      "context",
+      "requireActiveUser active user",
+      "--source-limit",
+      "1",
+      "--max-content-chars",
+      "3000",
+      "--budget",
+      "6500",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const out = JSON.parse(result.stdout);
+    expect(out.budget.budget_bytes).toBe(6500);
+    expect(out.budget.used_bytes).toBeLessThanOrEqual(6500);
+    expect(out.budget.within_budget).toBe(true);
+    expect(Buffer.byteLength(result.stdout, "utf8")).toBeLessThanOrEqual(6500);
+    expect(out.source.search.results[0].file_path).toBe("src/auth.ts");
+    expect(out.warnings).toContain(
+      "Query context was trimmed to stay within the configured byte budget.",
+    );
   });
 
   test("context warns when repo map rankings come from a stale source index", async () => {

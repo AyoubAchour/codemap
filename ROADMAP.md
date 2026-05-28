@@ -295,8 +295,12 @@ replay/observability, setup polish, and benchmarked retrieval quality.
   ranking or runtime retrieval defaults.
 - Task 067: tune local lexical ranking against the measured distractor misses
   before considering runtime semantic retrieval.
+- Task 068: make compact `recall_context` spend budget predictably across graph,
+  source, and optional capture-summary evidence.
+- Task 069: add opt-in byte-budget packing and lane accounting for the larger
+  `query_context` planning surface.
 
-Tasks 057-066 are now implemented. The local semantic experiment added a
+Tasks 057-069 are now implemented. The local semantic experiment added a
 dependency-free `local-hash` benchmark provider and lexical/graph/mixed/local
 variant metrics, but it did not beat lexical recall on the Codemap suite, so
 semantic retrieval remains benchmark-only. The optimization baseline adds
@@ -310,6 +314,11 @@ disconnected-file demotion for impact/review queries, and a weak-result floor.
 On the Taskflow fixture this drops compact recall forbidden-file violations
 from `0.6000` to `0.0000` while preserving hit rate, recall, MRR, and payload
 compliance.
+
+Task 068 adds lane-balanced packing to compact recall. Task 069 extends
+budgeting to planning context as an opt-in path through MCP `budget_bytes`,
+`codemap context --budget`, and `benchmark-retrieval --context-budget-bytes`,
+while leaving default `query_context` behavior unchanged.
 
 This order is intentional: benchmark the gap, ship compact recall, then add
 capture and observability. Automatic capture must improve suggestions and

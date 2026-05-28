@@ -945,6 +945,102 @@ describe("retrieval benchmark", () => {
     );
   });
 
+  test("passes explicit query context budgets into planning benchmark runs", async () => {
+    await write(
+      "src/auth.ts",
+      [
+        "export function requireActiveUser(token: string) {",
+        "  const auditTrail = [",
+        ...Array.from(
+          { length: 120 },
+          (_value, index) =>
+            `    "auth audit marker ${index} requireActiveUser active user planning benchmark budget",`,
+        ),
+        "  ];",
+        "  return { id: auditTrail.includes(token) ? token : token };",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "budgeted query context suite",
+          queries: [
+            {
+              id: "budgeted-context",
+              query: "requireActiveUser active user planning benchmark budget",
+              expected_files: ["src/auth.ts"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 1,
+      maxContentChars: 3000,
+      responseBudgetBytes: 6500,
+      minPayloadBudgetCompliance: 1,
+      maxAverageResponseBytes: 6500,
+      contextBudgetBytes: 6500,
+    } as Parameters<typeof runRetrievalBenchmark>[1] & {
+      contextBudgetBytes: number;
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.summary.thresholds.passed).toBe(true);
+    expect(response.summary.payload_budget.compliance_rate).toBe(1);
+    expect(response.results[0]?.payload.within_budget).toBe(true);
+    expect(response.results[0]?.files.matched).toEqual(["src/auth.ts"]);
+  });
+
+  test("uses context budgets as payload thresholds when response budgets are unset", async () => {
+    await write("src/auth.ts", "export const AUTH_SCOPE = 'active';\n");
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "context-only budget suite",
+          queries: [
+            {
+              id: "context-only-budget",
+              query: "active auth scope",
+              expected_files: ["src/auth.ts"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 3,
+      contextBudgetBytes: 1,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.results[0]?.payload.response_budget_bytes).toBe(1);
+    expect(response.results[0]?.payload.within_budget).toBe(false);
+    expect(response.results[0]?.payload.over_budget_bytes).toBeGreaterThan(0);
+    expect(response.summary.payload_budget.evaluated_queries).toBe(1);
+    expect(response.summary.payload_budget.compliance_rate).toBe(0);
+    expect(response.summary.thresholds.passed).toBe(false);
+    expect(response.summary.thresholds.failed).toContain(
+      "payload_budget.compliance_rate",
+    );
+  });
+
   test("reports average response budgets and latency metrics", async () => {
     await write("src/auth.ts", "export const AUTH_SCOPE = 'active';\n");
     await write(

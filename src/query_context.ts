@@ -1,32 +1,40 @@
 import { GraphStore, type QueryResult } from "./graph.js";
 import {
   filterStalenessReportForNodes,
-  rankGraphResultByQuality,
-  summarizeGraphMemoryQuality,
   type GraphMemoryQuality,
   type GraphMemoryQualitySummary,
+  rankGraphResultByQuality,
+  summarizeGraphMemoryQuality,
 } from "./graph_quality.js";
-import { checkSourceStaleness, type StalenessReport } from "./staleness.js";
+import {
+  buildRepoMap,
+  type RepoMapFileSummary,
+  type RepoMapSummary,
+  type RepoMapSymbolRank,
+  repoMapFileSummary,
+} from "./repo_map.js";
 import {
   getSourceIndexStatus,
   loadSourceIndex,
-  scanSourceIndex,
-  searchSourceIndex,
   type SourceIndex,
   type SourceIndexStatus,
   type SourceSearchResponse,
+  scanSourceIndex,
+  searchSourceIndex,
 } from "./source_index.js";
-import {
-  buildRepoMap,
-  repoMapFileSummary,
-  type RepoMapFileSummary,
-  type RepoMapSymbolRank,
-  type RepoMapSummary,
-} from "./repo_map.js";
+import { checkSourceStaleness, type StalenessReport } from "./staleness.js";
 import type { Node } from "./types.js";
 
 export type SourceRefreshMode = "never" | "if_missing" | "if_stale";
 export type QueryContextMode = "compact" | "standard" | "full";
+export type QueryContextBudgetLane =
+  | "summary"
+  | "graph"
+  | "source"
+  | "repo_map"
+  | "related_nodes"
+  | "expansion"
+  | "warnings";
 
 export interface QueryContextOptions {
   mode?: QueryContextMode;
@@ -37,6 +45,31 @@ export interface QueryContextOptions {
   refreshIndex?: SourceRefreshMode;
   includeImpact?: boolean;
   impactLimit?: number;
+  budgetBytes?: number;
+}
+
+export interface QueryContextPackingLaneStats {
+  candidates: number;
+  selected: number;
+  omitted: number;
+  omitted_by_budget: number;
+  used_bytes: number;
+}
+
+export interface QueryContextPackingSummary {
+  strategy: "planning_detail_budget_v1";
+  lanes: Partial<
+    Record<QueryContextBudgetLane, QueryContextPackingLaneStats>
+  >;
+}
+
+export interface QueryContextBudgetSummary {
+  budget_bytes: number;
+  used_bytes: number;
+  remaining_bytes: number;
+  within_budget: boolean;
+  truncated: boolean;
+  packing: QueryContextPackingSummary;
 }
 
 export interface QueryContextGraphMemorySummary {
@@ -131,6 +164,7 @@ export interface QueryContextResponse {
   ok: true;
   mode: QueryContextMode;
   question: string;
+  budget?: QueryContextBudgetSummary;
   summary: QueryContextSummary;
   warnings: string[];
   next_steps: string[];
@@ -155,6 +189,15 @@ const DEFAULT_REFRESH_INDEX: SourceRefreshMode = "if_missing";
 const DEFAULT_MODE: QueryContextMode = "standard";
 const REPO_MAP_CAVEAT =
   "Repo map rankings are rebuildable source-index signals; use them to choose files to inspect, not as durable memory.";
+const GRAPH_MEMORY_WARNING =
+  "Graph matches are curated repo memory; prefer fresh graph decisions/invariants/gotchas over re-deriving them.";
+const STALE_GRAPH_MEMORY_WARNING =
+  "Some returned graph nodes have stale source anchors; re-read those files before relying on them.";
+const LOW_TRUST_GRAPH_MEMORY_WARNING =
+  "Some graph nodes are low-trust; inspect their source anchors before relying on them.";
+const QUERY_CONTEXT_BUDGET_WARNING =
+  "Query context was trimmed to stay within the configured byte budget.";
+const TRUNCATION_MARKER = "\n... omitted for query_context budget ...";
 
 const MODE_DEFAULTS: Record<
   QueryContextMode,
@@ -213,6 +256,13 @@ export async function buildQueryContext(
     shouldIncludeImpact(trimmedQuestion);
   const impactLimit = options.impactLimit ?? defaults.impactLimit;
   const maxContentChars = options.maxContentChars ?? defaults.maxContentChars;
+  const budgetBytes = options.budgetBytes;
+  if (
+    budgetBytes !== undefined &&
+    (!Number.isSafeInteger(budgetBytes) || budgetBytes <= 0)
+  ) {
+    throw new Error("budgetBytes must be a positive integer");
+  }
   const warnings: string[] = [];
 
   const store = await GraphStore.load(repoRoot);
@@ -240,19 +290,13 @@ export async function buildQueryContext(
   );
   const memoryQuality = summarizeGraphMemoryQuality(graphResult);
   if (graphResult.nodes.length > 0) {
-    warnings.push(
-      "Graph matches are curated repo memory; prefer fresh graph decisions/invariants/gotchas over re-deriving them.",
-    );
+    warnings.push(GRAPH_MEMORY_WARNING);
   }
   if (staleness.stale_sources.length > 0) {
-    warnings.push(
-      "Some returned graph nodes have stale source anchors; re-read those files before relying on them.",
-    );
+    warnings.push(STALE_GRAPH_MEMORY_WARNING);
   }
   if (memoryQuality.low_trust_node_ids.length > 0) {
-    warnings.push(
-      "Some graph nodes are low-trust; inspect their source anchors before relying on them.",
-    );
+    warnings.push(LOW_TRUST_GRAPH_MEMORY_WARNING);
   }
 
   let sourceStatus = await getSourceIndexStatus(repoRoot);
@@ -366,7 +410,7 @@ export async function buildQueryContext(
   });
   const repoMapSummary = summarizeRepoMap(repoMap);
 
-  return {
+  const response: QueryContextResponse = {
     ok: true,
     mode,
     question: trimmedQuestion,
@@ -383,6 +427,672 @@ export async function buildQueryContext(
     repo_map: repoMapSummary,
     related_nodes: relatedNodes,
   };
+  return budgetBytes === undefined
+    ? response
+    : fitQueryContextBudget(response, budgetBytes);
+}
+
+type QueryContextLaneCounts = Record<QueryContextBudgetLane, number>;
+
+function fitQueryContextBudget(
+  input: QueryContextResponse,
+  budgetBytes: number,
+): QueryContextResponse {
+  const response = cloneQueryContextResponse(input);
+  const originalCounts = queryContextLaneCounts(response);
+  const omittedByBudget = zeroQueryContextLaneCounts();
+
+  let budgeted = attachQueryContextBudget(
+    response,
+    budgetBytes,
+    originalCounts,
+    omittedByBudget,
+  );
+  if (budgeted.budget?.within_budget) return budgeted;
+
+  for (const maxChars of [1800, 1200, 800, 500, 240, 120]) {
+    omittedByBudget.source += trimSourceContent(response, maxChars);
+    budgeted = attachQueryContextBudget(
+      response,
+      budgetBytes,
+      originalCounts,
+      omittedByBudget,
+    );
+    if (budgeted.budget?.within_budget) return budgeted;
+  }
+
+  omittedByBudget.source += clearSourceDependencyContext(response);
+  budgeted = attachQueryContextBudget(
+    response,
+    budgetBytes,
+    originalCounts,
+    omittedByBudget,
+  );
+  if (budgeted.budget?.within_budget) return budgeted;
+
+  omittedByBudget.source += clearSourceImpactContext(response);
+  budgeted = attachQueryContextBudget(
+    response,
+    budgetBytes,
+    originalCounts,
+    omittedByBudget,
+  );
+  if (budgeted.budget?.within_budget) return budgeted;
+
+  for (const [fileLimit, symbolLimit] of [
+    [3, 5],
+    [1, 3],
+    [0, 0],
+  ] as const) {
+    omittedByBudget.repo_map += trimRepoMap(response, fileLimit, symbolLimit);
+    budgeted = attachQueryContextBudget(
+      response,
+      budgetBytes,
+      originalCounts,
+      omittedByBudget,
+    );
+    if (budgeted.budget?.within_budget) return budgeted;
+  }
+
+  for (const limit of [5, 3, 1, 0]) {
+    omittedByBudget.related_nodes += trimRelatedNodes(response, limit);
+    budgeted = attachQueryContextBudget(
+      response,
+      budgetBytes,
+      originalCounts,
+      omittedByBudget,
+    );
+    if (budgeted.budget?.within_budget) return budgeted;
+  }
+
+  for (const [graphLimit, sourceLimit] of [
+    [5, 5],
+    [3, 3],
+    [1, 1],
+    [0, 0],
+  ] as const) {
+    omittedByBudget.expansion += trimExpansion(
+      response,
+      graphLimit,
+      sourceLimit,
+    );
+    budgeted = attachQueryContextBudget(
+      response,
+      budgetBytes,
+      originalCounts,
+      omittedByBudget,
+    );
+    if (budgeted.budget?.within_budget) return budgeted;
+  }
+
+  omittedByBudget.graph += trimGraphMatchDetails(response);
+  budgeted = attachQueryContextBudget(
+    response,
+    budgetBytes,
+    originalCounts,
+    omittedByBudget,
+  );
+  if (budgeted.budget?.within_budget) return budgeted;
+
+  for (const maxChars of [1200, 800, 500, 240, 120]) {
+    omittedByBudget.graph += trimGraphNodeSummaries(response, maxChars);
+    budgeted = attachQueryContextBudget(
+      response,
+      budgetBytes,
+      originalCounts,
+      omittedByBudget,
+    );
+    if (budgeted.budget?.within_budget) return budgeted;
+  }
+
+  for (const sourceLimit of [3, 1, 0]) {
+    omittedByBudget.graph += trimGraphNodeSources(response, sourceLimit);
+    budgeted = attachQueryContextBudget(
+      response,
+      budgetBytes,
+      originalCounts,
+      omittedByBudget,
+    );
+    if (budgeted.budget?.within_budget) return budgeted;
+  }
+
+  for (const limit of [5, 3, 1, 0]) {
+    omittedByBudget.source += trimSourceResults(response, limit);
+    budgeted = attachQueryContextBudget(
+      response,
+      budgetBytes,
+      originalCounts,
+      omittedByBudget,
+    );
+    if (budgeted.budget?.within_budget) return budgeted;
+  }
+
+  for (const limit of [5, 3, 1, 0]) {
+    omittedByBudget.graph += trimGraphNodes(response, limit);
+    budgeted = attachQueryContextBudget(
+      response,
+      budgetBytes,
+      originalCounts,
+      omittedByBudget,
+    );
+    if (budgeted.budget?.within_budget) return budgeted;
+  }
+
+  return attachQueryContextBudget(
+    response,
+    budgetBytes,
+    originalCounts,
+    omittedByBudget,
+  );
+}
+
+function cloneQueryContextResponse(
+  response: QueryContextResponse,
+): QueryContextResponse {
+  return JSON.parse(JSON.stringify(response)) as QueryContextResponse;
+}
+
+function attachQueryContextBudget(
+  response: QueryContextResponse,
+  budgetBytes: number,
+  originalCounts: QueryContextLaneCounts,
+  omittedByBudget: QueryContextLaneCounts,
+): QueryContextResponse {
+  if (hasLaneOmissions(omittedByBudget)) {
+    addWarning(response, QUERY_CONTEXT_BUDGET_WARNING);
+  }
+  syncQueryContextSummary(response);
+  response.budget = {
+    budget_bytes: budgetBytes,
+    used_bytes: 0,
+    remaining_bytes: budgetBytes,
+    within_budget: true,
+    truncated:
+      hasLaneOmissions(omittedByBudget) ||
+      queryContextBudgetLanes().some(
+        (lane) => queryContextLaneCounts(response)[lane] < originalCounts[lane],
+      ),
+    packing: queryContextPackingSummary(
+      response,
+      originalCounts,
+      omittedByBudget,
+    ),
+  };
+  return finalizeQueryContextBudget(response);
+}
+
+function finalizeQueryContextBudget(
+  response: QueryContextResponse,
+): QueryContextResponse {
+  let next = response;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const used = responseBytes(next);
+    const updated: QueryContextResponse = {
+      ...next,
+      budget: next.budget
+        ? {
+            ...next.budget,
+            used_bytes: used,
+            remaining_bytes: Math.max(0, next.budget.budget_bytes - used),
+            within_budget: used <= next.budget.budget_bytes,
+          }
+        : undefined,
+    };
+    if (responseBytes(updated) === used) return updated;
+    next = updated;
+  }
+  const used = responseBytes(next);
+  return {
+    ...next,
+    budget: next.budget
+      ? {
+          ...next.budget,
+          used_bytes: used,
+          remaining_bytes: Math.max(0, next.budget.budget_bytes - used),
+          within_budget: used <= next.budget.budget_bytes,
+        }
+      : undefined,
+  };
+}
+
+function queryContextPackingSummary(
+  response: QueryContextResponse,
+  originalCounts: QueryContextLaneCounts,
+  omittedByBudget: QueryContextLaneCounts,
+): QueryContextPackingSummary {
+  const currentCounts = queryContextLaneCounts(response);
+  const lanes: Partial<
+    Record<QueryContextBudgetLane, QueryContextPackingLaneStats>
+  > = {};
+  for (const lane of queryContextBudgetLanes()) {
+    const selected = currentCounts[lane];
+    const candidates = Math.max(originalCounts[lane], selected);
+    const omitted = Math.max(0, originalCounts[lane] - selected);
+    if (candidates > 0 || omittedByBudget[lane] > 0) {
+      lanes[lane] = {
+        candidates,
+        selected,
+        omitted,
+        omitted_by_budget: omittedByBudget[lane],
+        used_bytes: responseBytes(queryContextLanePayload(response, lane)),
+      };
+    }
+  }
+  return {
+    strategy: "planning_detail_budget_v1",
+    lanes,
+  };
+}
+
+function queryContextLanePayload(
+  response: QueryContextResponse,
+  lane: QueryContextBudgetLane,
+): unknown {
+  switch (lane) {
+    case "summary":
+      return response.summary;
+    case "graph":
+      return response.graph;
+    case "source":
+      return response.source;
+    case "repo_map":
+      return response.repo_map;
+    case "related_nodes":
+      return response.related_nodes;
+    case "expansion":
+      return response.expansion;
+    case "warnings":
+      return response.warnings;
+  }
+}
+
+function queryContextLaneCounts(
+  response: QueryContextResponse,
+): QueryContextLaneCounts {
+  return {
+    summary: 1,
+    graph: response.graph.nodes.length,
+    source: sourceResults(response).length,
+    repo_map: response.repo_map.files.length + response.repo_map.symbols.length,
+    related_nodes: response.related_nodes.length,
+    expansion:
+      response.expansion.graph_nodes.length +
+      response.expansion.source_files.length +
+      (response.expansion.source_search ? 1 : 0) +
+      (response.expansion.graph_health ? 1 : 0),
+    warnings: response.warnings.length,
+  };
+}
+
+function zeroQueryContextLaneCounts(): QueryContextLaneCounts {
+  return {
+    summary: 0,
+    graph: 0,
+    source: 0,
+    repo_map: 0,
+    related_nodes: 0,
+    expansion: 0,
+    warnings: 0,
+  };
+}
+
+function queryContextBudgetLanes(): QueryContextBudgetLane[] {
+  return [
+    "summary",
+    "graph",
+    "source",
+    "repo_map",
+    "related_nodes",
+    "expansion",
+    "warnings",
+  ];
+}
+
+function hasLaneOmissions(counts: QueryContextLaneCounts): boolean {
+  return queryContextBudgetLanes().some((lane) => counts[lane] > 0);
+}
+
+function sourceResults(
+  response: QueryContextResponse,
+): SourceSearchResponse["results"] {
+  return response.source.search?.ok ? response.source.search.results : [];
+}
+
+function trimSourceContent(
+  response: QueryContextResponse,
+  maxChars: number,
+): number {
+  let changed = 0;
+  for (const result of sourceResults(response)) {
+    const trimmed = truncateBudgetText(result.content, maxChars);
+    if (trimmed !== result.content) {
+      result.content = trimmed;
+      changed += 1;
+    }
+  }
+  if (changed > 0) syncQueryContextSummary(response);
+  return changed;
+}
+
+function clearSourceDependencyContext(response: QueryContextResponse): number {
+  let changed = 0;
+  for (const result of sourceResults(response)) {
+    if (result.dependency_context.length > 0) {
+      result.dependency_context = [];
+      changed += 1;
+    }
+  }
+  if (changed > 0) syncQueryContextSummary(response);
+  return changed;
+}
+
+function clearSourceImpactContext(response: QueryContextResponse): number {
+  let changed = 0;
+  for (const result of sourceResults(response)) {
+    if (result.impact_context !== undefined) {
+      delete result.impact_context;
+      changed += 1;
+    }
+  }
+  if (changed > 0) syncQueryContextSummary(response);
+  return changed;
+}
+
+function trimRepoMap(
+  response: QueryContextResponse,
+  fileLimit: number,
+  symbolLimit: number,
+): number {
+  const omittedFiles = Math.max(0, response.repo_map.files.length - fileLimit);
+  const omittedSymbols = Math.max(
+    0,
+    response.repo_map.symbols.length - symbolLimit,
+  );
+  response.repo_map = {
+    ...response.repo_map,
+    files: response.repo_map.files.slice(0, fileLimit),
+    symbols: response.repo_map.symbols.slice(0, symbolLimit),
+  };
+  syncQueryContextSummary(response);
+  return omittedFiles + omittedSymbols;
+}
+
+function trimRelatedNodes(
+  response: QueryContextResponse,
+  limit: number,
+): number {
+  const omitted = Math.max(0, response.related_nodes.length - limit);
+  if (omitted > 0) {
+    response.related_nodes = response.related_nodes.slice(0, limit);
+    syncQueryContextSummary(response);
+  }
+  return omitted;
+}
+
+function trimExpansion(
+  response: QueryContextResponse,
+  graphLimit: number,
+  sourceFileLimit: number,
+): number {
+  const omittedGraph = Math.max(
+    0,
+    response.expansion.graph_nodes.length - graphLimit,
+  );
+  const omittedSource = Math.max(
+    0,
+    response.expansion.source_files.length - sourceFileLimit,
+  );
+  if (omittedGraph > 0 || omittedSource > 0) {
+    response.expansion = {
+      ...response.expansion,
+      graph_nodes: response.expansion.graph_nodes.slice(0, graphLimit),
+      source_files: response.expansion.source_files.slice(0, sourceFileLimit),
+    };
+    syncQueryContextSummary(response);
+  }
+  return omittedGraph + omittedSource;
+}
+
+function trimGraphMatchDetails(response: QueryContextResponse): number {
+  let changed = 0;
+  for (const match of response.graph.matches) {
+    if (match.match_reasons.length > 1) {
+      match.match_reasons = match.match_reasons.slice(0, 1);
+      changed += 1;
+    }
+    if (match.quality?.reasons && match.quality.reasons.length > 1) {
+      match.quality.reasons = match.quality.reasons.slice(0, 1);
+      changed += 1;
+    }
+  }
+  return changed;
+}
+
+function trimGraphNodeSummaries(
+  response: QueryContextResponse,
+  maxChars: number,
+): number {
+  let changed = 0;
+  for (const node of response.graph.nodes) {
+    const trimmed = truncateBudgetText(node.summary, maxChars);
+    if (trimmed !== node.summary) {
+      node.summary = trimmed;
+      changed += 1;
+    }
+  }
+  if (changed > 0) syncQueryContextSummary(response);
+  return changed;
+}
+
+function trimGraphNodeSources(
+  response: QueryContextResponse,
+  sourceLimit: number,
+): number {
+  let omitted = 0;
+  for (const node of response.graph.nodes) {
+    omitted += Math.max(0, node.sources.length - sourceLimit);
+    node.sources = node.sources.slice(0, sourceLimit);
+  }
+  if (omitted > 0) {
+    syncGraphNodeDependents(response);
+    syncQueryContextSummary(response);
+  }
+  return omitted;
+}
+
+function trimGraphNodes(
+  response: QueryContextResponse,
+  limit: number,
+): number {
+  const omitted = Math.max(0, response.graph.nodes.length - limit);
+  if (omitted > 0) {
+    response.graph.nodes = response.graph.nodes.slice(0, limit);
+    syncGraphNodeDependents(response);
+    syncQueryContextSummary(response);
+  }
+  return omitted;
+}
+
+function trimSourceResults(
+  response: QueryContextResponse,
+  limit: number,
+): number {
+  const search = response.source.search;
+  if (!search?.ok) return 0;
+  const omitted = Math.max(0, search.results.length - limit);
+  if (omitted > 0) {
+    const relatedNodeLimit = response.related_nodes.length;
+    search.results = search.results.slice(0, limit);
+    response.related_nodes = dedupeRelatedNodes(search).slice(0, relatedNodeLimit);
+    response.expansion = {
+      ...response.expansion,
+      source_files: response.expansion.source_files.slice(0, limit),
+    };
+    syncQueryContextSummary(response);
+  }
+  return omitted;
+}
+
+function syncGraphNodeDependents(response: QueryContextResponse): void {
+  const graphNodeIds = new Set(response.graph.nodes.map((node) => node.id));
+  const expansionById = new Map(
+    response.expansion.graph_nodes.map((entry) => [entry.id, entry]),
+  );
+  response.graph.matches = response.graph.matches.filter((match) =>
+    graphNodeIds.has(match.node_id),
+  );
+  response.graph.edges = response.graph.edges.filter(
+    (edge) => graphNodeIds.has(edge.from) && graphNodeIds.has(edge.to),
+  );
+  response.graph.staleness = filterStalenessReportForNodes(
+    response.graph.staleness,
+    response.graph.nodes,
+    true,
+  );
+  response.graph.staleness = filterStalenessReportForRetainedSources(
+    response.graph.staleness,
+    response.graph.nodes,
+  );
+  const rerankedGraph = rankGraphResultByQuality(
+    response.graph,
+    response.graph.staleness,
+    {
+      limit: response.graph.nodes.length,
+      sourceChecksEnabled: true,
+    },
+  );
+  response.graph.nodes = rerankedGraph.nodes;
+  response.graph.matches = rerankedGraph.matches;
+  response.graph.edges = rerankedGraph.edges;
+  response.graph.memory_quality = summarizeGraphMemoryQuality(response.graph);
+  syncGraphWarnings(response);
+  const graphNodes: QueryContextExpansion["graph_nodes"] = [];
+  for (const node of response.graph.nodes) {
+    const entry = expansionById.get(node.id);
+    if (entry) graphNodes.push(entry);
+  }
+  response.expansion = {
+    ...response.expansion,
+    graph_nodes: graphNodes,
+  };
+}
+
+function syncGraphWarnings(response: QueryContextResponse): void {
+  const nonGraphWarnings = response.warnings.filter(
+    (warning) =>
+      warning !== GRAPH_MEMORY_WARNING &&
+      warning !== STALE_GRAPH_MEMORY_WARNING &&
+      warning !== LOW_TRUST_GRAPH_MEMORY_WARNING,
+  );
+  const graphWarnings: string[] = [];
+  if (response.graph.nodes.length > 0) graphWarnings.push(GRAPH_MEMORY_WARNING);
+  if (response.graph.staleness.stale_sources.length > 0) {
+    graphWarnings.push(STALE_GRAPH_MEMORY_WARNING);
+  }
+  if (response.graph.memory_quality.low_trust_node_ids.length > 0) {
+    graphWarnings.push(LOW_TRUST_GRAPH_MEMORY_WARNING);
+  }
+  response.warnings = [...graphWarnings, ...nonGraphWarnings];
+}
+
+function filterStalenessReportForRetainedSources(
+  staleness: StalenessReport,
+  nodes: Node[],
+): StalenessReport {
+  const retainedSources = new Set<string>();
+  let retainedSourceCount = 0;
+  for (const node of nodes) {
+    for (const source of node.sources) {
+      retainedSourceCount += 1;
+      retainedSources.add(
+        `${node.id}\0${source.file_path}\0${source.content_hash}`,
+      );
+    }
+  }
+  const stale_sources = staleness.stale_sources.filter((source) =>
+    retainedSources.has(
+      `${source.node_id}\0${source.file_path}\0${source.stored_hash}`,
+    ),
+  );
+  const range_fresh_sources = staleness.range_fresh_sources.filter((source) =>
+    retainedSources.has(
+      `${source.node_id}\0${source.file_path}\0${source.stored_hash}`,
+    ),
+  );
+  return {
+    checked_sources: retainedSourceCount,
+    stale_sources,
+    range_fresh_sources,
+  };
+}
+
+function truncateBudgetText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  if (maxChars <= TRUNCATION_MARKER.length + 20) {
+    return text.slice(0, maxChars);
+  }
+  return `${text.slice(0, maxChars - TRUNCATION_MARKER.length)}${TRUNCATION_MARKER}`;
+}
+
+function addWarning(response: QueryContextResponse, warning: string): void {
+  if (!response.warnings.includes(warning)) response.warnings.push(warning);
+}
+
+function syncQueryContextSummary(response: QueryContextResponse): void {
+  const currentSourceResults = sourceResults(response);
+  response.summary.graph_memories = summarizeGraphMemories(response.graph);
+  response.summary.source_hits = currentSourceResults.slice(0, 5).map((result) => ({
+    file_path: result.file_path,
+    start_line: result.start_line,
+    end_line: result.end_line,
+    chunk_type: result.chunk_type,
+    score: result.score,
+    matched_symbols: result.symbols.slice(0, 3).map((symbol) => symbol.name),
+    match_reasons: result.match_reasons
+      .slice(0, 3)
+      .map((reason) => `${reason.field}:${reason.value}`),
+    has_dependency_context: result.dependency_context.length > 0,
+    has_impact_context: result.impact_context !== undefined,
+  }));
+  response.summary.repo_map = response.repo_map;
+  response.summary.totals = {
+    ...response.summary.totals,
+    graph_nodes: response.graph.nodes.length,
+    related_nodes: response.related_nodes.length,
+    repo_map_files: response.repo_map.summary.files,
+    source_results: currentSourceResults.length,
+    stale_graph_sources: response.graph.staleness.stale_sources.length,
+    warnings: response.warnings.length,
+  };
+}
+
+function responseBytes(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value), "utf8");
+}
+
+function summarizeGraphMemories(
+  graphResult: QueryResult,
+): QueryContextGraphMemorySummary[] {
+  const matchesById = new Map(
+    graphResult.matches.map((match) => [match.node_id, match]),
+  );
+  return graphResult.nodes.slice(0, 5).map((node) => {
+    const match = matchesById.get(node.id);
+    return {
+      id: node.id,
+      kind: node.kind,
+      name: node.name,
+      trust: match?.quality?.trust,
+      freshness: match?.quality?.freshness,
+      score: match?.score,
+      ranking_score: match?.ranking_score,
+      match_reasons: (match?.match_reasons ?? []).slice(0, 3).map(
+        (reason) => `${reason.field}:${reason.value}`,
+      ),
+      quality_reasons: match?.quality?.reasons.slice(0, 3) ?? [],
+      quality_signals: match?.quality?.signals,
+    };
+  });
 }
 
 function buildSummary(input: {
@@ -395,30 +1105,11 @@ function buildSummary(input: {
   staleness: StalenessReport;
   warnings: string[];
 }): QueryContextSummary {
-  const matchesById = new Map(
-    input.graphResult.matches.map((match) => [match.node_id, match]),
-  );
   const sourceResults =
     input.sourceSearch?.ok === true ? input.sourceSearch.results : [];
 
   return {
-    graph_memories: input.graphResult.nodes.slice(0, 5).map((node) => {
-      const match = matchesById.get(node.id);
-      return {
-        id: node.id,
-        kind: node.kind,
-        name: node.name,
-        trust: match?.quality?.trust,
-        freshness: match?.quality?.freshness,
-        score: match?.score,
-        ranking_score: match?.ranking_score,
-        match_reasons: (match?.match_reasons ?? []).slice(0, 3).map(
-          (reason) => `${reason.field}:${reason.value}`,
-        ),
-        quality_reasons: match?.quality?.reasons.slice(0, 3) ?? [],
-        quality_signals: match?.quality?.signals,
-      };
-    }),
+    graph_memories: summarizeGraphMemories(input.graphResult),
     source_hits: sourceResults.slice(0, 5).map((result) => ({
       file_path: result.file_path,
       start_line: result.start_line,

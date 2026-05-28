@@ -1,9 +1,9 @@
+import type { QueryContextMode, SourceRefreshMode } from "../query_context.js";
 import {
-  runRetrievalBenchmark,
   type RetrievalBenchmarkOptions,
   type RetrievalBenchmarkProfile,
+  runRetrievalBenchmark,
 } from "../retrieval_benchmark.js";
-import type { QueryContextMode, SourceRefreshMode } from "../query_context.js";
 import type {
   SemanticRerankerProviderOption,
   SemanticRetrievalProviderOption,
@@ -23,6 +23,7 @@ export interface BenchmarkRetrievalFlags {
   minFileHitRate?: number;
   minNodeHitRate?: number;
   responseBudgetBytes?: number;
+  contextBudgetBytes?: number;
   minPayloadBudgetCompliance?: number;
   maxAverageResponseBytes?: number;
   maxAverageLatencyMs?: number;
@@ -48,6 +49,7 @@ export async function benchmarkRetrieval(
       minFileHitRate: flags.minFileHitRate,
       minNodeHitRate: flags.minNodeHitRate,
       responseBudgetBytes: flags.responseBudgetBytes,
+      contextBudgetBytes: flags.contextBudgetBytes,
       minPayloadBudgetCompliance: flags.minPayloadBudgetCompliance,
       maxAverageResponseBytes: flags.maxAverageResponseBytes,
       maxAverageLatencyMs: flags.maxAverageLatencyMs,

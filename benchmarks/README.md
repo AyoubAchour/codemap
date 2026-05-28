@@ -33,6 +33,18 @@ codemap benchmark-retrieval \
   --max-average-latency-ms 500
 ```
 
+Planning-context packing is opt-in and measured separately from the gate. Use
+`--context-budget-bytes` to pass a byte budget into `query_context`, then use
+`--response-budget-bytes` to assert that the measured response stayed inside it:
+
+```sh
+codemap benchmark-retrieval \
+  --profile planning \
+  --context-budget-bytes 65000 \
+  --response-budget-bytes 65000 \
+  --min-payload-budget-compliance 1
+```
+
 The JSON summary reports:
 
 - file and node hit rate, precision, recall, and MRR
@@ -40,6 +52,7 @@ The JSON summary reports:
 - expected warning and result-source recall
 - per-query and aggregate response bytes
 - payload-budget compliance
+- optional query-context budget bytes used during the benchmark
 - average, p50, p95, and max latency
 - source-file diversity
 - optional semantic/reranker adapter results

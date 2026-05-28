@@ -1,12 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
+import { recordMetric } from "../metrics.js";
 import {
   buildQueryContext,
   type QueryContextMode,
   type SourceRefreshMode,
 } from "../query_context.js";
-import { recordMetric } from "../metrics.js";
 import type { ToolOptions } from "./query_graph.js";
 
 export function registerQueryContext(
@@ -75,6 +75,14 @@ export function registerQueryContext(
           .max(10)
           .optional()
           .describe("Maximum impact entries per category. Default 5."),
+        budget_bytes: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(
+            "Optional maximum response bytes. When set, query_context trims bulky planning detail and reports budget packing metadata.",
+          ),
         refresh_index: z
           .enum(["never", "if_missing", "if_stale"])
           .optional()
@@ -92,6 +100,7 @@ export function registerQueryContext(
       dependency_limit,
       include_impact,
       impact_limit,
+      budget_bytes,
       refresh_index,
     }) => {
       const response = await buildQueryContext(options.repoRoot, question, {
@@ -102,6 +111,7 @@ export function registerQueryContext(
         dependencyLimit: dependency_limit,
         includeImpact: include_impact,
         impactLimit: impact_limit,
+        budgetBytes: budget_bytes,
         refreshIndex: refresh_index as SourceRefreshMode | undefined,
       });
       await recordMetric(options.repoRoot, (m) => {
