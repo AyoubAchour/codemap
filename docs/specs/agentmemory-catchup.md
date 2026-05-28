@@ -305,6 +305,14 @@ hits, noisy graph/mixed/local-vector variants, payload overruns, and issue
 tags. The goal is diagnosis only: future ranking or semantic-provider changes
 should start from these concrete misses instead of aggregate rates alone.
 
+### Benchmark audit triage
+
+Task 072 separates primary benchmark expectations from useful secondary
+context. Suites can declare `supporting_files`, which are evaluated and reported
+under `summary.supporting_files` and `summary.audit.supporting_file_misses`
+without lowering primary `summary.files` metrics or thresholds. The bundled
+suite uses this split so primary misses represent must-return retrieval gaps.
+
 ## Task Sequence
 
 1. Task 057 - Agentmemory catch-up planning.
@@ -322,6 +330,7 @@ should start from these concrete misses instead of aggregate rates alone.
 13. Task 069 - Query context budget packing.
 14. Task 070 - Reliability gate.
 15. Task 071 - Benchmark miss audit.
+16. Task 072 - Benchmark audit triage.
 
 ## Gates
 

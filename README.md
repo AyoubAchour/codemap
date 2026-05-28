@@ -300,7 +300,8 @@ the current retrieval stack: hit rate, precision/recall@K, MRR, diversity,
 latency, response size, warning/source coverage, false-positive guardrails, and
 lexical/graph/mixed/local-vector variant results. Its summary also includes a
 bounded audit packet for missed expected targets, noisy variants, payload
-overruns, and issue tags. The bundled suite includes
+overruns, and issue tags, with secondary `supporting_files` tracked separately
+from primary must-return files. The bundled suite includes
 semantic, typo, cross-file impact, renamed-symbol, stale-graph, docs, tests,
 lifecycle, payload, and distractor cases, plus a small non-Codemap fixture under
 `benchmarks/fixtures/`. Use it before adding heavier retrieval machinery.

@@ -35,6 +35,7 @@ describe("retrieval benchmark", () => {
       queries: Array<{
         id: string;
         expected_files?: string[];
+        supporting_files?: string[];
         tags?: string[];
       }>;
     };
@@ -77,6 +78,9 @@ describe("retrieval benchmark", () => {
           filePath.startsWith("test/"),
         ),
       ),
+    ).toBe(true);
+    expect(
+      suite.queries.some((query) => (query.supporting_files ?? []).length > 0),
     ).toBe(true);
   });
 
@@ -943,6 +947,55 @@ describe("retrieval benchmark", () => {
     expect(response.summary.thresholds.failed).toContain(
       "payload_budget.compliance_rate",
     );
+  });
+
+  test("separates supporting file misses from primary file misses", async () => {
+    await write("src/auth.ts", "export const AUTH_SCOPE = 'active';\n");
+    await write(
+      "retrieval-suite.json",
+      JSON.stringify(
+        {
+          version: 1,
+          name: "supporting files suite",
+          queries: [
+            {
+              id: "auth-supporting",
+              query: "active auth scope",
+              expected_files: ["src/auth.ts"],
+              supporting_files: ["src/secondary.ts"],
+              tags: ["supporting"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    await scanSourceIndex(tmpRoot);
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "retrieval-suite.json",
+      limit: 3,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.results[0]?.files.matched).toEqual(["src/auth.ts"]);
+    expect(response.results[0]?.files.missing).toEqual([]);
+    expect(response.results[0]?.supporting_files.missing).toEqual([
+      "src/secondary.ts",
+    ]);
+    expect(response.summary.files.recall_at_k).toBe(1);
+    expect(response.summary.supporting_files.evaluated_queries).toBe(1);
+    expect(response.summary.supporting_files.recall_at_k).toBe(0);
+    expect(response.summary.audit.file_misses).toEqual([]);
+    expect(response.summary.audit.supporting_file_misses).toEqual([
+      expect.objectContaining({
+        id: "auth-supporting",
+        missing: ["src/secondary.ts"],
+        tags: ["supporting"],
+      }),
+    ]);
   });
 
   test("summarizes benchmark misses, noise, and payload overruns for audit", async () => {

@@ -24,7 +24,9 @@
       "query": "changes_context git diff changed files likely tests docs writeback suggestions",
       "expected_files": [
         "src/changes_context.ts",
-        "src/tools/changes_context.ts",
+        "src/tools/changes_context.ts"
+      ],
+      "supporting_files": [
         "src/cli/changes_context.ts"
       ],
       "tags": ["diff", "impact"]
@@ -42,7 +44,9 @@
       "id": "ast-source-indexing",
       "query": "TypeScript AST indexing symbols imports exports exact identifier references",
       "expected_files": [
-        "src/source_index.ts",
+        "src/source_index.ts"
+      ],
+      "supporting_files": [
         "test/unit/source_index.test.ts"
       ],
       "tags": ["source-index", "ast"]
@@ -51,9 +55,11 @@
       "id": "graph-health-staleness",
       "query": "graph health source anchor staleness duplicate aliases validator warnings doctor",
       "expected_files": [
-        "src/graph_health.ts",
-        "src/tools/graph_health.ts",
-        "src/cli/doctor.ts"
+        "src/graph_health.ts"
+      ],
+      "supporting_files": [
+        "src/cli/doctor.ts",
+        "src/tools/graph_health.ts"
       ],
       "tags": ["graph-health", "staleness"]
     },
@@ -72,7 +78,9 @@
       "query": "make coding agents follow repo memory lifecycle without relying on chat reminders guidance freshness contract",
       "expected_files": [
         "src/instructions.ts",
-        "src/guidance.ts",
+        "src/guidance.ts"
+      ],
+      "supporting_files": [
         "src/setup.ts"
       ],
       "forbidden_files": [
@@ -85,7 +93,9 @@
       "id": "typo-source-index",
       "query": "sorce indx frshness seach chunks symbols stale files",
       "expected_files": [
-        "src/source_index.ts",
+        "src/source_index.ts"
+      ],
+      "supporting_files": [
         "src/tools/search_source.ts",
         "src/tools/get_index_status.ts"
       ],
@@ -95,7 +105,9 @@
       "id": "cross-file-change-impact",
       "query": "after a diff what imports this what tests docs and writeback are likely affected",
       "expected_files": [
-        "src/changes_context.ts",
+        "src/changes_context.ts"
+      ],
+      "supporting_files": [
         "src/source_index.ts",
         "src/writeback_suggestions.ts",
         "test/unit/cli.test.ts"
@@ -106,7 +118,9 @@
       "id": "renamed-reexport-ast",
       "query": "renamed re-export local symbol as public export AST extraction should not leak local name",
       "expected_files": [
-        "src/source_index.ts",
+        "src/source_index.ts"
+      ],
+      "supporting_files": [
         "test/unit/source_index.test.ts"
       ],
       "tags": ["renamed-symbol", "source-index", "ast"]
@@ -115,7 +129,9 @@
       "id": "stale-graph-anchor-repair",
       "query": "stale graph source anchors unchanged ranges legacy reanchor repair proposals",
       "expected_files": [
-        "src/graph_repair.ts",
+        "src/graph_repair.ts"
+      ],
+      "supporting_files": [
         "src/graph_health.ts",
         "src/staleness.ts"
       ],
@@ -125,7 +141,9 @@
       "id": "docs-task-055",
       "query": "larger retrieval benchmark suite semantic typo docs tests fixture retrieval complexity before embeddings",
       "expected_files": [
-        "tasks/task-055-retrieval-benchmark-suite.md",
+        "tasks/task-055-retrieval-benchmark-suite.md"
+      ],
+      "supporting_files": [
         "tasks/task-052-semantic-retrieval-layer.md",
         "tasks/README.md"
       ],
@@ -145,7 +163,9 @@
       "query": "optional embeddings reranker local first gated by benchmark misses not required cloud",
       "expected_files": [
         "tasks/task-052-semantic-retrieval-layer.md",
-        "src/retrieval_benchmark.ts",
+        "src/retrieval_benchmark.ts"
+      ],
+      "supporting_files": [
         "tasks/task-055-retrieval-benchmark-suite.md"
       ],
       "forbidden_files": [
@@ -158,8 +178,10 @@
       "id": "agent-lifecycle-writeback",
       "query": "repo agent should call suggest_writeback before ending and avoid graph writes for unrelated read only research",
       "expected_files": [
+        "src/tools/suggest_writeback.ts"
+      ],
+      "supporting_files": [
         "AGENTS.md",
-        "src/tools/suggest_writeback.ts",
         "src/writeback_suggestions.ts"
       ],
       "forbidden_files": [

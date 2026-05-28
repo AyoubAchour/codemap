@@ -47,6 +47,7 @@ export interface RetrievalBenchmarkQuery {
   id: string;
   query: string;
   expected_files?: string[];
+  supporting_files?: string[];
   expected_nodes?: string[];
   forbidden_files?: string[];
   forbidden_nodes?: string[];
@@ -128,6 +129,7 @@ export interface RetrievalBenchmarkQueryResult {
   source_result_count: number;
   source_file_diversity: number;
   files: RetrievalTargetEvaluation;
+  supporting_files: RetrievalTargetEvaluation;
   nodes: RetrievalTargetEvaluation;
   warning_expectations: RetrievalExpectationEvaluation;
   result_sources: RetrievalExpectationEvaluation;
@@ -204,6 +206,7 @@ export interface RetrievalBenchmarkIssueTag {
 
 export interface RetrievalBenchmarkAuditSummary {
   file_misses: RetrievalBenchmarkAuditIssue[];
+  supporting_file_misses: RetrievalBenchmarkAuditIssue[];
   node_misses: RetrievalBenchmarkAuditIssue[];
   warning_misses: RetrievalBenchmarkAuditIssue[];
   result_source_misses: RetrievalBenchmarkAuditIssue[];
@@ -235,6 +238,7 @@ export interface RetrievalBenchmarkSummary {
   payload_budget: RetrievalPayloadBudgetSummary;
   average_source_file_diversity: number;
   files: RetrievalBenchmarkAggregate;
+  supporting_files: RetrievalBenchmarkAggregate;
   nodes: RetrievalBenchmarkAggregate;
   warning_expectations: RetrievalExpectationAggregate;
   result_sources: RetrievalExpectationAggregate;
@@ -419,6 +423,9 @@ export async function runRetrievalBenchmark(
     const sourceFileDiversity =
       sourceResults.length === 0 ? 0 : returnedFiles.length / sourceResults.length;
     const expectedFiles = (benchmarkQuery.expected_files ?? []).map(normalizeRepoPath);
+    const supportingFiles = (benchmarkQuery.supporting_files ?? []).map(
+      normalizeRepoPath,
+    );
     const forbiddenFiles = (benchmarkQuery.forbidden_files ?? []).map(normalizeRepoPath);
     const forbiddenNodes = benchmarkQuery.forbidden_nodes ?? [];
     const responseBytes = Buffer.byteLength(JSON.stringify(context), "utf8");
@@ -453,6 +460,10 @@ export async function runRetrievalBenchmark(
       expectedFiles,
       returnedFiles.map(normalizeRepoPath),
       forbiddenFiles,
+    );
+    const supportingFileEvaluation = evaluateTargets(
+      supportingFiles,
+      returnedFiles.map(normalizeRepoPath),
     );
     const graphFiles = evaluateTargets(
       expectedFiles,
@@ -498,6 +509,7 @@ export async function runRetrievalBenchmark(
       source_result_count: sourceResults.length,
       source_file_diversity: round4(sourceFileDiversity),
       files: lexicalFiles,
+      supporting_files: supportingFileEvaluation,
       nodes: evaluateTargets(
         benchmarkQuery.expected_nodes ?? [],
         returnedNodes,
@@ -649,6 +661,10 @@ function parseQuery(value: unknown, label: string): RetrievalBenchmarkQuery {
     entry.expected_files,
     `${label}.expected_files`,
   );
+  const supportingFiles = parseOptionalStringArray(
+    entry.supporting_files,
+    `${label}.supporting_files`,
+  );
   const expectedNodes = parseOptionalStringArray(
     entry.expected_nodes,
     `${label}.expected_nodes`,
@@ -675,6 +691,7 @@ function parseQuery(value: unknown, label: string): RetrievalBenchmarkQuery {
   );
   if (
     expectedFiles.length === 0 &&
+    supportingFiles.length === 0 &&
     expectedNodes.length === 0 &&
     forbiddenFiles.length === 0 &&
     forbiddenNodes.length === 0 &&
@@ -689,6 +706,7 @@ function parseQuery(value: unknown, label: string): RetrievalBenchmarkQuery {
     id: entry.id,
     query: entry.query,
     expected_files: expectedFiles.map(normalizeRepoPath),
+    supporting_files: supportingFiles.map(normalizeRepoPath),
     expected_nodes: expectedNodes,
     forbidden_files: forbiddenFiles.map(normalizeRepoPath),
     forbidden_nodes: forbiddenNodes,
@@ -837,6 +855,9 @@ function summarizeResults(
   },
 ): RetrievalBenchmarkSummary {
   const files = aggregateEvaluations(results.map((result) => result.files));
+  const supportingFiles = aggregateEvaluations(
+    results.map((result) => result.supporting_files),
+  );
   const nodes = aggregateEvaluations(results.map((result) => result.nodes));
   const warningExpectations = aggregateExpectations(
     results.map((result) => result.warning_expectations),
@@ -938,6 +959,7 @@ function summarizeResults(
       results.map((result) => result.source_file_diversity),
     ),
     files,
+    supporting_files: supportingFiles,
     nodes,
     warning_expectations: warningExpectations,
     result_sources: resultSources,
@@ -999,6 +1021,13 @@ function summarizeAudit(
   const fileMisses = results
     .filter((result) => result.files.evaluated && result.files.missing.length > 0)
     .map((result) => targetAuditIssue(result, result.files));
+  const supportingFileMisses = results
+    .filter(
+      (result) =>
+        result.supporting_files.evaluated &&
+        result.supporting_files.missing.length > 0,
+    )
+    .map((result) => targetAuditIssue(result, result.supporting_files));
   const nodeMisses = results
     .filter((result) => result.nodes.evaluated && result.nodes.missing.length > 0)
     .map((result) => targetAuditIssue(result, result.nodes));
@@ -1049,6 +1078,7 @@ function summarizeAudit(
     .map(payloadAuditIssue);
   const allIssues: RetrievalBenchmarkAuditIssue[] = [
     ...fileMisses,
+    ...supportingFileMisses,
     ...nodeMisses,
     ...warningMisses,
     ...resultSourceMisses,
@@ -1062,6 +1092,7 @@ function summarizeAudit(
 
   return {
     file_misses: limitAuditItems(fileMisses),
+    supporting_file_misses: limitAuditItems(supportingFileMisses),
     node_misses: limitAuditItems(nodeMisses),
     warning_misses: limitAuditItems(warningMisses),
     result_source_misses: limitAuditItems(resultSourceMisses),
@@ -1073,6 +1104,7 @@ function summarizeAudit(
     issue_tags: issueTags.slice(0, BENCHMARK_AUDIT_TAG_LIMIT),
     truncated:
       fileMisses.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
+      supportingFileMisses.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
       nodeMisses.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
       warningMisses.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
       resultSourceMisses.length > BENCHMARK_AUDIT_ITEM_LIMIT ||
@@ -1337,6 +1369,11 @@ function benchmarkNextSteps(summary: RetrievalBenchmarkSummary): string[] {
   if (summary.files.hit_rate_at_k < 1 && summary.files.evaluated_queries > 0) {
     steps.push("Inspect file misses and decide whether lexical/symbol ranking needs tuning.");
   }
+  if (summary.audit.supporting_file_misses.length > 0) {
+    steps.push(
+      "Inspect supporting file misses separately from primary retrieval failures; they track useful secondary context.",
+    );
+  }
   if (summary.nodes.hit_rate_at_k < 1 && summary.nodes.evaluated_queries > 0) {
     steps.push("Inspect graph-node misses before changing memory-quality ranking.");
   }
@@ -1376,6 +1413,7 @@ function benchmarkNextSteps(summary: RetrievalBenchmarkSummary): string[] {
 function benchmarkAuditIssueCount(audit: RetrievalBenchmarkAuditSummary): number {
   return (
     audit.file_misses.length +
+    audit.supporting_file_misses.length +
     audit.node_misses.length +
     audit.warning_misses.length +
     audit.result_source_misses.length +

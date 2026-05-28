@@ -303,11 +303,15 @@ replay/observability, setup polish, and benchmarked retrieval quality.
   including platform-stable watch tests and generated guidance path output.
 - Task 071: add benchmark miss audits so retrieval failures point at exact
   query ids, tags, noisy variants, and payload overruns.
+- Task 072: split primary benchmark expectations from supporting-file
+  expectations so audit misses represent real must-return retrieval gaps.
 
-Tasks 057-071 are now implemented. Task 070 stabilized the reliability gate
+Tasks 057-072 are now implemented. Task 070 stabilized the reliability gate
 before more retrieval tuning. Task 071 adds a bounded `summary.audit` packet to
 benchmark output so the next optimization step starts from exact misses and
-noise sources instead of aggregate rates alone. The local semantic experiment added a
+noise sources instead of aggregate rates alone. Task 072 calibrates that signal
+by moving useful-but-secondary files into `supporting_files`; primary benchmark
+misses now mean the must-return context was absent. The local semantic experiment added a
 dependency-free `local-hash` benchmark provider and lexical/graph/mixed/local
 variant metrics, but it did not beat lexical recall on the Codemap suite, so
 semantic retrieval remains benchmark-only. The optimization baseline adds

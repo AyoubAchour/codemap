@@ -48,6 +48,8 @@ codemap benchmark-retrieval \
 The JSON summary reports:
 
 - file and node hit rate, precision, recall, and MRR
+- supporting-file recall for useful secondary context that should not affect
+  primary file thresholds
 - forbidden file/node violations and false-positive rate
 - expected warning and result-source recall
 - per-query and aggregate response bytes
@@ -56,8 +58,9 @@ The JSON summary reports:
 - average, p50, p95, and max latency
 - source-file diversity
 - optional semantic/reranker adapter results
-- bounded `summary.audit` groups for query-level misses, forbidden hits,
-  noisy graph/mixed/local-vector variants, payload overruns, and issue tags
+- bounded `summary.audit` groups for query-level primary misses, supporting
+  misses, forbidden hits, noisy graph/mixed/local-vector variants, payload
+  overruns, and issue tags
 
 Semantic retrieval and reranking are disabled by default. The CLI currently
 accepts `--semantic-provider disabled`, `--semantic-provider local-hash`, and
@@ -80,6 +83,12 @@ Each query must include at least one positive expectation, forbidden
 expectation, warning expectation, or result-source expectation. Use `tags` to
 label the scenario family; `summary.audit.issue_tags` groups missed, noisy, or
 over-budget queries by those tags after a run.
+
+Use `expected_files` only for files that should be considered primary
+must-return context for the query. Use `supporting_files` for adjacent CLI,
+tool, docs, or test files that are useful when they appear but should not lower
+primary file hit rate or fail file thresholds. Missing supporting files are
+reported separately in `summary.audit.supporting_file_misses`.
 
 Queries may also include guardrail expectations:
 
