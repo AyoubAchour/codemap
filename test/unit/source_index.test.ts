@@ -1020,6 +1020,408 @@ describe("source index", () => {
     );
   });
 
+  test("search surfaces bounded CLI and tool companions for matching core files", async () => {
+    await write(
+      "src/companion_core.ts",
+      [
+        "export function runCoreCompanion() {",
+        "  return 'deterministic retrieval diagnostics';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/cli/companion_core.ts",
+      [
+        "import { runCoreCompanion } from '../companion_core';",
+        "",
+        "export function companionCoreCommand() {",
+        "  return runCoreCompanion();",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/tools/companion_core.ts",
+      [
+        "import { runCoreCompanion } from '../companion_core';",
+        "",
+        "export function registerCompanionCoreTool() {",
+        "  return runCoreCompanion();",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "deterministic retrieval diagnostics",
+      { limit: 3 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual(
+      expect.arrayContaining([
+        "src/companion_core.ts",
+        "src/cli/companion_core.ts",
+        "src/tools/companion_core.ts",
+      ]),
+    );
+
+    expect(
+      response.results.find(
+        (result) => result.file_path === "src/cli/companion_core.ts",
+      )?.content,
+    ).toContain("companionCoreCommand");
+    expect(
+      response.results.find(
+        (result) => result.file_path === "src/tools/companion_core.ts",
+      )?.content,
+    ).toContain("registerCompanionCoreTool");
+  });
+
+  test("search surfaces a unit test companion for matching source implementation", async () => {
+    await write(
+      "src/indexing_engine.ts",
+      [
+        "export function runIndexingFixture() {",
+        "  return ['ast', 'symbols', 'references'];",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "test/unit/indexing_engine.test.ts",
+      [
+        "import { runIndexingFixture } from '../../src/indexing_engine';",
+        "",
+        "export function indexingEngineFixture() {",
+        "  return runIndexingFixture();",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "ast symbols references implementation",
+      { limit: 2 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual(
+      expect.arrayContaining([
+        "src/indexing_engine.ts",
+        "test/unit/indexing_engine.test.ts",
+      ]),
+    );
+  });
+
+  test("search keeps stronger direct hits ahead of lower-scored companions", async () => {
+    await write(
+      "src/alpha_retrieval.ts",
+      [
+        "export function alphaRetrievalAnchor() {",
+        "  return 'ultramarine quartz beacon';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "test/unit/alpha_retrieval.test.ts",
+      [
+        "import { alphaRetrievalAnchor } from '../../src/alpha_retrieval';",
+        "",
+        "export function alphaRetrievalFixture() {",
+        "  return `${alphaRetrievalAnchor()} ultramarine quartz beacon`;",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/beta_retrieval.ts",
+      [
+        "export function betaRetrievalAnchor() {",
+        "  return 'ultramarine quartz beacon';",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "ultramarine quartz beacon",
+      { limit: 2 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual([
+      "src/alpha_retrieval.ts",
+      "src/beta_retrieval.ts",
+    ]);
+  });
+
+  test("search skips unrelated basename-only test companions", async () => {
+    await write(
+      "src/feature/index.ts",
+      [
+        "export function primaryCatalogAnchor() {",
+        "  return 'cobalt amber lattice cobalt amber lattice';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/secondary_catalog.ts",
+      [
+        "export function secondaryCatalogAnchor() {",
+        "  return 'cobalt';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/unrelated_catalog.ts",
+      [
+        "export function unrelatedCatalogFixture() {",
+        "  return 'unrelated flat index fixture';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "test/unit/index.test.ts",
+      [
+        "import { unrelatedCatalogFixture } from '../../src/unrelated_catalog';",
+        "",
+        "export function flatIndexFixture() {",
+        "  return unrelatedCatalogFixture();",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "cobalt amber lattice",
+      { limit: 2 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual([
+      "src/feature/index.ts",
+      "src/secondary_catalog.ts",
+    ]);
+  });
+
+  test("search surfaces basename-only test companions that import the source", async () => {
+    await write(
+      "src/feature/index.ts",
+      [
+        "export function runFeatureIndexFixture() {",
+        "  return 'magenta river checksum';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "test/unit/index.test.ts",
+      [
+        "import { runFeatureIndexFixture } from '../../src/feature';",
+        "",
+        "export function featureIndexFixture() {",
+        "  return runFeatureIndexFixture();",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "magenta river checksum",
+      { limit: 2 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual(
+      expect.arrayContaining([
+        "src/feature/index.ts",
+        "test/unit/index.test.ts",
+      ]),
+    );
+  });
+
+  test("search surfaces a non-TS unit test companion for matching source implementation", async () => {
+    await write(
+      "src/view_widget.tsx",
+      [
+        "export function assembleControlFixture() {",
+        "  return ['palette', 'focus', 'hydration'];",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "test/unit/view_widget.test.tsx",
+      [
+        "import { assembleControlFixture } from '../../src/view_widget';",
+        "",
+        "export function mountFixture() {",
+        "  return assembleControlFixture();",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "palette focus hydration implementation",
+      { limit: 2 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual(
+      expect.arrayContaining([
+        "src/view_widget.tsx",
+        "test/unit/view_widget.test.tsx",
+      ]),
+    );
+  });
+
+  test("search surfaces generated agent guidance for lifecycle queries", async () => {
+    await write(
+      "src/instructions.ts",
+      [
+        "export const lifecyclePolicy = 'agent writeback graph unrelated research';",
+        "export const lifecycleReminder = 'call suggest writeback before ending';",
+      ].join("\n"),
+    );
+    await write(
+      "src/tools/suggest_writeback.ts",
+      [
+        "export function registerSuggestionTool() {",
+        "  return true;",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "AGENTS.md",
+      [
+        "# Project contract",
+        "",
+        "This file is generated by repository tooling.",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "agent writeback graph unrelated research",
+      { limit: 3 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual(
+      expect.arrayContaining([
+        "src/instructions.ts",
+        "AGENTS.md",
+        "src/tools/suggest_writeback.ts",
+      ]),
+    );
+  });
+
+  test("search surfaces writeback companions for exact tool-name queries", async () => {
+    await write(
+      "src/tools/suggest_writeback.ts",
+      [
+        "export function registerSuggestWritebackTool() {",
+        "  return 'tool entrypoint';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/writeback_suggestions.ts",
+      [
+        "export function buildWritebackSuggestionsFixture() {",
+        "  return 'engine companion';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/guidance.ts",
+      [
+        "export function generatedGuidanceFixture() {",
+        "  return 'generated guidance';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "AGENTS.md",
+      [
+        "# Project contract",
+        "",
+        "This file is generated by repository tooling.",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(tmpRoot, "suggest_writeback", {
+      limit: 4,
+    });
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual(
+      expect.arrayContaining([
+        "src/tools/suggest_writeback.ts",
+        "src/writeback_suggestions.ts",
+      ]),
+    );
+  });
+
+  test("search does not surface agent guidance for generic client setup queries", async () => {
+    await write(
+      "src/setup.ts",
+      [
+        "export function setupClient() {",
+        "  return 'setup global clients codex cursor install health';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/cli/setup.ts",
+      [
+        "import { setupClient } from '../setup';",
+        "",
+        "export function setupCommand() {",
+        "  return setupClient();",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "bin/codemap.ts",
+      [
+        "export function parseSetupClient() {",
+        "  return 'Codex Cursor install health';",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "AGENTS.md",
+      [
+        "# Project contract",
+        "",
+        "This file is generated by repository setup.",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(
+      tmpRoot,
+      "setup global MCP clients Codex Cursor install health",
+      { limit: 4 },
+    );
+    const returnedFiles = response.results.map((result) => result.file_path);
+
+    expect(returnedFiles).toEqual(
+      expect.arrayContaining([
+        "src/setup.ts",
+        "src/cli/setup.ts",
+        "bin/codemap.ts",
+      ]),
+    );
+    expect(returnedFiles).not.toContain("AGENTS.md");
+  });
+
   test("search total_results reports matches beyond the returned limit", async () => {
     await write("src/needle-a.ts", "export function sharedNeedleAlpha() {}");
     await write("src/needle-b.ts", "export function sharedNeedleBeta() {}");

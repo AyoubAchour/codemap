@@ -109,6 +109,14 @@ demotes archive-like content unless requested, and de-prioritizes disconnected
 files for explicit impact/review queries. This keeps compact context from being
 filled by weak distractors before any semantic provider is considered.
 
+The next optimization keeps that same local posture and adds bounded companion
+context. When a source hit is already relevant, search can spend a small number
+of result slots on nearby CLI/tool importers, same-stem tests, generated agent
+guidance for lifecycle queries, writeback companions for writeback queries, or
+the task index for task-documentation queries. This is intended to improve
+supporting-file recall while primary file gates, forbidden-file checks, and
+payload budgets remain the acceptance criteria.
+
 Queries may include `response_budget_bytes` when a specific case needs its own
 payload gate. The `--response-budget-bytes` CLI flag applies one budget to every
 query in the run.
