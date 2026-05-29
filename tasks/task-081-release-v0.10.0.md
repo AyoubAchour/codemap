@@ -1,6 +1,6 @@
 # Task 081: Release v0.10.0
 
-**Status:** in-progress
+**Status:** done
 **Phase:** Phase 4 / release
 **Started:** 2026-05-29
 **Depends on:** task-080
@@ -49,10 +49,10 @@ capture, or source-index persistence contracts.
 - [x] Generated guidance checks as current for `AGENTS.md` and `CLAUDE.md`.
 - [x] Local release gates pass.
 - [x] Release PR is opened and CI is green.
-- [ ] Release PR is merged.
-- [ ] `codemap-mcp@0.10.0` is published to npm.
-- [ ] Global install reports `codemap --version` as `0.10.0`.
-- [ ] GitHub release `v0.10.0` is published.
+- [x] Release PR is merged.
+- [x] `codemap-mcp@0.10.0` is published to npm.
+- [x] Global install reports `codemap --version` as `0.10.0`.
+- [x] GitHub release `v0.10.0` is published.
 
 ## Notes
 
@@ -94,3 +94,24 @@ Release PR #82 opened on 2026-05-29, and GitHub checks passed:
 - `test-bun`
 - `test-node`
 - `publish-dryrun`
+
+Post-release verification passed on 2026-05-29:
+
+- PR #82 merged into `main` as `Release v0.10.0`.
+- `npm publish --access public` published `codemap-mcp@0.10.0`.
+- `npm view codemap-mcp version dist-tags --json --prefer-online` reports
+  `version: "0.10.0"` and `latest: "0.10.0"`.
+- `npm i -g codemap-mcp@0.10.0 --prefer-online` completed successfully.
+- Installed `codemap --version` reports `0.10.0`.
+- Installed `codemap init --all --check` reports both generated guidance files
+  current.
+- Installed `codemap setup --client codex --capture-hooks --check --repo C:\Users\Admin\Desktop\codemap`
+  reports current MCP config, current capture hooks, and no warnings.
+- Installed `codemap setup --client claude --check --repo C:\Users\Admin\Desktop\codemap`
+  reports current generated guidance and no warnings.
+- `codex mcp get codemap` reports the Codex MCP server enabled with command
+  `codemap-mcp`.
+- `claude mcp get codemap` reports the local project server connected via
+  `codemap-mcp --repo C:\Users\Admin\Desktop\codemap`.
+- GitHub release published:
+  https://github.com/AyoubAchour/codemap/releases/tag/v0.10.0
