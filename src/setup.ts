@@ -1,8 +1,6 @@
-import { execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { constants as fsConstants, promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { promisify } from "node:util";
 
 import {
   type SetupCaptureHookResult,
@@ -13,8 +11,6 @@ import {
   formatGuidanceCheck,
   type GuidanceCheck,
 } from "./guidance.js";
-
-const execFileAsync = promisify(execFile);
 
 export type SetupClient = "claude" | "codex" | "cursor" | "opencode";
 export type SetupScope = "global" | "project";
@@ -232,24 +228,69 @@ async function guidanceHealth(
 }
 
 async function commandPath(command: string): Promise<string | null> {
-  if (path.isAbsolute(command)) {
-    try {
-      await fs.access(command);
-      return command;
-    } catch {
-      return null;
+  if (!command.trim()) return null;
+
+  if (path.isAbsolute(command) || commandLooksLikePath(command)) {
+    return findAccessibleCommand(commandCandidates(path.resolve(command)));
+  }
+
+  for (const dir of pathEntries()) {
+    const found = await findAccessibleCommand(
+      commandCandidates(path.join(dir, command)),
+    );
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function commandLooksLikePath(command: string): boolean {
+  return command.includes("/") || command.includes("\\");
+}
+
+function pathEntries(): string[] {
+  return (process.env.PATH ?? "")
+    .split(path.delimiter)
+    .map((entry) => entry.trim().replace(/^"|"$/g, ""))
+    .filter((entry) => entry.length > 0);
+}
+
+function commandCandidates(basePath: string): string[] {
+  const candidates = [basePath];
+  if (process.platform === "win32" && path.extname(basePath) === "") {
+    for (const extension of windowsExecutableExtensions()) {
+      candidates.push(`${basePath}${extension}`);
     }
   }
-  try {
-    const { stdout } = await execFileAsync("sh", [
-      "-lc",
-      `command -v ${shellQuote(command)}`,
-    ]);
-    const found = stdout.trim();
-    return found || null;
-  } catch {
-    return null;
+  return unique(candidates);
+}
+
+function windowsExecutableExtensions(): string[] {
+  const raw = process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD";
+  return raw
+    .split(";")
+    .map((extension) => extension.trim())
+    .filter((extension) => extension.length > 0)
+    .map((extension) =>
+      extension.startsWith(".") ? extension : `.${extension}`,
+    );
+}
+
+async function findAccessibleCommand(
+  candidates: string[],
+): Promise<string | null> {
+  for (const candidate of candidates) {
+    try {
+      await fs.access(
+        candidate,
+        process.platform === "win32" ? fsConstants.F_OK : fsConstants.X_OK,
+      );
+      return candidate;
+    } catch {
+      // Try the next PATH/PATHEXT candidate.
+    }
   }
+  return null;
 }
 
 function nodeMajorVersion(version: string): number {
@@ -715,8 +756,4 @@ function setupNextSteps(
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
 }

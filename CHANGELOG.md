@@ -4,7 +4,11 @@ All notable user-facing changes to Codemap are documented here.
 
 ## Unreleased
 
-No changes yet.
+### Fixed
+
+- `codemap setup --check` now detects Windows command shims on `PATH` without
+  relying on a POSIX `sh` shell, preventing false missing-command warnings for
+  globally installed `codemap-mcp`.
 
 ## 0.9.0 - 2026-05-29
 
