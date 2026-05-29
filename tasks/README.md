@@ -155,7 +155,8 @@ Maintained manually. Update status as tasks land.
 | 075 | Agent setup hardening | done | Phase 4 / onboarding | [task-075-agent-setup-hardening.md](task-075-agent-setup-hardening.md) |
 | 076 | Release v0.9.0 | done | Phase 4 / release | [task-076-release-v0.9.0.md](task-076-release-v0.9.0.md) |
 | 077 | Cross-agent setup audit | done | Phase 4 / onboarding | [task-077-cross-agent-setup-audit.md](task-077-cross-agent-setup-audit.md) |
-| 078 | Release v0.9.1 | in-progress | Phase 4 / release | [task-078-release-v0.9.1.md](task-078-release-v0.9.1.md) |
+| 078 | Release v0.9.1 | superseded | Phase 4 / release | [task-078-release-v0.9.1.md](task-078-release-v0.9.1.md) |
+| 079 | Release v0.9.2 | in-progress | Phase 4 / release | [task-079-release-v0.9.2.md](task-079-release-v0.9.2.md) |
 
 ---
 

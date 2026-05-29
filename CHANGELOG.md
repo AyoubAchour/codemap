@@ -4,6 +4,14 @@ All notable user-facing changes to Codemap are documented here.
 
 ## Unreleased
 
+## 0.9.2 - 2026-05-29
+
+### Fixed
+
+- `codemap init --check` and `codemap setup --check` now treat generated
+  guidance with CRLF line endings as current, preventing false stale-guidance
+  warnings on Windows checkouts.
+
 ## 0.9.1 - 2026-05-29
 
 ### Fixed

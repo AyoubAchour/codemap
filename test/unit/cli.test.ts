@@ -734,6 +734,21 @@ describe("CLI: init", () => {
     expect(r.stdout).toContain(GUIDANCE_POLICY_HASH);
   });
 
+  test("--check treats CRLF guidance as current", async () => {
+    await init({ all: true }, { repoRoot: tmpRoot });
+    for (const filename of ["AGENTS.md", "CLAUDE.md"]) {
+      const target = path.join(tmpRoot, filename);
+      const current = await fs.readFile(target, "utf8");
+      await fs.writeFile(target, current.replace(/\n/g, "\r\n"), "utf8");
+    }
+
+    const r = await init({ all: true, check: true }, { repoRoot: tmpRoot });
+
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("AGENTS.md: current");
+    expect(r.stdout).toContain("CLAUDE.md: current");
+  });
+
   test("--check --force is rejected because check mode is read-only", async () => {
     await fs.writeFile(
       path.join(tmpRoot, "AGENTS.md"),
