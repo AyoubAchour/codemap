@@ -151,6 +151,7 @@ Maintained manually. Update status as tasks land.
 | 071 | Benchmark miss audit | done | Phase 4 / evaluation | [task-071-benchmark-miss-audit.md](task-071-benchmark-miss-audit.md) |
 | 072 | Benchmark audit triage | done | Phase 4 / evaluation | [task-072-benchmark-audit-triage.md](task-072-benchmark-audit-triage.md) |
 | 073 | Bounded companion context | done | Phase 4 / retrieval | [task-073-bounded-companion-context.md](task-073-bounded-companion-context.md) |
+| 074 | Planning distractor suppression | done | Phase 4 / retrieval | [task-074-planning-distractor-suppression.md](task-074-planning-distractor-suppression.md) |
 
 ---
 

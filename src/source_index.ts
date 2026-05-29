@@ -138,6 +138,7 @@ const GENERIC_PATH_TOKENS = new Set([
 ]);
 const ARCHIVAL_DEMOTION_MULTIPLIER = 0.05;
 const DISCONNECTED_IMPACT_MULTIPLIER = 0.08;
+const LOW_COVERAGE_BM25_ONLY_MULTIPLIER = 0.2;
 const LOCAL_ROOT_IMPORT_PREFIXES = ["src/", "packages/", "apps/", "libs/"];
 const MAX_COMPANION_CONTEXT_CANDIDATES = 4;
 const COMPANION_SCORE_MULTIPLIER = 0.72;
@@ -1794,6 +1795,7 @@ function rankChunks(
       const score = adjustSourceScore(baseScore, {
         chunk,
         queryTokens,
+        score_breakdown: fieldScore.score_breakdown,
         reverseImportIndex,
         localImportingFiles,
         needsRelationshipRanking,
@@ -2358,6 +2360,7 @@ function adjustSourceScore(
   input: {
     chunk: SourceChunk;
     queryTokens: string[];
+    score_breakdown: SourceScoreBreakdown;
     reverseImportIndex: ReverseImportIndex;
     localImportingFiles: Set<string>;
     needsRelationshipRanking: boolean;
@@ -2383,6 +2386,16 @@ function adjustSourceScore(
     )
   ) {
     adjusted *= DISCONNECTED_IMPACT_MULTIPLIER;
+  }
+
+  if (
+    isLowCoverageBm25OnlyCandidate(
+      input.chunk,
+      input.queryTokens,
+      input.score_breakdown,
+    )
+  ) {
+    adjusted *= LOW_COVERAGE_BM25_ONLY_MULTIPLIER;
   }
 
   return adjusted;
@@ -2412,6 +2425,33 @@ function isDisconnectedImplementationCandidate(
   if ((reverseImportIndex.get(chunk.file_path)?.length ?? 0) > 0) return false;
   if (localImportingFiles.has(chunk.file_path)) return false;
   return !chunk.imports.some((entry) => entry.module.startsWith("."));
+}
+
+function isLowCoverageBm25OnlyCandidate(
+  chunk: SourceChunk,
+  queryTokens: string[],
+  scoreBreakdown: SourceScoreBreakdown,
+): boolean {
+  if (queryTokens.length < 4) return false;
+  if (scoreBreakdown.bm25 <= 0) return false;
+
+  const structuredScore =
+    scoreBreakdown.content +
+    scoreBreakdown.export +
+    scoreBreakdown.import +
+    scoreBreakdown.path +
+    scoreBreakdown.related_graph_node +
+    scoreBreakdown.symbol;
+  if (structuredScore > 0) return false;
+
+  const contentTokens = new Set(tokenize(chunk.content));
+  let matchedTokens = 0;
+  for (const token of new Set(queryTokens)) {
+    if (contentTokens.has(token)) matchedTokens += 1;
+    if (matchedTokens > 1) return false;
+  }
+
+  return matchedTokens <= 1;
 }
 
 function hasExplicitPathTokenMatch(
