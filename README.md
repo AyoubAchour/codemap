@@ -58,24 +58,24 @@ The graph and the source index are intentionally separate:
 
 ## Latest Release
 
-Version `0.9.2` includes the `0.9.0` capture, recall, retrieval, benchmark, and
-setup-hardening work, plus Windows setup-check patches:
+Version `0.10.0` adds broad polyglot source indexing on top of the `0.9.x`
+capture, recall, retrieval, benchmark, and setup-hardening work:
 
-- `codemap init --check` and `codemap setup --check` now treat generated
-  guidance with CRLF line endings as current, avoiding false stale-guidance
-  warnings on Windows checkouts
-- `codemap setup --check` now detects npm command shims on Windows without
-  requiring a POSIX `sh`, avoiding false missing-command warnings for global
-  installs
+- source search now indexes C, C headers, C++, Java, Gradle, Meson, Go, Rust,
+  Python, C#, and Kotlin files in addition to the existing TypeScript,
+  JavaScript, JSON, Markdown, and YAML coverage
+- mixed-language chunks include conservative symbol, import, include, and local
+  dependency hints so `query_context`, `recall_context`, and `changes_context`
+  can find source impact in polyglot repositories without runtime parser or
+  vector dependencies
+- bundled benchmark coverage now includes a scrcpy-style polyglot fixture for
+  Android, CLI, Meson, Gradle, JNI, Rust, Python, C#, and Kotlin retrieval cases
 - rebuildable capture summaries and audit reports for long-running agent work
 - budget-aware `recall_context` and `query_context` packing with provenance
   metadata
 - stronger retrieval benchmark guardrails, miss audits, and bounded companion
   context for nearby wrappers, tests, generated guidance, and writeback files
-- dependency-free local semantic retrieval experiments kept outside runtime
-  recall
-- hardened MCP setup with explicit repo-root resolution and project-scoped
-  Cursor config
+- Windows-safe setup checks for generated guidance and global npm command shims
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes.
 

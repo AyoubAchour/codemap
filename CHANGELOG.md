@@ -4,6 +4,27 @@ All notable user-facing changes to Codemap are documented here.
 
 ## Unreleased
 
+## 0.10.0 - 2026-05-29
+
+### Added
+
+- Source indexing now covers C, C headers, C++, Java, Gradle, Meson, Go, Rust,
+  Python, C#, and Kotlin files in addition to the existing TypeScript,
+  JavaScript, JSON, Markdown, and YAML coverage.
+- Polyglot source chunks now include conservative symbol, import, include, and
+  dependency hints for common local project patterns, improving
+  `query_context`, `recall_context`, and `changes_context` in mixed-language
+  repositories without adding runtime parser or vector dependencies.
+- A bundled polyglot benchmark fixture covers scrcpy-style Android, CLI, Meson,
+  Gradle, JNI, Rust, Python, C#, and Kotlin retrieval scenarios.
+
+### Fixed
+
+- Repo-map test-file classification now avoids treating normal Java, C#, and
+  Kotlin source files whose names merely end in `test` as test files.
+- Python source indexing now records bare same-package imports such as
+  `from . import transport` as local relative dependencies.
+
 ## 0.9.2 - 2026-05-29
 
 ### Fixed
