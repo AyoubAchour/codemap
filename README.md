@@ -58,9 +58,12 @@ The graph and the source index are intentionally separate:
 
 ## Latest Release
 
-Version `0.9.1` includes the `0.9.0` capture, recall, retrieval, benchmark, and
-setup-hardening work, plus a Windows setup-check patch:
+Version `0.9.2` includes the `0.9.0` capture, recall, retrieval, benchmark, and
+setup-hardening work, plus Windows setup-check patches:
 
+- `codemap init --check` and `codemap setup --check` now treat generated
+  guidance with CRLF line endings as current, avoiding false stale-guidance
+  warnings on Windows checkouts
 - `codemap setup --check` now detects npm command shims on Windows without
   requiring a POSIX `sh`, avoiding false missing-command warnings for global
   installs

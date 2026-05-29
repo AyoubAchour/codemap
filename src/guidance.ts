@@ -66,6 +66,10 @@ function parseGuidanceMetadata(content: string):
   return { version: match[1], policyHash: match[2] };
 }
 
+function normalizeGuidanceLineEndings(content: string): string {
+  return content.replace(/\r\n/g, "\n");
+}
+
 async function checkGuidanceFile(
   file: string,
   targetPath: string,
@@ -90,8 +94,9 @@ async function checkGuidanceFile(
     };
   }
 
-  const metadata = parseGuidanceMetadata(content);
-  if (content === expectedBody) {
+  const comparableContent = normalizeGuidanceLineEndings(content);
+  const metadata = parseGuidanceMetadata(comparableContent);
+  if (comparableContent === expectedBody) {
     return {
       file,
       status: "current",

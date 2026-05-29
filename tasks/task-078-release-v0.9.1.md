@@ -1,6 +1,6 @@
 # Task 078: Release v0.9.1
 
-**Status:** in-progress
+**Status:** superseded
 **Phase:** Phase 4 / release
 **Started:** 2026-05-29
 **Depends on:** task-077
@@ -70,6 +70,13 @@ changing graph memory, source index, or capture data formats.
 ## Notes
 
 Use neutral product/task naming for branch, commit, PR, and release text.
+
+Superseded by [task-079-release-v0.9.2.md](task-079-release-v0.9.2.md). Version
+`0.9.1` was published to npm, but post-publish verification found that
+Windows/CRLF checkouts could make `codemap init --check` and
+`codemap setup --check` report generated guidance as stale even when the
+guidance content only differed by line endings. `0.9.2` ships the correction and
+should be the public GitHub release.
 
 Release-prep verification passed on 2026-05-29:
 
