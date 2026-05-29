@@ -138,5 +138,16 @@ cd benchmarks/fixtures/taskflow-app
 codemap benchmark-retrieval benchmarks/retrieval.fixture.json --refresh-index if_stale
 ```
 
+The `polyglot-app` fixture covers broad low-risk source-index languages:
+
+- C/C headers, C++, Java, Gradle, Meson, Go, Rust, Python, C#, and Kotlin files
+- a Markdown distractor document
+- `benchmarks/retrieval.fixture.json`, which can be run with:
+
+```sh
+cd benchmarks/fixtures/polyglot-app
+codemap benchmark-retrieval benchmarks/retrieval.fixture.json --refresh-index if_stale
+```
+
 When adding a fixture, keep it tiny and purposeful. Prefer six to ten queries
 that each target one retrieval weakness over a broad synthetic application.

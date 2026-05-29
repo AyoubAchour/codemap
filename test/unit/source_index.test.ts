@@ -1477,6 +1477,279 @@ describe("source index", () => {
     expect(index.stats.files_skipped).toBeGreaterThanOrEqual(3);
   });
 
+  test("scan indexes broad low-risk language files", async () => {
+    await write(
+      "app/src/control_msg.c",
+      [
+        '#include "control_msg.h"',
+        "#include <stdint.h>",
+        "",
+        "enum ControlMessageType { CONTROL_MESSAGE_TYPE_INJECT_KEYCODE = 0 };",
+        "struct ControlMessage message = { 0 };",
+        "",
+        "bool control_msg_serialize(const struct ControlMessage *msg) {",
+        "  return msg->type == CONTROL_MESSAGE_TYPE_INJECT_KEYCODE;",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "app/src/control_msg.h",
+      [
+        "#pragma once",
+        "",
+        "struct ControlMessage {",
+        "  int type;",
+        "};",
+        "",
+        "bool control_msg_serialize(const struct ControlMessage *msg);",
+      ].join("\n"),
+    );
+    await write(
+      "app/src/controller.cpp",
+      [
+        '#include "controller.hpp"',
+        "",
+        "Controller::Controller() = default;",
+      ].join("\n"),
+    );
+    await write(
+      "app/src/controller.hpp",
+      [
+        "#pragma once",
+        "",
+        "class Controller {",
+        " public:",
+        "  Controller();",
+        "};",
+      ].join("\n"),
+    );
+    await write(
+      "server/src/main/java/com/example/Server.java",
+      [
+        "package com.example;",
+        "",
+        "import static java.util.Collections.emptyList;",
+        "import java.util.*;",
+        "",
+        "public final class Server {",
+        "  public static void main(String[] args) {",
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/lib.rs",
+      [
+        "pub mod protocol;",
+        "",
+        "pub fn launch_driver() {",
+        "  protocol::encode_packet();",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/protocol/mod.rs",
+      [
+        "pub fn encode_packet() {",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "tools/session.py",
+      [
+        "from .transport import connect_transport",
+        "",
+        "class SessionRunner:",
+        "    pass",
+        "",
+        "def run_session():",
+        "    return connect_transport()",
+      ].join("\n"),
+    );
+    await write(
+      "tools/bare_relative.py",
+      [
+        "from . import transport",
+        "",
+        "def open_session():",
+        "    return transport.connect_transport()",
+      ].join("\n"),
+    );
+    await write(
+      "tools/transport.py",
+      [
+        "def connect_transport():",
+        "    return True",
+      ].join("\n"),
+    );
+    await write(
+      "src/DeviceSession.cs",
+      [
+        "using static System.Math;",
+        "using Builder = System.Text.StringBuilder;",
+        "",
+        "public sealed class DeviceSession {",
+        "  public int ClampLevel(int value) => Min(value, 10);",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/Main.kt",
+      [
+        "import com.example.Server as JavaServer",
+        "",
+        "class MainEntry {",
+        "  fun start() = JavaServer()",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/main.go",
+      [
+        "package main",
+        "",
+        "import (",
+        '  "fmt"',
+        ")",
+        "",
+        "func startDeviceBridge() {",
+        '  fmt.Println("bridge")',
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "build.gradle",
+      [
+        "plugins {",
+        "  id 'com.android.application'",
+        "}",
+        "",
+        "dependencies {",
+        "  testImplementation 'junit:junit:4.13.2'",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "build.gradle.kts",
+      [
+        "plugins {",
+        "  kotlin(\"jvm\") version \"2.0.0\"",
+        "}",
+      ].join("\n"),
+    );
+    await write("settings.gradle.kts", 'pluginManagement { repositories { google() } }');
+    await write(
+      "meson.build",
+      [
+        "project('polyglot-app', 'c')",
+        "executable('polyglot', 'app/src/control_msg.c')",
+      ].join("\n"),
+    );
+
+    const index = await scanSourceIndex(tmpRoot);
+
+    expect(index.files["app/src/control_msg.c"]?.language).toBe("c");
+    expect(index.files["app/src/control_msg.h"]?.language).toBe("c");
+    expect(index.files["app/src/controller.cpp"]?.language).toBe("cpp");
+    expect(index.files["app/src/controller.hpp"]?.language).toBe("cpp");
+    expect(
+      index.files["server/src/main/java/com/example/Server.java"]?.language,
+    ).toBe("java");
+    expect(index.files["build.gradle"]?.language).toBe("gradle");
+    expect(index.files["build.gradle.kts"]?.language).toBe("gradle");
+    expect(index.files["settings.gradle.kts"]?.language).toBe("gradle");
+    expect(index.files["meson.build"]?.language).toBe("meson");
+    expect(index.files["src/main.go"]?.language).toBe("go");
+    expect(index.files["src/lib.rs"]?.language).toBe("rust");
+    expect(index.files["tools/session.py"]?.language).toBe("python");
+    expect(index.files["src/DeviceSession.cs"]?.language).toBe("csharp");
+    expect(index.files["src/Main.kt"]?.language).toBe("kotlin");
+
+    expect(index.files["app/src/control_msg.c"]?.imports).toEqual([
+      { module: "./control_msg.h", line: 1, end_line: 1 },
+    ]);
+    expect(
+      index.files[
+        "server/src/main/java/com/example/Server.java"
+      ]?.imports.map((entry) => entry.module),
+    ).toEqual(["java.util.Collections.emptyList", "java.util.*"]);
+    expect(index.files["src/Main.kt"]?.imports.map((entry) => entry.module)).toEqual([
+      "com.example.Server",
+    ]);
+    expect(index.files["src/lib.rs"]?.imports).toEqual([
+      { module: "./protocol", line: 1, end_line: 1 },
+    ]);
+    expect(index.files["tools/session.py"]?.imports).toEqual([
+      { module: "./transport", line: 1, end_line: 1 },
+    ]);
+    expect(index.files["tools/bare_relative.py"]?.imports).toEqual([
+      { module: "./transport", line: 1, end_line: 1 },
+    ]);
+
+    expect(index.files["app/src/control_msg.c"]?.symbols).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "ControlMessageType", kind: "enum" }),
+        expect.objectContaining({
+          name: "control_msg_serialize",
+          kind: "function",
+        }),
+      ]),
+    );
+    expect(
+      index.files["app/src/control_msg.c"]?.symbols.map((symbol) => symbol.name),
+    ).not.toContain("ControlMessage");
+    expect(index.files["src/lib.rs"]?.symbols).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "launch_driver", kind: "function" }),
+      ]),
+    );
+    expect(index.files["tools/session.py"]?.symbols).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "SessionRunner", kind: "class" }),
+        expect.objectContaining({ name: "run_session", kind: "function" }),
+      ]),
+    );
+  });
+
+  test("dependency context resolves Rust mod declarations to mod.rs files", async () => {
+    await write(
+      "src/lib.rs",
+      [
+        "pub mod protocol;",
+        "",
+        "pub fn launch_driver() {",
+        "  protocol::encode_packet();",
+        "}",
+      ].join("\n"),
+    );
+    await write(
+      "src/protocol/mod.rs",
+      [
+        "pub fn encode_packet() {",
+        "}",
+      ].join("\n"),
+    );
+
+    await scanSourceIndex(tmpRoot);
+    const response = await searchSourceIndex(tmpRoot, "launch driver rust", {
+      dependencyLimit: 3,
+      limit: 3,
+    });
+    const libResult = response.results.find(
+      (result) => result.file_path === "src/lib.rs",
+    );
+
+    expect(libResult?.dependency_context).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          direction: "imports",
+          file_path: "src/protocol/mod.rs",
+          module: "./protocol",
+        }),
+      ]),
+    );
+  });
+
   test("markdown files use fallback extraction even when content looks like TypeScript", async () => {
     await write(
       "docs/runbook.md",

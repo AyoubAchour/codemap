@@ -104,6 +104,94 @@ describe("repo map ranking", () => {
 		);
 	});
 
+	test("uses local C include edges when ranking source files", async () => {
+		await write(
+			"app/src/control_msg.c",
+			[
+				'#include "control_msg.h"',
+				"",
+				"bool control_msg_serialize(const struct ControlMessage *msg) {",
+				"  return msg->type == 1;",
+				"}",
+			].join("\n"),
+		);
+		await write(
+			"app/src/control_msg.h",
+			[
+				"#pragma once",
+				"",
+				"struct ControlMessage {",
+				"  int type;",
+				"};",
+				"",
+				"bool control_msg_serialize(const struct ControlMessage *msg);",
+			].join("\n"),
+		);
+
+		const index = await scanSourceIndex(tmpRoot);
+		const repoMap = buildRepoMap(index, {
+			query: "control message serialize",
+			fileLimit: 3,
+		});
+
+		expect(repoMap.edges).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					from_file: "app/src/control_msg.c",
+					to_file: "app/src/control_msg.h",
+					kind: "import",
+				}),
+			]),
+		);
+		expect(repoMap.files_by_path["app/src/control_msg.h"]).toEqual(
+			expect.objectContaining({
+				imported_by: 1,
+				role: "source",
+			}),
+		);
+	});
+
+	test("keeps ordinary source basenames ending in test as source files", async () => {
+		await write(
+			"src/Contest.java",
+			["public final class Contest {", "  public int score() { return 1; }", "}"].join(
+				"\n",
+			),
+		);
+		await write(
+			"src/Latest.cs",
+			[
+				"public sealed class Latest {",
+				"  public int Version() => 1;",
+				"}",
+			].join("\n"),
+		);
+		await write(
+			"src/ParserTest.java",
+			[
+				"public final class ParserTest {",
+				"  public void parsesContest() { }",
+				"}",
+			].join("\n"),
+		);
+
+		const index = await scanSourceIndex(tmpRoot);
+		const repoMap = buildRepoMap(index, {
+			query: "contest latest parser",
+			fileLimit: 4,
+		});
+
+		expect(repoMap.files_by_path["src/Contest.java"]?.role).toBe("source");
+		expect(repoMap.files_by_path["src/Latest.cs"]?.role).toBe("source");
+		expect(repoMap.files_by_path["src/ParserTest.java"]?.role).toBe("test");
+		expect(repoMap.summary).toEqual(
+			expect.objectContaining({
+				source_files: 2,
+				tests: 1,
+			}),
+		);
+	});
+
 	test("seed files boost nearby files for change-oriented context", async () => {
 		await write("src/core.ts", "export const CORE_VALUE = 1;\n");
 		await write(

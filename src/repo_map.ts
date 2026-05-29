@@ -91,14 +91,32 @@ interface MutableEdge {
 }
 
 const RESOLVABLE_EXTENSIONS = [
+	".c",
+	".cc",
 	".cjs",
+	".cpp",
+	".cs",
 	".cts",
+	".cxx",
+	".go",
+	".h",
+	".hh",
+	".hpp",
+	".hxx",
+	".java",
 	".js",
 	".jsx",
+	".kt",
+	".kts",
+	".md",
+	".mdx",
 	".mjs",
 	".mts",
+	".py",
+	".rs",
 	".ts",
 	".tsx",
+	".gradle",
 ];
 const DEFAULT_FILE_LIMIT = 10;
 const DEFAULT_SYMBOL_LIMIT = 20;
@@ -527,9 +545,17 @@ function resolveIndexedImportPath(
 		...RESOLVABLE_EXTENSIONS.map(
 			(extension) => `${unresolved}/index${extension}`,
 		),
+		...RESOLVABLE_EXTENSIONS.map(
+			(extension) => `${unresolved}/mod${extension}`,
+		),
 		...(explicitExtension
 			? RESOLVABLE_EXTENSIONS.map(
 					(extension) => `${baseWithoutExtension}/index${extension}`,
+				)
+			: []),
+		...(explicitExtension
+			? RESOLVABLE_EXTENSIONS.map(
+					(extension) => `${baseWithoutExtension}/mod${extension}`,
 				)
 			: []),
 	];
@@ -538,13 +564,30 @@ function resolveIndexedImportPath(
 }
 
 function roleForPath(filePath: string): RepoMapFileRole {
+	const normalized = filePath.toLowerCase();
+	const exactTestBasename = /(^|\/)(test|tests)\.(cs|java|kt|kts)$/.test(
+		normalized,
+	);
+	const classStyleTestBasename =
+		/(^|\/)[A-Za-z0-9_$]+Tests?\.(cs|java|kt|kts)$/.test(filePath);
 	if (
-		/\.(test|spec)\.[cm]?[jt]sx?$/.test(filePath) ||
-		/(^|\/)(test|tests|__tests__)\//.test(filePath)
+		/\.(test|spec)\.[a-z0-9]+$/.test(normalized) ||
+		/(^|\/)(test|tests|__tests__)\//.test(normalized) ||
+		/(^|\/)test[_-].+\.(py|go|rs|c|cc|cpp|cxx|java|kt|kts|cs)$/.test(
+			normalized,
+		) ||
+		/[_-]test\.(py|go|rs|c|cc|cpp|cxx|java|kt|kts|cs)$/.test(
+			normalized,
+		) ||
+		exactTestBasename ||
+		classStyleTestBasename
 	) {
 		return "test";
 	}
-	if (/\.(md|mdx|rst|txt)$/.test(filePath) || /(^|\/)docs?\//.test(filePath)) {
+	if (
+		/\.(md|mdx|rst|txt)$/.test(normalized) ||
+		/(^|\/)docs?\//.test(normalized)
+	) {
 		return "doc";
 	}
 	return "source";
