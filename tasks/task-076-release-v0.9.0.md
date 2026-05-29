@@ -1,6 +1,6 @@
 # Task 076: Release v0.9.0
 
-**Status:** in-progress
+**Status:** done
 **Phase:** Phase 4 / release
 **Started:** 2026-05-29
 **Depends on:** task-060, task-061, task-062, task-063, task-064, task-065, task-066, task-067, task-068, task-069, task-070, task-071, task-072, task-073, task-074, task-075
@@ -62,11 +62,11 @@ while keeping graph memory local and backward-compatible.
 - [x] Version is bumped to `0.9.0`.
 - [x] Changelog and README describe the `0.9.0` release.
 - [x] Local release gates pass.
-- [ ] Release PR is opened.
-- [ ] Release PR is merged.
-- [ ] `codemap-mcp@0.9.0` is published to npm.
-- [ ] Global install reports `codemap --version` as `0.9.0`.
-- [ ] GitHub release `v0.9.0` is published.
+- [x] Release PR is opened.
+- [x] Release PR is merged.
+- [x] `codemap-mcp@0.9.0` is published to npm.
+- [x] Global install reports `codemap --version` as `0.9.0`.
+- [x] GitHub release `v0.9.0` is published.
 
 ## Notes
 
@@ -90,3 +90,17 @@ On local Windows, `scripts/smoke-test.sh` was run through Git Bash with
 temporary shims outside the repo for `jq` and Windows npm prefix bin placement;
 the package install, CLI version, empty-repo validate, and MCP initialize
 handshake all passed.
+
+Release completion on 2026-05-29:
+
+- PR #75 was merged into `main`.
+- `npm publish --access public` published `codemap-mcp@0.9.0`.
+- `npm view codemap-mcp version dist-tags --json --prefer-online` reports
+  `latest` as `0.9.0`.
+- `npm i -g codemap-mcp@0.9.0 --prefer-online` completed successfully.
+- `codemap --version` reports `0.9.0`.
+- `codemap init --check` reports `AGENTS.md` current after regenerating the
+  file with `codemap init --force` to normalize Windows working-tree line
+  endings.
+- GitHub release `v0.9.0` is published:
+  <https://github.com/AyoubAchour/codemap/releases/tag/v0.9.0>.
