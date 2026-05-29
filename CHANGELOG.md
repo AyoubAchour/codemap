@@ -4,6 +4,8 @@ All notable user-facing changes to Codemap are documented here.
 
 ## Unreleased
 
+## 0.9.1 - 2026-05-29
+
 ### Fixed
 
 - `codemap setup --check` now detects Windows command shims on `PATH` without

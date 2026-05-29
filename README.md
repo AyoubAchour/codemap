@@ -58,8 +58,12 @@ The graph and the source index are intentionally separate:
 
 ## Latest Release
 
-Version `0.9.0` includes:
+Version `0.9.1` includes the `0.9.0` capture, recall, retrieval, benchmark, and
+setup-hardening work, plus a Windows setup-check patch:
 
+- `codemap setup --check` now detects npm command shims on Windows without
+  requiring a POSIX `sh`, avoiding false missing-command warnings for global
+  installs
 - rebuildable capture summaries and audit reports for long-running agent work
 - budget-aware `recall_context` and `query_context` packing with provenance
   metadata
