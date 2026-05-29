@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "name": "Polyglot fixture retrieval suite",
+  "description": "Small broad-language fixture for source-index coverage across C, C++, Java, Gradle, Meson, Go, Rust, Python, C#, and Kotlin.",
+  "queries": [
+    {
+      "id": "c-control-message",
+      "query": "control message serialize inject keycode c protocol",
+      "expected_files": ["app/src/control_msg.c"],
+      "supporting_files": ["app/src/control_msg.h"],
+      "forbidden_files": ["docs/archive.md"],
+      "tags": ["polyglot", "c", "headers", "guardrail"]
+    },
+    {
+      "id": "cpp-controller",
+      "query": "controller frame scheduler cpp mirror display",
+      "expected_files": ["app/src/controller.cpp"],
+      "supporting_files": ["app/src/controller.hpp"],
+      "forbidden_files": ["docs/archive.md"],
+      "tags": ["polyglot", "cpp", "guardrail"]
+    },
+    {
+      "id": "java-server",
+      "query": "android server main empty list java websocket",
+      "expected_files": ["server/src/main/java/com/example/Server.java"],
+      "forbidden_files": ["docs/archive.md"],
+      "tags": ["polyglot", "java", "imports"]
+    },
+    {
+      "id": "gradle-build",
+      "query": "android gradle application junit dependency kotlin dsl",
+      "expected_files": ["build.gradle", "build.gradle.kts"],
+      "forbidden_files": ["docs/archive.md"],
+      "tags": ["polyglot", "gradle", "build"]
+    },
+    {
+      "id": "meson-build",
+      "query": "meson executable debug protocol tests",
+      "expected_files": ["meson.build"],
+      "forbidden_files": ["docs/archive.md"],
+      "tags": ["polyglot", "meson", "build"]
+    },
+    {
+      "id": "go-bridge",
+      "query": "go bridge start device fmt output",
+      "expected_files": ["cmd/bridge/main.go"],
+      "forbidden_files": ["docs/archive.md"],
+      "tags": ["polyglot", "go"]
+    },
+    {
+      "id": "rust-protocol",
+      "query": "rust launch driver encode packet protocol",
+      "expected_files": ["src/lib.rs", "src/protocol/mod.rs"],
+      "forbidden_files": ["docs/archive.md"],
+      "tags": ["polyglot", "rust", "imports"]
+    },
+    {
+      "id": "python-session",
+      "query": "python session transport connect runner",
+      "expected_files": ["tools/session.py", "tools/transport.py"],
+      "forbidden_files": ["docs/archive.md"],
+      "tags": ["polyglot", "python", "imports"]
+    },
+    {
+      "id": "csharp-session",
+      "query": "csharp device session clamp level math",
+      "expected_files": ["src/DeviceSession.cs"],
+      "forbidden_files": ["docs/archive.md"],
+      "tags": ["polyglot", "csharp"]
+    },
+    {
+      "id": "kotlin-entry",
+      "query": "kotlin main entry java server alias",
+      "expected_files": ["src/Main.kt"],
+      "forbidden_files": ["docs/archive.md"],
+      "tags": ["polyglot", "kotlin", "imports"]
+    }
+  ]
+}

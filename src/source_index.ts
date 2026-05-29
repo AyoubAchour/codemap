@@ -8,26 +8,61 @@ import { GraphStore } from "./graph.js";
 import type { Node } from "./types.js";
 import { ensureSeedFile } from "./util/lock.js";
 
-const INDEX_VERSION = 1 as const;
-const SEARCH_INDEX_VERSION = 1 as const;
+const INDEX_VERSION = 2 as const;
+const SEARCH_INDEX_VERSION = 2 as const;
 const INDEX_DIR = ".codemap/index";
 const INDEX_FILE = "source.json";
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
 const MAX_REFERENCES_PER_FILE = 2000;
 
 const SUPPORTED_EXTENSIONS = new Map<string, string>([
+  [".c", "c"],
+  [".cc", "cpp"],
   [".cjs", "javascript"],
+  [".cpp", "cpp"],
+  [".cs", "csharp"],
   [".cts", "typescript"],
+  [".cxx", "cpp"],
+  [".go", "go"],
+  [".h", "c"],
+  [".hh", "cpp"],
+  [".hpp", "cpp"],
+  [".hxx", "cpp"],
+  [".java", "java"],
   [".js", "javascript"],
   [".jsx", "javascript"],
+  [".kt", "kotlin"],
+  [".kts", "kotlin"],
   [".md", "markdown"],
   [".mdx", "markdown"],
   [".mjs", "javascript"],
   [".mts", "typescript"],
+  [".py", "python"],
+  [".rs", "rust"],
   [".ts", "typescript"],
   [".tsx", "typescript"],
+  [".gradle", "gradle"],
+]);
+const SUPPORTED_FILENAMES = new Map<string, string>([
+  ["build.gradle", "gradle"],
+  ["build.gradle.kts", "gradle"],
+  ["meson.build", "meson"],
+  ["meson_options.txt", "meson"],
+  ["settings.gradle", "gradle"],
+  ["settings.gradle.kts", "gradle"],
 ]);
 const TEST_COMPANION_EXTENSIONS = [
+  ".c",
+  ".cc",
+  ".cpp",
+  ".cs",
+  ".cxx",
+  ".go",
+  ".java",
+  ".kt",
+  ".kts",
+  ".py",
+  ".rs",
   ".ts",
   ".tsx",
   ".js",
@@ -886,8 +921,8 @@ async function findCandidateFiles(
         skippedCount += 1;
         continue;
       }
-      const extension = path.extname(entry.name);
-      const language = SUPPORTED_EXTENSIONS.get(extension);
+      const normalizedRelativePath = normalizePath(relativePath);
+      const language = languageForPath(normalizedRelativePath);
       if (!language) {
         skippedCount += 1;
         continue;
@@ -900,7 +935,7 @@ async function findCandidateFiles(
         continue;
       }
       candidates.push({
-        file_path: normalizePath(relativePath),
+        file_path: normalizedRelativePath,
         absolute_path: absolutePath,
         language,
         size_bytes: stat.size,
@@ -911,6 +946,16 @@ async function findCandidateFiles(
 
   await visit("");
   return { candidates, skippedCount };
+}
+
+function languageForPath(filePath: string): string | null {
+  const normalized = normalizePath(filePath).toLowerCase();
+  const basename = path.posix.basename(normalized);
+  return (
+    SUPPORTED_FILENAMES.get(basename) ??
+    SUPPORTED_EXTENSIONS.get(path.posix.extname(basename)) ??
+    null
+  );
 }
 
 function indexFile(
@@ -953,25 +998,49 @@ function extractSourceFacts(
   lines: string[],
 ): ExtractedSourceFacts {
   return (
-    extractAstSourceFacts(candidate, content) ?? extractFallbackSourceFacts(lines)
+    extractAstSourceFacts(candidate, content) ??
+    extractFallbackSourceFacts(candidate.language, lines)
   );
 }
 
-function extractFallbackSourceFacts(lines: string[]): ExtractedSourceFacts {
+function extractFallbackSourceFacts(
+  language: string,
+  lines: string[],
+): ExtractedSourceFacts {
+  const symbols = extractSymbols(language, lines);
   return {
-    imports: extractImports(lines),
-    exports: extractExports(lines),
-    symbols: extractSymbols(lines),
+    imports: extractImports(language, lines),
+    exports: extractFallbackExports(language, lines, symbols),
+    symbols,
     references: [],
     references_truncated: false,
   };
+}
+
+function extractFallbackExports(
+  language: string,
+  lines: string[],
+  symbols: SourceSymbol[],
+): string[] {
+  if (
+    language === "typescript" ||
+    language === "javascript" ||
+    language === "markdown"
+  ) {
+    return extractExports(lines);
+  }
+  return symbols
+    .filter((symbol) => symbol.exported)
+    .map((symbol) => symbol.name)
+    .filter((name, index, names) => names.indexOf(name) === index)
+    .sort();
 }
 
 function extractAstSourceFacts(
   candidate: CandidateFile,
   content: string,
 ): ExtractedSourceFacts | null {
-  if (candidate.language === "markdown") {
+  if (candidate.language !== "typescript" && candidate.language !== "javascript") {
     return null;
   }
 
@@ -1398,7 +1467,27 @@ function sortReferences(references: SourceReference[]): SourceReference[] {
   );
 }
 
-function extractImports(lines: string[]): SourceImport[] {
+function extractImports(language: string, lines: string[]): SourceImport[] {
+  switch (language) {
+    case "c":
+    case "cpp":
+      return extractCStyleIncludes(lines);
+    case "java":
+    case "kotlin":
+    case "csharp":
+      return extractDottedImports(lines);
+    case "go":
+      return extractGoImports(lines);
+    case "rust":
+      return extractRustImports(lines);
+    case "python":
+      return extractPythonImports(lines);
+    default:
+      return extractTsLikeImports(lines);
+  }
+}
+
+function extractTsLikeImports(lines: string[]): SourceImport[] {
   const imports: SourceImport[] = [];
   const importPattern =
     /\bimport\s+(?:type\s+)?(?:[^'"]+\s+from\s+)?["']([^"']+)["']/;
@@ -1416,6 +1505,121 @@ function extractImports(lines: string[]): SourceImport[] {
   });
 
   return imports;
+}
+
+function extractCStyleIncludes(lines: string[]): SourceImport[] {
+  const imports: SourceImport[] = [];
+  // Angle/system includes are intentionally ignored to avoid noisy external edges.
+  const includePattern = /^\s*#\s*include\s+"([^"]+)"/;
+
+  lines.forEach((line, index) => {
+    const match = line.match(includePattern);
+    if (!match?.[1]) return;
+    const module = match[1].startsWith(".") ? match[1] : `./${match[1]}`;
+    imports.push({ module, line: index + 1, end_line: index + 1 });
+  });
+
+  return imports;
+}
+
+function extractDottedImports(lines: string[]): SourceImport[] {
+  const imports: SourceImport[] = [];
+  const importPattern =
+    /^\s*import\s+(?:static\s+)?([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\.\*)?)(?:\s+as\s+[A-Za-z_$][\w$]*)?\s*;?/;
+  const usingPattern =
+    /^\s*using\s+(?:static\s+)?(?:[A-Za-z_$][\w$]*\s*=\s*)?([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*;/;
+
+  lines.forEach((line, index) => {
+    const match = line.match(importPattern) ?? line.match(usingPattern);
+    if (match?.[1]) {
+      imports.push({ module: match[1], line: index + 1, end_line: index + 1 });
+    }
+  });
+
+  return imports;
+}
+
+function extractGoImports(lines: string[]): SourceImport[] {
+  const imports: SourceImport[] = [];
+  let inBlock = false;
+
+  lines.forEach((line, index) => {
+    if (/^\s*import\s*\(\s*$/.test(line)) {
+      inBlock = true;
+      return;
+    }
+    if (inBlock && /^\s*\)\s*$/.test(line)) {
+      inBlock = false;
+      return;
+    }
+    const match = inBlock
+      ? line.match(/^\s*(?:[_A-Za-z.][\w.]*\s+)?["']([^"']+)["']/)
+      : line.match(/^\s*import\s+(?:[_A-Za-z.][\w.]*\s+)?["']([^"']+)["']/);
+    if (match?.[1]) {
+      imports.push({ module: match[1], line: index + 1, end_line: index + 1 });
+    }
+  });
+
+  return imports;
+}
+
+function extractRustImports(lines: string[]): SourceImport[] {
+  const imports: SourceImport[] = [];
+  const modPattern = /^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_]\w*)\s*;/;
+  const usePattern = /^\s*use\s+([^;]+);/;
+
+  lines.forEach((line, index) => {
+    const modMatch = line.match(modPattern);
+    if (modMatch?.[1]) {
+      imports.push({
+        module: `./${modMatch[1]}`,
+        line: index + 1,
+        end_line: index + 1,
+      });
+      return;
+    }
+    const useMatch = line.match(usePattern);
+    if (useMatch?.[1]) {
+      imports.push({
+        module: useMatch[1].trim(),
+        line: index + 1,
+        end_line: index + 1,
+      });
+    }
+  });
+
+  return imports;
+}
+
+function extractPythonImports(lines: string[]): SourceImport[] {
+  const imports: SourceImport[] = [];
+  const fromRelativePattern = /^\s*from\s+(\.+)([A-Za-z_][\w.]*)?\s+import\s+/;
+  const fromPattern = /^\s*from\s+([A-Za-z_][\w.]*)\s+import\s+/;
+  const importPattern = /^\s*import\s+([A-Za-z_][\w.]*)(?:\s+as\s+\w+)?/;
+
+  lines.forEach((line, index) => {
+    const relative = line.match(fromRelativePattern);
+    if (relative?.[1] && relative[2]) {
+      imports.push({
+        module: pythonRelativeModule(relative[1], relative[2]),
+        line: index + 1,
+        end_line: index + 1,
+      });
+      return;
+    }
+    const match = line.match(fromPattern) ?? line.match(importPattern);
+    if (match?.[1]) {
+      imports.push({ module: match[1], line: index + 1, end_line: index + 1 });
+    }
+  });
+
+  return imports;
+}
+
+function pythonRelativeModule(dots: string, moduleName: string): string {
+  const relativePrefix =
+    dots.length === 1 ? "./" : "../".repeat(Math.max(1, dots.length - 1));
+  return `${relativePrefix}${moduleName.replaceAll(".", "/")}`;
 }
 
 function extractExports(lines: string[]): string[] {
@@ -1441,7 +1645,27 @@ function extractExports(lines: string[]): string[] {
   return Array.from(exports).sort();
 }
 
-function extractSymbols(lines: string[]): SourceSymbol[] {
+function extractSymbols(language: string, lines: string[]): SourceSymbol[] {
+  switch (language) {
+    case "c":
+    case "cpp":
+      return extractCStyleSymbols(lines);
+    case "java":
+    case "kotlin":
+    case "csharp":
+      return extractDottedLanguageSymbols(lines);
+    case "go":
+      return extractGoSymbols(lines);
+    case "rust":
+      return extractRustSymbols(lines);
+    case "python":
+      return extractPythonSymbols(lines);
+    default:
+      return extractTsLikeSymbols(lines);
+  }
+}
+
+function extractTsLikeSymbols(lines: string[]): SourceSymbol[] {
   const symbols: SourceSymbol[] = [];
   const patterns: Array<{
     kind: SourceSymbol["kind"];
@@ -1493,6 +1717,253 @@ function extractSymbols(lines: string[]): SourceSymbol[] {
     }
   });
 
+  return symbols.sort((a, b) => a.line - b.line || a.name.localeCompare(b.name));
+}
+
+function extractCStyleSymbols(lines: string[]): SourceSymbol[] {
+  const symbols: SourceSymbol[] = [];
+  const typePattern =
+    /^\s*(?:typedef\s+)?(struct|union|class)\s+([A-Za-z_]\w*)\b\s*(?:[{:;]|$)/;
+  const enumPattern = /^\s*(?:typedef\s+)?enum\s+([A-Za-z_]\w*)?\s*\{/;
+  const definePattern = /^\s*#\s*define\s+([A-Z_][A-Z0-9_]*)\b/;
+  const functionPattern =
+    /^\s*(?!if\b|for\b|while\b|switch\b|return\b)(?:[A-Za-z_][\w:<>]*\s+)+(?:\*+\s*)?([A-Za-z_]\w*)\s*\([^;{}]*\)\s*(?:\{|;)/;
+
+  lines.forEach((line, index) => {
+    const lineNumber = index + 1;
+    const typeMatch = line.match(typePattern);
+    if (typeMatch?.[2]) {
+      symbols.push({
+        name: typeMatch[2],
+        kind: "type",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: !/^\s*static\b/.test(line),
+      });
+      return;
+    }
+    const enumMatch = line.match(enumPattern);
+    if (enumMatch?.[1]) {
+      symbols.push({
+        name: enumMatch[1],
+        kind: "enum",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: !/^\s*static\b/.test(line),
+      });
+      return;
+    }
+    const defineMatch = line.match(definePattern);
+    if (defineMatch?.[1]) {
+      symbols.push({
+        name: defineMatch[1],
+        kind: "const",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: true,
+      });
+      return;
+    }
+    const functionMatch = line.match(functionPattern);
+    if (functionMatch?.[1]) {
+      symbols.push({
+        name: functionMatch[1],
+        kind: "function",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: !/^\s*static\b/.test(line),
+      });
+    }
+  });
+
+  return sortFallbackSymbols(symbols);
+}
+
+function extractDottedLanguageSymbols(lines: string[]): SourceSymbol[] {
+  const symbols: SourceSymbol[] = [];
+  const typePattern =
+    /^\s*(?:(?:public|private|protected|internal|static|final|sealed|abstract|partial|open|data|value)\s+)*(class|interface|enum|record|object)\s+([A-Za-z_$][\w$]*)/;
+  const kotlinFunctionPattern =
+    /^\s*(?:(?:public|private|protected|internal|open|override|suspend)\s+)*fun\s+([A-Za-z_$][\w$]*)\s*\(/;
+  const methodPattern =
+    /^\s*(?:(?:public|private|protected|internal|static|final|override|virtual|async|synchronized)\s+)+[A-Za-z_$][\w$<>,.?[\]\s]*\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*(?:\{|=>|throws\b)/;
+
+  lines.forEach((line, index) => {
+    const lineNumber = index + 1;
+    const typeMatch = line.match(typePattern);
+    if (typeMatch?.[1] && typeMatch[2]) {
+      const kind =
+        typeMatch[1] === "interface"
+          ? "interface"
+          : typeMatch[1] === "enum"
+            ? "enum"
+            : typeMatch[1] === "record"
+              ? "type"
+              : "class";
+      symbols.push({
+        name: typeMatch[2],
+        kind,
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: /\b(public|open)\b/.test(line),
+      });
+      return;
+    }
+    const functionMatch =
+      line.match(kotlinFunctionPattern) ?? line.match(methodPattern);
+    if (functionMatch?.[1]) {
+      symbols.push({
+        name: functionMatch[1],
+        kind: "function",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: /\b(public|open)\b/.test(line),
+      });
+    }
+  });
+
+  return sortFallbackSymbols(symbols);
+}
+
+function extractGoSymbols(lines: string[]): SourceSymbol[] {
+  const symbols: SourceSymbol[] = [];
+  const functionPattern = /^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)\s*\(/;
+  const typePattern = /^\s*type\s+([A-Za-z_]\w*)\s+\w+/;
+  const valuePattern = /^\s*(?:const|var)\s+([A-Za-z_]\w*)\b/;
+
+  lines.forEach((line, index) => {
+    const lineNumber = index + 1;
+    const functionMatch = line.match(functionPattern);
+    if (functionMatch?.[1]) {
+      symbols.push({
+        name: functionMatch[1],
+        kind: "function",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: /^[A-Z]/.test(functionMatch[1]),
+      });
+      return;
+    }
+    const typeMatch = line.match(typePattern);
+    if (typeMatch?.[1]) {
+      symbols.push({
+        name: typeMatch[1],
+        kind: "type",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: /^[A-Z]/.test(typeMatch[1]),
+      });
+      return;
+    }
+    const valueMatch = line.match(valuePattern);
+    if (valueMatch?.[1]) {
+      symbols.push({
+        name: valueMatch[1],
+        kind: "const",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: /^[A-Z]/.test(valueMatch[1]),
+      });
+    }
+  });
+
+  return sortFallbackSymbols(symbols);
+}
+
+function extractRustSymbols(lines: string[]): SourceSymbol[] {
+  const symbols: SourceSymbol[] = [];
+  const functionPattern =
+    /^\s*(pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_]\w*)\s*\(/;
+  const typePattern =
+    /^\s*(pub(?:\([^)]*\))?\s+)?(struct|enum|trait|type|mod)\s+([A-Za-z_]\w*)/;
+  const valuePattern =
+    /^\s*(pub(?:\([^)]*\))?\s+)?(?:const|static)\s+([A-Za-z_]\w*)\b/;
+
+  lines.forEach((line, index) => {
+    const lineNumber = index + 1;
+    const functionMatch = line.match(functionPattern);
+    if (functionMatch?.[2]) {
+      symbols.push({
+        name: functionMatch[2],
+        kind: "function",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: Boolean(functionMatch[1]),
+      });
+      return;
+    }
+    const typeMatch = line.match(typePattern);
+    if (typeMatch?.[2] && typeMatch[3]) {
+      symbols.push({
+        name: typeMatch[3],
+        kind: typeMatch[2] === "enum" ? "enum" : "type",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: Boolean(typeMatch[1]),
+      });
+      return;
+    }
+    const valueMatch = line.match(valuePattern);
+    if (valueMatch?.[2]) {
+      symbols.push({
+        name: valueMatch[2],
+        kind: "const",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: Boolean(valueMatch[1]),
+      });
+    }
+  });
+
+  return sortFallbackSymbols(symbols);
+}
+
+function extractPythonSymbols(lines: string[]): SourceSymbol[] {
+  const symbols: SourceSymbol[] = [];
+  const classPattern = /^\s*class\s+([A-Za-z_]\w*)\b/;
+  const functionPattern = /^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(/;
+  const constPattern = /^\s*([A-Z][A-Z0-9_]*)\s*=/;
+
+  lines.forEach((line, index) => {
+    const lineNumber = index + 1;
+    const classMatch = line.match(classPattern);
+    if (classMatch?.[1]) {
+      symbols.push({
+        name: classMatch[1],
+        kind: "class",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: !classMatch[1].startsWith("_"),
+      });
+      return;
+    }
+    const functionMatch = line.match(functionPattern);
+    if (functionMatch?.[1]) {
+      symbols.push({
+        name: functionMatch[1],
+        kind: "function",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: !functionMatch[1].startsWith("_"),
+      });
+      return;
+    }
+    const constMatch = line.match(constPattern);
+    if (constMatch?.[1]) {
+      symbols.push({
+        name: constMatch[1],
+        kind: "const",
+        line: lineNumber,
+        end_line: lineNumber,
+        exported: !constMatch[1].startsWith("_"),
+      });
+    }
+  });
+
+  return sortFallbackSymbols(symbols);
+}
+
+function sortFallbackSymbols(symbols: SourceSymbol[]): SourceSymbol[] {
   return symbols.sort((a, b) => a.line - b.line || a.name.localeCompare(b.name));
 }
 
@@ -3116,9 +3587,15 @@ function resolveImportBase(
         )
       : []),
     ...supportedExtensions.map((extension) => `${unresolved}/index${extension}`),
+    ...supportedExtensions.map((extension) => `${unresolved}/mod${extension}`),
     ...(explicitExtension
       ? supportedExtensions.map(
           (extension) => `${baseWithoutExtension}/index${extension}`,
+        )
+      : []),
+    ...(explicitExtension
+      ? supportedExtensions.map(
+          (extension) => `${baseWithoutExtension}/mod${extension}`,
         )
       : []),
   ];

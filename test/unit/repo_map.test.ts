@@ -104,6 +104,53 @@ describe("repo map ranking", () => {
 		);
 	});
 
+	test("uses local C include edges when ranking source files", async () => {
+		await write(
+			"app/src/control_msg.c",
+			[
+				'#include "control_msg.h"',
+				"",
+				"bool control_msg_serialize(const struct ControlMessage *msg) {",
+				"  return msg->type == 1;",
+				"}",
+			].join("\n"),
+		);
+		await write(
+			"app/src/control_msg.h",
+			[
+				"#pragma once",
+				"",
+				"struct ControlMessage {",
+				"  int type;",
+				"};",
+				"",
+				"bool control_msg_serialize(const struct ControlMessage *msg);",
+			].join("\n"),
+		);
+
+		const index = await scanSourceIndex(tmpRoot);
+		const repoMap = buildRepoMap(index, {
+			query: "control message serialize",
+			fileLimit: 3,
+		});
+
+		expect(repoMap.edges).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					from_file: "app/src/control_msg.c",
+					to_file: "app/src/control_msg.h",
+					kind: "import",
+				}),
+			]),
+		);
+		expect(repoMap.files_by_path["app/src/control_msg.h"]).toEqual(
+			expect.objectContaining({
+				imported_by: 1,
+				role: "source",
+			}),
+		);
+	});
+
 	test("seed files boost nearby files for change-oriented context", async () => {
 		await write("src/core.ts", "export const CORE_VALUE = 1;\n");
 		await write(

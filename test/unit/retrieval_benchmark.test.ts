@@ -157,6 +157,42 @@ describe("retrieval benchmark", () => {
     expect(response.summary.audit.forbidden_file_hits).toEqual([]);
   });
 
+  test("polyglot fixture covers broad source-index retrieval", async () => {
+    await fs.rm(tmpRoot, { recursive: true, force: true });
+    await fs.cp(
+      path.join(repoRoot, "benchmarks", "fixtures", "polyglot-app"),
+      tmpRoot,
+      { recursive: true },
+    );
+
+    const response = await runRetrievalBenchmark(tmpRoot, {
+      suitePath: "benchmarks/retrieval.fixture.json",
+      refreshIndex: "if_stale",
+      limit: 6,
+      dependencyLimit: 2,
+      maxContentChars: 240,
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.summary.query_count).toBeGreaterThanOrEqual(8);
+    expect(response.summary.files.hit_rate_at_k).toBe(1);
+    expect(response.summary.files.forbidden_violation_rate).toBe(0);
+    expect(response.summary.audit.forbidden_file_hits).toEqual([]);
+    expect(
+      [...new Set(response.results.flatMap((result) => result.tags))].sort(),
+    ).toEqual(
+      expect.arrayContaining([
+        "c",
+        "cpp",
+        "gradle",
+        "java",
+        "meson",
+        "rust",
+      ]),
+    );
+  });
+
   test("runs a local suite and reports file/node retrieval metrics", async () => {
     const authSource = [
       "export function requireActiveUser(token: string) {",
