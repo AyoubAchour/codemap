@@ -1593,13 +1593,24 @@ function extractRustImports(lines: string[]): SourceImport[] {
 
 function extractPythonImports(lines: string[]): SourceImport[] {
   const imports: SourceImport[] = [];
-  const fromRelativePattern = /^\s*from\s+(\.+)([A-Za-z_][\w.]*)?\s+import\s+/;
+  const fromRelativePattern =
+    /^\s*from\s+(\.+)([A-Za-z_][\w.]*)?\s+import\s+(.+)/;
   const fromPattern = /^\s*from\s+([A-Za-z_][\w.]*)\s+import\s+/;
   const importPattern = /^\s*import\s+([A-Za-z_][\w.]*)(?:\s+as\s+\w+)?/;
 
   lines.forEach((line, index) => {
     const relative = line.match(fromRelativePattern);
-    if (relative?.[1] && relative[2]) {
+    if (relative?.[1]) {
+      if (!relative[2]) {
+        for (const target of pythonImportTargets(relative[3] ?? "")) {
+          imports.push({
+            module: pythonRelativeModule(relative[1], target),
+            line: index + 1,
+            end_line: index + 1,
+          });
+        }
+        return;
+      }
       imports.push({
         module: pythonRelativeModule(relative[1], relative[2]),
         line: index + 1,
@@ -1614,6 +1625,17 @@ function extractPythonImports(lines: string[]): SourceImport[] {
   });
 
   return imports;
+}
+
+function pythonImportTargets(targets: string): string[] {
+  return targets
+    .replace(/[()]/g, "")
+    .split(",")
+    .map((part) => part.trim().split(/\s+as\s+/)[0]?.trim())
+    .filter(
+      (target): target is string =>
+        Boolean(target) && /^[A-Za-z_]\w*$/.test(target),
+    );
 }
 
 function pythonRelativeModule(dots: string, moduleName: string): string {

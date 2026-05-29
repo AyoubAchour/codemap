@@ -565,6 +565,11 @@ function resolveIndexedImportPath(
 
 function roleForPath(filePath: string): RepoMapFileRole {
 	const normalized = filePath.toLowerCase();
+	const exactTestBasename = /(^|\/)(test|tests)\.(cs|java|kt|kts)$/.test(
+		normalized,
+	);
+	const classStyleTestBasename =
+		/(^|\/)[A-Za-z0-9_$]+Tests?\.(cs|java|kt|kts)$/.test(filePath);
 	if (
 		/\.(test|spec)\.[a-z0-9]+$/.test(normalized) ||
 		/(^|\/)(test|tests|__tests__)\//.test(normalized) ||
@@ -574,7 +579,8 @@ function roleForPath(filePath: string): RepoMapFileRole {
 		/[_-]test\.(py|go|rs|c|cc|cpp|cxx|java|kt|kts|cs)$/.test(
 			normalized,
 		) ||
-		/(test|tests)\.(cs|java|kt|kts)$/.test(normalized)
+		exactTestBasename ||
+		classStyleTestBasename
 	) {
 		return "test";
 	}

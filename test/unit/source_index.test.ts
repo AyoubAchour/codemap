@@ -1567,6 +1567,15 @@ describe("source index", () => {
       ].join("\n"),
     );
     await write(
+      "tools/bare_relative.py",
+      [
+        "from . import transport",
+        "",
+        "def open_session():",
+        "    return transport.connect_transport()",
+      ].join("\n"),
+    );
+    await write(
       "tools/transport.py",
       [
         "def connect_transport():",
@@ -1671,6 +1680,9 @@ describe("source index", () => {
       { module: "./protocol", line: 1, end_line: 1 },
     ]);
     expect(index.files["tools/session.py"]?.imports).toEqual([
+      { module: "./transport", line: 1, end_line: 1 },
+    ]);
+    expect(index.files["tools/bare_relative.py"]?.imports).toEqual([
       { module: "./transport", line: 1, end_line: 1 },
     ]);
 

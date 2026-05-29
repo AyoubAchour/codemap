@@ -151,6 +151,47 @@ describe("repo map ranking", () => {
 		);
 	});
 
+	test("keeps ordinary source basenames ending in test as source files", async () => {
+		await write(
+			"src/Contest.java",
+			["public final class Contest {", "  public int score() { return 1; }", "}"].join(
+				"\n",
+			),
+		);
+		await write(
+			"src/Latest.cs",
+			[
+				"public sealed class Latest {",
+				"  public int Version() => 1;",
+				"}",
+			].join("\n"),
+		);
+		await write(
+			"src/ParserTest.java",
+			[
+				"public final class ParserTest {",
+				"  public void parsesContest() { }",
+				"}",
+			].join("\n"),
+		);
+
+		const index = await scanSourceIndex(tmpRoot);
+		const repoMap = buildRepoMap(index, {
+			query: "contest latest parser",
+			fileLimit: 4,
+		});
+
+		expect(repoMap.files_by_path["src/Contest.java"]?.role).toBe("source");
+		expect(repoMap.files_by_path["src/Latest.cs"]?.role).toBe("source");
+		expect(repoMap.files_by_path["src/ParserTest.java"]?.role).toBe("test");
+		expect(repoMap.summary).toEqual(
+			expect.objectContaining({
+				source_files: 2,
+				tests: 1,
+			}),
+		);
+	});
+
 	test("seed files boost nearby files for change-oriented context", async () => {
 		await write("src/core.ts", "export const CORE_VALUE = 1;\n");
 		await write(
