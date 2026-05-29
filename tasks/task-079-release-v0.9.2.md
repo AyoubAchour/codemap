@@ -1,6 +1,6 @@
 # Task 079: Release v0.9.2
 
-**Status:** in-progress
+**Status:** done
 **Phase:** Phase 4 / release
 **Started:** 2026-05-29
 **Depends on:** task-078
@@ -54,11 +54,11 @@ changing graph memory, source index, or capture data formats.
 - [x] Changelog and README describe the `0.9.2` release.
 - [x] Generated guidance checks as current for `AGENTS.md` and `CLAUDE.md`.
 - [x] Local release gates pass.
-- [ ] Release PR is opened and CI is green.
-- [ ] Release PR is merged.
-- [ ] `codemap-mcp@0.9.2` is published to npm.
-- [ ] Global install reports `codemap --version` as `0.9.2`.
-- [ ] GitHub release `v0.9.2` is published.
+- [x] Release PR is opened and CI is green.
+- [x] Release PR is merged.
+- [x] `codemap-mcp@0.9.2` is published to npm.
+- [x] Global install reports `codemap --version` as `0.9.2`.
+- [x] GitHub release `v0.9.2` is published.
 
 ## Notes
 
@@ -88,3 +88,24 @@ On local Windows, `scripts/smoke-test.sh` was run through Git Bash with
 temporary shims outside the repo for `jq` and Windows npm prefix bin placement;
 the package install, CLI version, empty-repo validate, and MCP initialize
 handshake all passed.
+
+Post-release verification passed on 2026-05-29:
+
+- PR #79 merged into `main` as `Release v0.9.2`.
+- `npm publish --access public` published `codemap-mcp@0.9.2`.
+- `npm view codemap-mcp version dist-tags --json --prefer-online` reports
+  `version: "0.9.2"` and `latest: "0.9.2"`.
+- `npm i -g codemap-mcp@0.9.2 --prefer-online` completed successfully.
+- Installed `codemap --version` reports `0.9.2`.
+- Installed `codemap init --all --check` reports both generated guidance files
+  current.
+- Installed `codemap setup --client codex --capture-hooks --check --repo C:\Users\Admin\Desktop\codemap`
+  reports current MCP config, current capture hooks, and no warnings.
+- Installed `codemap setup --client claude --check --repo C:\Users\Admin\Desktop\codemap`
+  reports current generated guidance and no warnings.
+- `claude mcp get codemap` reports the local project server connected via
+  `codemap-mcp --repo C:\Users\Admin\Desktop\codemap`.
+- `codex mcp get codemap` reports the Codex MCP server enabled with command
+  `codemap-mcp`.
+- GitHub release published:
+  https://github.com/AyoubAchour/codemap/releases/tag/v0.9.2
