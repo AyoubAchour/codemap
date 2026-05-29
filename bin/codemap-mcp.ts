@@ -12,7 +12,8 @@
  *
  * For local development against this repo, point at the bundled JS:
  *   bun run build
- *   "command": "node", "args": ["/abs/path/to/codemap/dist/cli/codemap-mcp.js"]
+ *   "command": "node",
+ *   "args": ["/abs/path/to/codemap/dist/cli/codemap-mcp.js", "--repo", "/abs/path/to/repo"]
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -20,6 +21,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import packageJson from "../package.json" with { type: "json" };
 import { registerTools } from "../src/index.js";
 import { SERVER_INSTRUCTIONS } from "../src/instructions.js";
+import { resolveMcpRepoRoot } from "../src/mcp_repo_root.js";
 
 // `instructions` reaches the agent at `initialize` time and is the standard
 // place to put cross-tool lifecycle policy that individual tool descriptions
@@ -35,6 +37,6 @@ const server = new McpServer(
   },
 );
 
-registerTools(server, { repoRoot: process.cwd() });
+registerTools(server, { repoRoot: resolveMcpRepoRoot() });
 
 await server.connect(new StdioServerTransport());

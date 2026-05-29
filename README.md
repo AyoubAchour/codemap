@@ -90,13 +90,17 @@ To configure supported MCP clients from one place:
 ```sh
 codemap setup
 codemap setup --check
+codemap setup --scope project --client cursor
 codemap setup --capture-hooks --client codex
 codemap setup --capture-hooks --client codex --check
 ```
 
-`setup` can write global Codemap entries for Codex, OpenCode, and Cursor, and
-prints the manual command for clients that manage MCP through their own CLI. It
-also checks whether the configured server command is available on `PATH`.
+`setup` can write global Codemap entries for Codex, OpenCode, and Cursor.
+`--scope project` writes repo-local config where Codemap knows the client format,
+starting with Cursor's `.cursor/mcp.json`. Claude Code manages MCP through its
+own CLI, so setup prints the manual command, including project-scope commands
+when requested. Setup also checks whether the configured server command is
+available on `PATH` and whether generated repo guidance is current.
 Capture hooks are opt-in: `--capture-hooks` installs or checks Codex hooks that
 append rebuildable session evidence with `codemap capture-event`. They do not
 call graph write tools and they never modify `.codemap/graph.json`.
@@ -109,14 +113,18 @@ Add Codemap as a stdio MCP server:
 {
   "mcpServers": {
     "codemap": {
-      "command": "codemap-mcp"
+      "command": "codemap-mcp",
+      "args": ["--repo", "/path/to/your-project"]
     }
   }
 }
 ```
 
-Run your MCP client from the repository root. Codemap uses the process working
-directory to find or create `.codemap/graph.json`.
+Prefer an explicit repo root in client config. `codemap-mcp` resolves the repo
+root in this order: `--repo`, `CODEMAP_REPO_ROOT`, `CLAUDE_PROJECT_DIR`, then the
+process working directory. The cwd fallback exists for simple manual runs, but
+project-scoped config is safer for clients launched from a home directory or app
+process.
 
 You can also use Codemap without a global install:
 
@@ -125,7 +133,7 @@ You can also use Codemap without a global install:
   "mcpServers": {
     "codemap": {
       "command": "npx",
-      "args": ["-y", "codemap-mcp"]
+      "args": ["-y", "codemap-mcp", "--repo", "/path/to/your-project"]
     }
   }
 }
@@ -155,6 +163,10 @@ codemap init --all     # write every supported agent guidance file
 Generated guidance includes a Codemap version and lifecycle-policy hash. After
 upgrading `codemap-mcp`, run `codemap init --check`; if it reports stale or
 missing guidance, regenerate with `codemap init --force`.
+
+When Claude is one of the configured clients, `codemap setup --check` also
+checks `CLAUDE.md`; generate it with `codemap init --claude` or
+`codemap init --all`.
 
 ## Agent Workflow
 
@@ -216,6 +228,7 @@ codemap init                          # Generate agent guidance for this repo
 codemap init --check                  # Check generated guidance freshness
 codemap setup                         # Configure global MCP clients
 codemap setup --check                 # Check global MCP client configuration
+codemap setup --scope project --client cursor
 codemap setup --capture-hooks --client codex
 codemap setup --capture-hooks --client codex --check
 codemap setup --capture-hooks --client codex --dry-run

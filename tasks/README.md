@@ -152,6 +152,7 @@ Maintained manually. Update status as tasks land.
 | 072 | Benchmark audit triage | done | Phase 4 / evaluation | [task-072-benchmark-audit-triage.md](task-072-benchmark-audit-triage.md) |
 | 073 | Bounded companion context | done | Phase 4 / retrieval | [task-073-bounded-companion-context.md](task-073-bounded-companion-context.md) |
 | 074 | Planning distractor suppression | done | Phase 4 / retrieval | [task-074-planning-distractor-suppression.md](task-074-planning-distractor-suppression.md) |
+| 075 | Agent setup hardening | done | Phase 4 / onboarding | [task-075-agent-setup-hardening.md](task-075-agent-setup-hardening.md) |
 
 ---
 
