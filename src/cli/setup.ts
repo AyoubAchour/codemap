@@ -1,4 +1,4 @@
-import { type SetupClient, setupCodemap } from "../setup.js";
+import { type SetupClient, type SetupScope, setupCodemap } from "../setup.js";
 import type { CommandResult, GlobalOptions } from "./_types.js";
 
 export interface SetupFlags {
@@ -9,6 +9,7 @@ export interface SetupFlags {
   captureHooks?: boolean;
   captureCommand?: string;
   command?: string;
+  scope?: SetupScope;
 }
 
 export async function setup(
@@ -32,6 +33,7 @@ export async function setup(
       captureHooks: flags.captureHooks,
       captureCommand: flags.captureCommand,
       command: flags.command,
+      scope: flags.scope,
       repoRoot: globals?.repoRoot,
     });
     const hasError = response.clients.some(

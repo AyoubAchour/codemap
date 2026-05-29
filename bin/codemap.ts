@@ -92,7 +92,7 @@ import type {
   SemanticRerankerProviderOption,
   SemanticRetrievalProviderOption,
 } from "../src/semantic_retrieval.js";
-import type { SetupClient } from "../src/setup.js";
+import type { SetupClient, SetupScope } from "../src/setup.js";
 
 class CommandCompleted extends Error {
   constructor(readonly exitCode: number) {
@@ -206,6 +206,13 @@ function parseSetupClient(value: string): SetupClient {
   return value;
 }
 
+function parseSetupScope(value: string): SetupScope {
+  if (value !== "global" && value !== "project") {
+    throw new InvalidArgumentError("expected one of global, project");
+  }
+  return value;
+}
+
 const program = new Command();
 
 program
@@ -249,7 +256,7 @@ program
 program
   .command("setup")
   .description(
-    "Configure global MCP clients for Codemap and validate basic install health.",
+    "Configure MCP clients for Codemap and validate basic install health.",
   )
   .option(
     "--client <name>",
@@ -261,7 +268,13 @@ program
   )
   .option(
     "--check",
-    "Check global client configuration without writing files; cannot be combined with --force.",
+    "Check client configuration without writing files; cannot be combined with --force.",
+  )
+  .option(
+    "--scope <scope>",
+    "MCP client config scope: global or project.",
+    parseSetupScope,
+    "global",
   )
   .option("-f, --force", "Rewrite existing Codemap MCP entries.")
   .option("--dry-run", "Show planned setup changes without writing files.")
@@ -289,6 +302,7 @@ program
       captureHooks: cmdOpts.captureHooks as boolean | undefined,
       captureCommand: cmdOpts.captureCommand as string | undefined,
       command: cmdOpts.command as string | undefined,
+      scope: cmdOpts.scope as SetupScope | undefined,
     };
     emit(await setup(flags, { repoRoot: opts.repo }));
   });

@@ -2309,6 +2309,128 @@ describe("CLI: setup", () => {
     );
   });
 
+  test("setup health checks Claude guidance when Claude is selected", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    await init({ force: true }, { repoRoot: tmpRoot });
+
+    const response = await setupCodemap({
+      clients: ["claude"],
+      homeDir,
+      command: process.execPath,
+      repoRoot: tmpRoot,
+      check: true,
+    });
+
+    expect(response.health.guidance.status).toBe("missing");
+    expect(response.health.guidance.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ file: "AGENTS.md", status: "current" }),
+        expect.objectContaining({ file: "CLAUDE.md", status: "missing" }),
+      ]),
+    );
+    expect(response.warnings.join("\n")).toContain("CLAUDE.md");
+    expect(response.next_steps.join("\n")).toContain("codemap init --claude");
+  });
+
+  test("project-scoped Cursor setup writes repo-local MCP config", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    const response = await setupCodemap({
+      clients: ["cursor"],
+      homeDir,
+      command: "codemap-mcp",
+      repoRoot: tmpRoot,
+      scope: "project",
+    });
+
+    const configPath = path.join(tmpRoot, ".cursor", "mcp.json");
+    expect(response.clients[0]).toEqual(
+      expect.objectContaining({
+        client: "cursor",
+        path: configPath,
+        status: "installed",
+        changed: true,
+      }),
+    );
+    expect(
+      JSON.parse(await fs.readFile(configPath, "utf8")).mcpServers.codemap,
+    ).toEqual({
+      command: "codemap-mcp",
+      args: ["--repo", "${workspaceFolder}"],
+    });
+  });
+
+  test("global Cursor setup check rejects project-scoped repo args", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    const configPath = path.join(homeDir, ".cursor", "mcp.json");
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await fs.writeFile(
+      configPath,
+      `${JSON.stringify(
+        {
+          mcpServers: {
+            codemap: {
+              command: "codemap-mcp",
+              args: ["--repo", "${workspaceFolder}"],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const response = await setupCodemap({
+      clients: ["cursor"],
+      homeDir,
+      command: "codemap-mcp",
+      check: true,
+    });
+
+    expect(response.clients[0]).toEqual(
+      expect.objectContaining({
+        client: "cursor",
+        status: "missing",
+        changed: false,
+      }),
+    );
+  });
+
+  test("bin setup wires project-scoped Cursor config", async () => {
+    const result = await runCodemapBin([
+      "setup",
+      "--client",
+      "cursor",
+      "--scope",
+      "project",
+      "--command",
+      process.execPath,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(
+      JSON.parse(
+        await fs.readFile(path.join(tmpRoot, ".cursor", "mcp.json"), "utf8"),
+      ).mcpServers.codemap.args,
+    ).toEqual(["--repo", "${workspaceFolder}"]);
+  });
+
+  test("project-scoped Claude setup prints a project-scope manual command", async () => {
+    const response = await setupCodemap({
+      clients: ["claude"],
+      command: "codemap-mcp",
+      repoRoot: tmpRoot,
+      scope: "project",
+    });
+
+    expect(response.clients[0]).toEqual(
+      expect.objectContaining({
+        client: "claude",
+        status: "manual",
+        manual_command: "claude mcp add --scope project codemap -- codemap-mcp",
+      }),
+    );
+  });
+
   test("setup capture hooks installs Codex hooks idempotently", async () => {
     const homeDir = path.join(tmpRoot, "home");
     const first = await setupCodemap({
