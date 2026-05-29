@@ -153,7 +153,7 @@ Maintained manually. Update status as tasks land.
 | 073 | Bounded companion context | done | Phase 4 / retrieval | [task-073-bounded-companion-context.md](task-073-bounded-companion-context.md) |
 | 074 | Planning distractor suppression | done | Phase 4 / retrieval | [task-074-planning-distractor-suppression.md](task-074-planning-distractor-suppression.md) |
 | 075 | Agent setup hardening | done | Phase 4 / onboarding | [task-075-agent-setup-hardening.md](task-075-agent-setup-hardening.md) |
-| 076 | Release v0.9.0 | in-progress | Phase 4 / release | [task-076-release-v0.9.0.md](task-076-release-v0.9.0.md) |
+| 076 | Release v0.9.0 | done | Phase 4 / release | [task-076-release-v0.9.0.md](task-076-release-v0.9.0.md) |
 
 ---
 
