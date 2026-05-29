@@ -58,17 +58,17 @@ The graph and the source index are intentionally separate:
 
 ## Latest Release
 
-Version `0.8.0` includes:
+Version `0.9.0` includes:
 
-- read-only graph repair planning for stale, missing, unsafe, and legacy source
-  anchors
-- source-index-derived repo map rankings for `query_context`,
-  `changes_context`, and generated guidance
-- `codemap watch` plus `watch_status` to keep the rebuildable source index fresh
-- richer graph memory quality signals for utility, maturity, usage,
-  source-confirmation, and supersession
-- a larger offline retrieval benchmark suite with optional semantic/reranker
-  adapter hooks disabled by default
+- rebuildable capture summaries and audit reports for long-running agent work
+- budget-aware `recall_context` and `query_context` packing with provenance
+  metadata
+- stronger retrieval benchmark guardrails, miss audits, and bounded companion
+  context for nearby wrappers, tests, generated guidance, and writeback files
+- dependency-free local semantic retrieval experiments kept outside runtime
+  recall
+- hardened MCP setup with explicit repo-root resolution and project-scoped
+  Cursor config
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes.
 

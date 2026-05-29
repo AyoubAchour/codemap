@@ -4,6 +4,10 @@ All notable user-facing changes to Codemap are documented here.
 
 ## Unreleased
 
+No changes yet.
+
+## 0.9.0 - 2026-05-29
+
 ### Added
 
 - Rebuildable capture summaries via `codemap capture-summary`, writing
