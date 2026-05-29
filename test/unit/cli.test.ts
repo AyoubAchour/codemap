@@ -2309,6 +2309,54 @@ describe("CLI: setup", () => {
     );
   });
 
+  test("setup health finds a command shim on PATH", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    const binDir = path.join(tmpRoot, "bin");
+    const command = "codemap-mcp-test";
+    const commandPath =
+      process.platform === "win32"
+        ? path.join(binDir, `${command}.cmd`)
+        : path.join(binDir, command);
+    const oldPath = process.env.PATH;
+
+    await fs.mkdir(binDir, { recursive: true });
+    await fs.writeFile(
+      commandPath,
+      process.platform === "win32" ? "@echo off\r\n" : "#!/bin/sh\n",
+      "utf8",
+    );
+    if (process.platform !== "win32") {
+      await fs.chmod(commandPath, 0o755);
+    }
+
+    process.env.PATH = `${binDir}${path.delimiter}${oldPath ?? ""}`;
+    try {
+      const response = await setupCodemap({
+        clients: ["claude"],
+        homeDir,
+        command,
+      });
+
+      expect(response.health.server_command_found).toBe(true);
+      if (process.platform === "win32") {
+        expect(response.health.server_command_path?.toLowerCase()).toBe(
+          commandPath.toLowerCase(),
+        );
+      } else {
+        expect(response.health.server_command_path).toBe(commandPath);
+      }
+      expect(response.warnings.join("\n")).not.toContain(
+        `Server command "${command}" was not found`,
+      );
+    } finally {
+      if (oldPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = oldPath;
+      }
+    }
+  });
+
   test("setup health checks Claude guidance when Claude is selected", async () => {
     const homeDir = path.join(tmpRoot, "home");
     await init({ force: true }, { repoRoot: tmpRoot });
