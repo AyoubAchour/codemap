@@ -1510,6 +1510,7 @@ describe("source index", () => {
         '#include "controller.hpp"',
         "",
         "Controller::Controller() = default;",
+        "void Controller::start() {}",
       ].join("\n"),
     );
     await write(
@@ -1520,6 +1521,7 @@ describe("source index", () => {
         "class Controller {",
         " public:",
         "  Controller();",
+        "  void start();",
         "};",
       ].join("\n"),
     );
@@ -1698,6 +1700,12 @@ describe("source index", () => {
     expect(
       index.files["app/src/control_msg.c"]?.symbols.map((symbol) => symbol.name),
     ).not.toContain("ControlMessage");
+    expect(index.files["app/src/controller.cpp"]?.symbols).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Controller", kind: "function" }),
+        expect.objectContaining({ name: "start", kind: "function" }),
+      ]),
+    );
     expect(index.files["src/lib.rs"]?.symbols).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "launch_driver", kind: "function" }),
@@ -1709,6 +1717,25 @@ describe("source index", () => {
         expect.objectContaining({ name: "run_session", kind: "function" }),
       ]),
     );
+  });
+
+  test("C++ fallback indexes qualified definitions but not qualified call sites", async () => {
+    await write(
+      "src/controller.cpp",
+      [
+        "void Controller::start() {",
+        "  Foo::bar();",
+        "}",
+      ].join("\n"),
+    );
+
+    const index = await scanSourceIndex(tmpRoot);
+    const names = index.files["src/controller.cpp"]?.symbols.map(
+      (symbol) => symbol.name,
+    );
+
+    expect(names).toContain("start");
+    expect(names).not.toContain("bar");
   });
 
   test("dependency context resolves Rust mod declarations to mod.rs files", async () => {

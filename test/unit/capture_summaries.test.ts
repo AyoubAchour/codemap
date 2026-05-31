@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { appendCaptureEvent } from "../../src/capture_events.js";
+import { appendCaptureEvent, captureEventPath } from "../../src/capture_events.js";
 import {
 	buildCaptureSummaries,
 	captureProfilePath,
@@ -135,6 +135,28 @@ describe("capture summaries", () => {
 				recall_hit_events: 1,
 			}),
 		);
+	});
+
+	test("skips malformed capture lines while summarizing valid events", async () => {
+		await write("src/auth.ts", "export const auth = true;\n");
+		await appendCaptureEvent(tmpRoot, {
+			id: "evt-valid",
+			session_id: "session-a",
+			kind: "file_modified",
+			anchors: [{ file_path: "src/auth.ts", line_range: [1, 1] }],
+		});
+		await fs.appendFile(captureEventPath(tmpRoot), "{not valid json}\n", "utf8");
+
+		const response = await buildCaptureSummaries(tmpRoot);
+
+		expect(response.source.event_count).toBe(1);
+		expect(response.sessions[0]).toEqual(
+			expect.objectContaining({
+				session_id: "session-a",
+				total_events: 1,
+			}),
+		);
+		expect(response.warnings.join("\n")).toContain("Invalid capture event");
 	});
 
 	test("counts empty graph write events as graph writes for opportunities", async () => {

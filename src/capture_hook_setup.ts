@@ -38,6 +38,12 @@ interface CodexHookSpec {
 	statusMessage: string;
 }
 
+interface CodexHookCommand {
+	command: string;
+	commandWindows: string;
+}
+
+
 const CODEMAP_CAPTURE_HOOK_MARKER = "CODEMAP_HOOK_ID=codemap-capture";
 const CODEMAP_CAPTURE_SCRIPT = "capture-hook.mjs";
 const CODEX_HOOK_SPECS: CodexHookSpec[] = [
@@ -195,15 +201,20 @@ function unsupportedClientCaptureHooks(
 function codexCaptureHookCommand(
 	captureCommand: string,
 	scriptPath: string,
-): string {
-	return `${CODEMAP_CAPTURE_HOOK_MARKER} CODEMAP_CAPTURE_COMMAND=${shellQuote(
-		captureCommand,
-	)} node ${shellQuote(scriptPath)}`;
+): CodexHookCommand {
+	return {
+		command: `${CODEMAP_CAPTURE_HOOK_MARKER} CODEMAP_CAPTURE_COMMAND=${shellQuote(
+			captureCommand,
+		)} node ${shellQuote(scriptPath)}`,
+		commandWindows: `node ${windowsCommandQuote(scriptPath)} ${windowsCommandQuote(
+			captureCommand,
+		)}`,
+	};
 }
 
 function mergeCodexHooks(
 	value: unknown,
-	command: string,
+	command: CodexHookCommand,
 ): Record<string, unknown> {
 	const root = isRecord(value) ? { ...value } : {};
 	const hooks = isRecord(root.hooks) ? { ...root.hooks } : {};
@@ -220,7 +231,7 @@ function mergeCodexHooks(
 	return root;
 }
 
-function hasExpectedCodexHooks(value: unknown, command: string): boolean {
+function hasExpectedCodexHooks(value: unknown, command: CodexHookCommand): boolean {
 	if (!isRecord(value) || !isRecord(value.hooks)) return false;
 	const hooks = value.hooks as Record<string, unknown>;
 	return CODEX_HOOK_SPECS.every((spec) => {
@@ -234,13 +245,14 @@ function hasExpectedCodexHooks(value: unknown, command: string): boolean {
 
 function codexHookGroup(
 	spec: CodexHookSpec,
-	command: string,
+	command: CodexHookCommand,
 ): Record<string, unknown> {
 	const group: Record<string, unknown> = {
 		hooks: [
 			{
 				type: "command",
-				command,
+				command: command.command,
+				commandWindows: command.commandWindows,
 				timeout: 10,
 				statusMessage: spec.statusMessage,
 			},
@@ -253,7 +265,7 @@ function codexHookGroup(
 function hookGroupMatches(
 	value: unknown,
 	spec: CodexHookSpec,
-	command: string,
+	command: CodexHookCommand,
 ): boolean {
 	if (!isRecord(value)) return false;
 	if ((value.matcher ?? undefined) !== (spec.matcher ?? undefined))
@@ -265,7 +277,8 @@ function hookGroupMatches(
 			(hook) =>
 				isRecord(hook) &&
 				hook.type === "command" &&
-				hook.command === command &&
+				hook.command === command.command &&
+				hook.commandWindows === command.commandWindows &&
 				hook.statusMessage === spec.statusMessage,
 		)
 	);
@@ -337,7 +350,7 @@ try {
 }
 
 function capture(mapped, payload) {
-  const captureCommand = process.env.CODEMAP_CAPTURE_COMMAND || "codemap";
+  const captureCommand = process.argv[2] || process.env.CODEMAP_CAPTURE_COMMAND || "codemap";
   const cwd = stringValue(payload.cwd) || process.cwd();
   const sessionId = stringValue(payload.session_id) || "codex";
   const hookName = stringValue(payload.hook_event_name) || "codex-hook";
@@ -458,6 +471,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function windowsCommandQuote(value: string): string {
+	return `"${value.replace(/"/g, '\\"')}"`;
 }
 
 function errorResult(

@@ -5,7 +5,7 @@ import {
 	type CaptureEvent,
 	type CaptureEventKind,
 	captureEventPath,
-	readCaptureEvents,
+	readCaptureEventRecords,
 	redactCaptureText,
 } from "./capture_events.js";
 import { GraphStore } from "./graph.js";
@@ -153,13 +153,21 @@ export async function buildCaptureSummaries(
 	const generatedAt = options.generatedAt ?? new Date().toISOString();
 	const excludes = cleanList(options.exclude);
 	const warnings: string[] = [];
-	const events =
-		options.events === undefined
-			? await readCaptureEvents(repoRoot, {
-					sessionId: options.sessionId,
-					limit: options.limit,
-				})
-			: selectSummaryEvents(options.events, options);
+	let events: CaptureEvent[];
+	if (options.events === undefined) {
+		const readResult = await readCaptureEventRecords(repoRoot, {
+			sessionId: options.sessionId,
+			limit: options.limit,
+		});
+		events = readResult.events;
+		for (const issue of readResult.ignored_events) {
+			warnings.push(
+				`Invalid capture event at line ${issue.line_number}: ${issue.reason}`,
+			);
+		}
+	} else {
+		events = selectSummaryEvents(options.events, options);
+	}
 	const sessions = await summarizeSessions(repoRoot, events, excludes);
 	const source = sourceSummary(repoRoot, events, sessions.length);
 	const profile = await buildProfile(repoRoot, sessions, source, generatedAt);

@@ -204,9 +204,10 @@ export async function summarizeCaptureSession(
 	repoRoot: string,
 	options: ReadCaptureEventsOptions = {},
 ): Promise<CaptureSessionSummary> {
-	const allEvents = await readCaptureEvents(repoRoot, {
+	const readResult = await readCaptureEventRecords(repoRoot, {
 		kinds: options.kinds,
 	});
+	const allEvents = readResult.events;
 	const sessionId = options.sessionId ?? allEvents.at(-1)?.session_id;
 	const sessionEvents =
 		sessionId === undefined
@@ -232,6 +233,11 @@ export async function summarizeCaptureSession(
 
 export function redactCaptureText(text: string): string {
 	return text
+		.replace(
+			/(^|\s)(--?(?:token|api[_-]?key|secret|password))(\s+|=)["']?[^"'\s,}]+["']?/gi,
+			(_match, prefix: string, flag: string, separator: string) =>
+				`${prefix}${flag}${separator.includes("=") ? "=" : " "}${CAPTURE_REDACTED}`,
+		)
 		.replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, `sk-${CAPTURE_REDACTED}`)
 		.replace(
 			/(^|[^A-Za-z0-9_])(["']?)(token|api[_-]?key|secret|password)\2\s*([:=])\s*["']?[^"'\s,}]+["']?/gi,
@@ -341,7 +347,7 @@ function normalizeSource(
 		normalized.agent = source.agent.trim();
 	}
 	if (typeof source.command === "string" && source.command.trim().length > 0) {
-		normalized.command = source.command.trim();
+		normalized.command = redactCaptureText(source.command.trim());
 	}
 	return Object.keys(normalized).length > 0 ? normalized : undefined;
 }

@@ -1748,8 +1748,12 @@ function extractCStyleSymbols(lines: string[]): SourceSymbol[] {
     /^\s*(?:typedef\s+)?(struct|union|class)\s+([A-Za-z_]\w*)\b\s*(?:[{:;]|$)/;
   const enumPattern = /^\s*(?:typedef\s+)?enum\s+([A-Za-z_]\w*)?\s*\{/;
   const definePattern = /^\s*#\s*define\s+([A-Z_][A-Z0-9_]*)\b/;
+  const qualifiedFunctionWithReturnPattern =
+    /^\s*(?!if\b|for\b|while\b|switch\b|return\b)(?:[A-Za-z_][\w:<>~*&]*\s+)+(?:[A-Za-z_]\w*::)+(~?[A-Za-z_]\w*)\s*\([^;{}]*\)\s*(?:\{|;|=\s*(?:default|delete)\s*;)/;
+  const qualifiedDefaultedFunctionPattern =
+    /^\s*(?!if\b|for\b|while\b|switch\b|return\b)(?:[A-Za-z_]\w*::)+(~?[A-Za-z_]\w*)\s*\([^;{}]*\)\s*=\s*(?:default|delete)\s*;/;
   const functionPattern =
-    /^\s*(?!if\b|for\b|while\b|switch\b|return\b)(?:[A-Za-z_][\w:<>]*\s+)+(?:\*+\s*)?([A-Za-z_]\w*)\s*\([^;{}]*\)\s*(?:\{|;)/;
+    /^\s*(?!if\b|for\b|while\b|switch\b|return\b)(?:[A-Za-z_][\w:<>]*\s+)+(?:\*+\s*)?([A-Za-z_]\w*)\s*\([^;{}]*\)\s*(?:\{|;|=\s*(?:default|delete)\s*;)/;
 
   lines.forEach((line, index) => {
     const lineNumber = index + 1;
@@ -1786,7 +1790,10 @@ function extractCStyleSymbols(lines: string[]): SourceSymbol[] {
       });
       return;
     }
-    const functionMatch = line.match(functionPattern);
+    const qualifiedFunctionMatch =
+      line.match(qualifiedFunctionWithReturnPattern) ??
+      line.match(qualifiedDefaultedFunctionPattern);
+    const functionMatch = qualifiedFunctionMatch ?? line.match(functionPattern);
     if (functionMatch?.[1]) {
       symbols.push({
         name: functionMatch[1],

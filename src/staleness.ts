@@ -70,11 +70,34 @@ export function hashSourceRange(
 	content: Buffer | string,
 	lineRange: readonly number[],
 ): string {
-	const text = Buffer.isBuffer(content) ? content.toString("utf8") : content;
+	const lines = sourceLines(content);
 	const [startLine = 1, endLine = startLine] = lineRange;
-	const lines = text.split(/\r?\n/);
 	const selected = lines.slice(startLine - 1, endLine).join("\n");
 	return hashBuffer(Buffer.from(selected, "utf8"));
+}
+
+export function validateSourceLineRange(
+	content: Buffer | string,
+	lineRange: readonly number[],
+): { ok: true; lineCount: number } | { ok: false; lineCount: number; message: string } {
+	const [startLine = 1, endLine = startLine] = lineRange;
+	const lineCount = sourceLines(content).length;
+	if (startLine < 1 || endLine < startLine || endLine > lineCount) {
+		return {
+			ok: false,
+			lineCount,
+			message: `line_range [${startLine}, ${endLine}] is outside file bounds (1-${lineCount})`,
+		};
+	}
+	return { ok: true, lineCount };
+}
+
+function sourceLines(content: Buffer | string): string[] {
+	const text = Buffer.isBuffer(content) ? content.toString("utf8") : content;
+	const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+	const withoutTrailingNewline =
+		normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized;
+	return withoutTrailingNewline.split("\n");
 }
 
 /**
@@ -124,6 +147,20 @@ export async function checkSourceStaleness(
 			}
 
 			const current_hash = hashBuffer(content);
+			const rangeValidation = validateSourceLineRange(content, source.line_range);
+			if (!rangeValidation.ok) {
+				stale_sources.push({
+					node_id: node.id,
+					file_path: source.file_path,
+					stored_hash: source.content_hash,
+					current_hash,
+					stored_range_hash: source.range_hash,
+					stale: true,
+					reason: "anchor_changed",
+				});
+				continue;
+			}
+
 			const current_range_hash =
 				source.range_hash === undefined
 					? undefined

@@ -111,6 +111,24 @@ describe("capture events", () => {
 		expect(event?.payload.text).not.toContain("abc123456789SECRET");
 	});
 
+	test("redacts sensitive command text before storage", async () => {
+		await appendCaptureEvent(tmpRoot, {
+			id: "evt-command-secret",
+			session_id: "session-a",
+			kind: "codemap_call",
+			source: {
+				agent: "codex",
+				command: "codemap --api-key plain-secret-value --token=abc123456789",
+			},
+		});
+
+		const [event] = await readCaptureEvents(tmpRoot);
+		expect(event?.source?.command).toContain("--api-key [redacted]");
+		expect(event?.source?.command).toContain("--token=[redacted]");
+		expect(JSON.stringify(event?.source)).not.toContain("plain-secret-value");
+		expect(JSON.stringify(event?.source)).not.toContain("abc123456789");
+	});
+
 	test("capture storage never creates or mutates graph memory", async () => {
 		const store = await GraphStore.load(tmpRoot);
 		store.upsertNode({

@@ -495,6 +495,7 @@ async function captureSummaryRecall(
     );
     return [];
   }
+  options.warnings.push(...summaries.warnings);
   const candidates: RecallCandidate[] = [];
   if (summaries.source.event_count === 0) return candidates;
 

@@ -1410,7 +1410,7 @@ describe("MCP server — emit_node", () => {
       sources: [
         {
           file_path: "src/x.ts",
-          line_range: [1, 10] as [number, number],
+          line_range: [1, 1] as [number, number],
           content_hash: seededFileHash("src/x.ts"),
         },
       ],
@@ -1618,6 +1618,42 @@ describe("MCP server — emit_node", () => {
       const { GraphStore } = await import("../../src/graph.js");
       const verify = await GraphStore.load(tmpRoot);
       expect(verify.getNode("source/hash-mismatch")).toBeNull();
+    });
+
+    test("rejects source line ranges past end-of-file", async () => {
+      await client.callTool({
+        name: "set_active_topic",
+        arguments: { name: "source-test" },
+      });
+      const r = (await client.callTool({
+        name: "emit_node",
+        arguments: emitArgs({
+          id: "source/range-out-of-bounds",
+          name: "Range out of bounds",
+          sources: [
+            {
+              file_path: "src/x.ts",
+              line_range: [2, 2],
+              content_hash: await repoFileHash("src/x.ts"),
+            },
+          ],
+        }),
+      })) as {
+        isError?: boolean;
+        structuredContent?: {
+          ok: boolean;
+          error?: { code: string; message: string };
+        };
+      };
+
+      expect(r.isError).toBe(true);
+      expect(r.structuredContent?.ok).toBe(false);
+      expect(r.structuredContent?.error?.code).toBe("INVALID_SOURCE");
+      expect(r.structuredContent?.error?.message).toContain("line_range");
+
+      const { GraphStore } = await import("../../src/graph.js");
+      const verify = await GraphStore.load(tmpRoot);
+      expect(verify.getNode("source/range-out-of-bounds")).toBeNull();
     });
   });
 
@@ -1865,7 +1901,7 @@ describe("MCP server — emit_node", () => {
         sources: [
           {
             file_path: "src/messaging/twilio.ts",
-            line_range: [42, 80],
+            line_range: [1, 1],
             content_hash: seededFileHash("src/messaging/twilio.ts"),
           },
         ],
@@ -2006,7 +2042,7 @@ describe("MCP server — emit_node", () => {
         sources: [
           {
             file_path: "src/messaging/twilio.ts",
-            line_range: [42, 80],
+            line_range: [1, 1],
             content_hash: seededFileHash("src/messaging/twilio.ts"),
           },
         ],
@@ -2067,7 +2103,7 @@ describe("MCP server — per-turn emission cap", () => {
       sources: [
         {
           file_path: `src/cap-${i}.ts`,
-          line_range: [1, 10] as [number, number],
+          line_range: [1, 1] as [number, number],
           content_hash: seededFileHash(`src/cap-${i}.ts`),
         },
       ],
@@ -2173,7 +2209,7 @@ describe("MCP server — per-turn emission cap", () => {
           sources: [
             {
               file_path: "src/messaging/twilio.ts",
-              line_range: [42, 80],
+              line_range: [1, 1],
               content_hash: seededFileHash("src/messaging/twilio.ts"),
             },
           ],
@@ -2196,7 +2232,7 @@ describe("MCP server — per-turn emission cap", () => {
         sources: [
           {
             file_path: "src/auth/distinct.ts",
-            line_range: [1, 10],
+            line_range: [1, 1],
             content_hash: seededFileHash("src/auth/distinct.ts"),
           },
         ],
@@ -2237,7 +2273,7 @@ describe("MCP server — metrics wiring", () => {
         sources: [
           {
             file_path: "src/x.ts",
-            line_range: [1, 10],
+            line_range: [1, 1],
             content_hash: seededFileHash("src/x.ts"),
           },
         ],
@@ -2257,7 +2293,7 @@ describe("MCP server — metrics wiring", () => {
         sources: [
           {
             file_path: "src/y.ts",
-            line_range: [1, 10],
+            line_range: [1, 1],
             content_hash: seededFileHash("src/y.ts"),
           },
         ],

@@ -557,6 +557,60 @@ describe("GraphStore.save — atomic write under crash", () => {
 });
 
 // =============================================================
+// Stale snapshot save — later saves must not drop earlier independent writes
+// =============================================================
+
+describe("GraphStore.save — stale snapshots", () => {
+  test("preserves independent changes saved from previously loaded stores", async () => {
+    const seed = await GraphStore.load(tmpRoot);
+    await seed.save();
+
+    const first = await GraphStore.load(tmpRoot);
+    const second = await GraphStore.load(tmpRoot);
+
+    first.upsertNode(makeNode({ id: "from/first" }));
+    second.upsertNode(makeNode({ id: "from/second" }));
+
+    await first.save();
+    await second.save();
+
+    const reloaded = await GraphStore.load(tmpRoot);
+    expect(reloaded.getNode("from/first")).not.toBeNull();
+    expect(reloaded.getNode("from/second")).not.toBeNull();
+  });
+
+  test("preserves independent field changes to the same node", async () => {
+    const seed = await GraphStore.load(tmpRoot);
+    seed.upsertNode(makeNode({ id: "shared/node", summary: "old summary" }));
+    await seed.save();
+
+    const first = await GraphStore.load(tmpRoot);
+    const second = await GraphStore.load(tmpRoot);
+
+    first.overrideNode("shared/node", { summary: "manual correction" });
+    second.overrideNode("shared/node", {
+      tags: ["base", "refreshed"],
+      sources: [
+        {
+          file_path: "src/refreshed.ts",
+          line_range: [1, 1],
+          content_hash: "sha256:refreshed",
+        },
+      ],
+    });
+
+    await first.save();
+    await second.save();
+
+    const reloaded = await GraphStore.load(tmpRoot);
+    const node = reloaded.getNode("shared/node");
+    expect(node?.summary).toBe("manual correction");
+    expect(node?.tags).toEqual(["base", "refreshed"]);
+    expect(node?.sources[0]?.file_path).toBe("src/refreshed.ts");
+  });
+});
+
+// =============================================================
 // Concurrent save — proper-lockfile serializes; both subprocesses succeed
 // =============================================================
 

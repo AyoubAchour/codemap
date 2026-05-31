@@ -294,6 +294,8 @@ program
   )
   .action(async (cmdOpts: Record<string, unknown>) => {
     const opts = program.opts() as { repo: string };
+    const repoSource = program.getOptionValueSource("repo");
+    const scope = cmdOpts.scope as SetupScope | undefined;
     const flags: SetupFlags = {
       client: cmdOpts.client as SetupClient[] | undefined,
       check: cmdOpts.check as boolean | undefined,
@@ -302,9 +304,11 @@ program
       captureHooks: cmdOpts.captureHooks as boolean | undefined,
       captureCommand: cmdOpts.captureCommand as string | undefined,
       command: cmdOpts.command as string | undefined,
-      scope: cmdOpts.scope as SetupScope | undefined,
+      scope,
     };
-    emit(await setup(flags, { repoRoot: opts.repo }));
+    const repoRoot =
+      repoSource === "cli" || scope === "project" ? opts.repo : undefined;
+    emit(await setup(flags, repoRoot === undefined ? undefined : { repoRoot }));
   });
 
 program
