@@ -76,7 +76,6 @@ capture, recall, retrieval, benchmark, and setup-hardening work:
 - stronger retrieval benchmark guardrails, miss audits, and bounded companion
   context for nearby wrappers, tests, generated guidance, and writeback files
 - Windows-safe setup checks for generated guidance and global npm command shims
-
 See [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
 ## Install
