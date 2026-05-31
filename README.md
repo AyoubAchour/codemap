@@ -58,24 +58,22 @@ The graph and the source index are intentionally separate:
 
 ## Latest Release
 
-Version `0.10.0` adds broad polyglot source indexing on top of the `0.9.x`
-capture, recall, retrieval, benchmark, and setup-hardening work:
+Version `0.10.1` ships the post-`0.10.0` correctness fixes for graph writes,
+source anchors, setup, capture hooks, and fallback indexing:
 
-- source search now indexes C, C headers, C++, Java, Gradle, Meson, Go, Rust,
-  Python, C#, and Kotlin files in addition to the existing TypeScript,
-  JavaScript, JSON, Markdown, and YAML coverage
-- mixed-language chunks include conservative symbol, import, include, and local
-  dependency hints so `query_context`, `recall_context`, and `changes_context`
-  can find source impact in polyglot repositories without runtime parser or
-  vector dependencies
-- bundled benchmark coverage now includes a scrcpy-style polyglot fixture for
-  Android, CLI, Meson, Gradle, JNI, Rust, Python, C#, and Kotlin retrieval cases
-- rebuildable capture summaries and audit reports for long-running agent work
-- budget-aware `recall_context` and `query_context` packing with provenance
-  metadata
-- stronger retrieval benchmark guardrails, miss audits, and bounded companion
-  context for nearby wrappers, tests, generated guidance, and writeback files
-- Windows-safe setup checks for generated guidance and global npm command shims
+- graph saves now preserve independent stale-snapshot updates instead of
+  dropping earlier writes when multiple actors touch the same graph file
+- `emit_node` now rejects out-of-bounds source anchor ranges, and stale anchor
+  checks no longer treat invalid stored ranges as fresh
+- Codex capture hook setup now writes Windows-safe hook commands and redacts
+  captured command text before it reaches rebuildable capture logs
+- capture summaries and recall tolerate malformed JSONL lines with warnings
+  instead of failing the whole summary path
+- default `codemap setup --check` guidance validation now matches the default
+  `codemap init` flow, so global setup checks no longer require repo guidance
+  in unrelated working directories
+- fallback C/C++ symbol extraction now recognizes qualified definitions without
+  misclassifying qualified call sites as declarations
 See [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
 ## Install

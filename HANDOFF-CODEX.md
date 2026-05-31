@@ -17,8 +17,8 @@ Three docs are the real source of truth:
 
 | | |
 | --- | --- |
-| Published | `codemap-mcp@0.10.0` on npm (https://www.npmjs.com/package/codemap-mcp); GitHub release `v0.10.0` is live |
-| Releases shipped | 0.1.0 -> 0.1.1 -> 0.1.2 -> 0.2.0 -> 0.2.1 -> 0.2.2 -> 0.3.0 -> 0.4.0 -> 0.5.0 -> 0.5.1 -> 0.5.2 -> 0.6.0 -> 0.7.0 -> 0.8.0 -> 0.9.0 -> 0.9.1 -> 0.9.2 -> 0.10.0 |
+| Published | `codemap-mcp@0.10.1` on npm (https://www.npmjs.com/package/codemap-mcp); GitHub release `v0.10.1` is live |
+| Releases shipped | 0.1.0 -> 0.1.1 -> 0.1.2 -> 0.2.0 -> 0.2.1 -> 0.2.2 -> 0.3.0 -> 0.4.0 -> 0.5.0 -> 0.5.1 -> 0.5.2 -> 0.6.0 -> 0.7.0 -> 0.8.0 -> 0.9.0 -> 0.9.1 -> 0.9.2 -> 0.10.0 -> 0.10.1 |
 | MCP tools | Graph memory: `set_active_topic`, `query_context`, `recall_context`, `query_graph`, `get_node`, `graph_health`, `suggest_writeback`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index`; diff context: `changes_context` |
 | CLI subcommands | `init`, `setup`, `show`, `correct`, `deprecate`, `validate`, `doctor`, `repair-graph`, `rollup`, `scan`, `watch`, `context`, `recall-context`, `capture-event`, `capture-session`, `capture-summary`, `capture-report`, `benchmark-retrieval`, `changes-context`, `suggest-writeback`, `generate-skills`, `search-source`, `index-status`, `clear-index` |
 | M3 trial result | 9 turns on voice2work → 27 nodes / 29 edges across 6 problem domains, 5 of 8 edge kinds + 4 of 9 node kinds exercised. **Codemap thesis validated.** |
@@ -114,10 +114,10 @@ capture summaries tolerate malformed JSONL, setup checks match the default init
 flow, and fallback C++ extraction stops indexing qualified call sites as
 declarations.
 
-Task 082 prepares those merged fixes for the `0.10.1` patch release. After that
-release ships, the next product work should return to the standing Phase 4
-priority: behavior consistency through measured dogfooding and
-benchmark-driven retrieval hardening, not visual surfaces.
+Task 082 shipped those merged fixes as `codemap-mcp@0.10.1`. The next product
+work should return to the standing Phase 4 priority: behavior consistency
+through measured dogfooding and benchmark-driven retrieval hardening, not
+visual surfaces.
 
 ## How to work in this repo (the conventions)
 

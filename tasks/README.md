@@ -159,7 +159,7 @@ Maintained manually. Update status as tasks land.
 | 079 | Release v0.9.2 | done | Phase 4 / release | [task-079-release-v0.9.2.md](task-079-release-v0.9.2.md) |
 | 080 | Polyglot source indexing | done | Phase 4 / retrieval | [task-080-polyglot-source-indexing.md](task-080-polyglot-source-indexing.md) |
 | 081 | Release v0.10.0 | done | Phase 4 / release | [task-081-release-v0.10.0.md](task-081-release-v0.10.0.md) |
-| 082 | Release v0.10.1 | in-progress | Phase 4 / release | [task-082-release-v0.10.1.md](task-082-release-v0.10.1.md) |
+| 082 | Release v0.10.1 | done | Phase 4 / release | [task-082-release-v0.10.1.md](task-082-release-v0.10.1.md) |
 
 ---
 

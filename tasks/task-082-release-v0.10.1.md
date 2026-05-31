@@ -1,6 +1,6 @@
 # Task 082: Release v0.10.1
 
-**Status:** in-progress
+**Status:** done
 **Phase:** Phase 4 / release
 **Started:** 2026-05-31
 **Depends on:** task-081
@@ -51,14 +51,14 @@ format, or published CLI surface area.
 
 ## Exit criteria
 
-- [ ] Version is bumped to `0.10.1`.
-- [ ] Changelog and README describe the `0.10.1` release.
-- [ ] Generated guidance checks as current for `AGENTS.md` and `CLAUDE.md`.
-- [ ] Local release gates pass.
-- [ ] Release PR is opened and CI is green.
-- [ ] Release PR is merged.
-- [ ] `codemap-mcp@0.10.1` is published to npm.
-- [ ] Global install reports `codemap --version` as `0.10.1`.
+- [x] Version is bumped to `0.10.1`.
+- [x] Changelog and README describe the `0.10.1` release.
+- [x] Generated guidance checks as current for `AGENTS.md` and `CLAUDE.md`.
+- [x] Local release gates pass.
+- [x] Release PR is opened and CI is green.
+- [x] Release PR is merged.
+- [x] `codemap-mcp@0.10.1` is published to npm.
+- [x] Global install reports `codemap --version` as `0.10.1`.
 - [ ] GitHub release `v0.10.1` is published.
 
 ## Notes
@@ -92,3 +92,12 @@ handshake all passed.
 - `npm view codemap-mcp version dist-tags --json --prefer-online` still reports
   published `latest` at `0.10.0`, so `0.10.1` is unpublished before this
   release PR.
+
+Post-release verification passed on 2026-05-31:
+
+- PR #84 merged into `main` as `Release v0.10.1`.
+- `npm publish --access public` published `codemap-mcp@0.10.1`.
+- `npm view codemap-mcp version dist-tags --json --prefer-online` reports
+  `version: "0.10.1"` and `latest: "0.10.1"`.
+- `npm i -g codemap-mcp@0.10.1 --prefer-online` completed successfully.
+- Installed `codemap --version` reports `0.10.1`.
