@@ -4,6 +4,30 @@ All notable user-facing changes to Codemap are documented here.
 
 ## Unreleased
 
+## 0.10.1 - 2026-05-31
+
+### Fixed
+
+- Graph saves now preserve independent stale-snapshot updates, including
+  same-node field edits, instead of letting the last save silently drop earlier
+  changes.
+- `emit_node` now rejects source anchors whose `line_range` points past the end
+  of the file, and staleness checks treat those invalid stored anchors as
+  changed instead of range-fresh.
+- Codex capture hook setup now emits Windows-safe hook commands, avoiding POSIX
+  shell syntax in `hooks.json` on native Windows installs.
+- Captured `source.command` text is now redacted with the same secret scrubber
+  used for payload text, preventing command-line tokens and API keys from being
+  stored in capture logs and reports.
+- Capture summaries and recall now skip malformed JSONL lines with warnings
+  instead of treating one bad capture event as a hard failure.
+- Default `codemap setup --check` guidance validation now matches the default
+  `codemap init` output, and repo-agnostic global setup checks no longer fail
+  just because the current working directory lacks generated guidance files.
+- Fallback C/C++ symbol extraction now recognizes qualified definitions such as
+  `Controller::start()` and defaulted special members without indexing
+  qualified call sites as declarations.
+
 ## 0.10.0 - 2026-05-29
 
 ### Added

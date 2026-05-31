@@ -17,8 +17,8 @@ Three docs are the real source of truth:
 
 | | |
 | --- | --- |
-| Published | `codemap-mcp@0.8.0` on npm (https://www.npmjs.com/package/codemap-mcp); GitHub release `v0.8.0` is live |
-| Releases shipped | 0.1.0 -> 0.1.1 -> 0.1.2 -> 0.2.0 -> 0.2.1 -> 0.2.2 -> 0.3.0 -> 0.4.0 -> 0.5.0 -> 0.5.1 -> 0.5.2 -> 0.6.0 -> 0.7.0 -> 0.8.0 |
+| Published | `codemap-mcp@0.10.0` on npm (https://www.npmjs.com/package/codemap-mcp); GitHub release `v0.10.0` is live |
+| Releases shipped | 0.1.0 -> 0.1.1 -> 0.1.2 -> 0.2.0 -> 0.2.1 -> 0.2.2 -> 0.3.0 -> 0.4.0 -> 0.5.0 -> 0.5.1 -> 0.5.2 -> 0.6.0 -> 0.7.0 -> 0.8.0 -> 0.9.0 -> 0.9.1 -> 0.9.2 -> 0.10.0 |
 | MCP tools | Graph memory: `set_active_topic`, `query_context`, `recall_context`, `query_graph`, `get_node`, `graph_health`, `suggest_writeback`, `emit_node`, `link`; source discovery: `index_codebase`, `search_source`, `get_index_status`, `clear_index`; diff context: `changes_context` |
 | CLI subcommands | `init`, `setup`, `show`, `correct`, `deprecate`, `validate`, `doctor`, `repair-graph`, `rollup`, `scan`, `watch`, `context`, `recall-context`, `capture-event`, `capture-session`, `capture-summary`, `capture-report`, `benchmark-retrieval`, `changes-context`, `suggest-writeback`, `generate-skills`, `search-source`, `index-status`, `clear-index` |
 | M3 trial result | 9 turns on voice2work → 27 nodes / 29 edges across 6 problem domains, 5 of 8 edge kinds + 4 of 9 node kinds exercised. **Codemap thesis validated.** |
@@ -88,69 +88,36 @@ behavior-consistency sequence from tasks 035-038: retrieval explanations,
 source-result diversity, TS/JS impact context, memory quality ranking, and
 read-only workflow writeback suggestions.
 
-Task 049 prepares the next minor release, `0.7.0`, for the merged post-0.6.0
-work: diff-aware `changes_context`, global setup, generated repo guidance,
-compact query contexts, persisted source-search data, and AST-aware TS/JS
-indexing with exact identifier references. It also adds a public changelog and
-a README latest-release section so npm readers see a professional summary
-instead of internal planning notes.
+Task 070 stabilized the reliability gate for the post-catch-up retrieval work:
+watch-mode freshness checks, generated-guidance path output, and cross-platform
+verification are now pinned before more ranking changes land.
 
-Task 049 shipped `codemap-mcp@0.7.0` as a minor release on 2026-05-10. Publish
-verification passed with npm latest resolving to `0.7.0`, global
-`codemap --version` reporting `0.7.0`, `codemap init --check` current, and
-GitHub release `v0.7.0` live.
+Tasks 071-073 turned the benchmark suite into a measured optimization loop:
 
-Task 056 shipped `codemap-mcp@0.8.0` on 2026-05-11. The current post-0.8.0 plan
-is the Agentmemory catch-up sequence, captured in
-[`docs/specs/agentmemory-catchup.md`](docs/specs/agentmemory-catchup.md) and
-[`docs/superpowers/plans/2026-05-16-agentmemory-catchup.md`](docs/superpowers/plans/2026-05-16-agentmemory-catchup.md).
+1. task-071 - benchmark miss audits
+2. task-072 - primary vs supporting expectation split
+3. task-073 - bounded companion context
 
-The sequence is:
+Task 075 then hardened client setup behavior, task 077 audited cross-agent
+setup coverage, and task 080 expanded source indexing into a broader polyglot
+slice: C, C headers, C++, Java, Gradle, Meson, Go, Rust, Python, C#, and
+Kotlin now participate in local source discovery without runtime parser or
+vector dependencies.
 
-1. task-057 - catch-up spec and tasks
-2. task-058 - recall benchmark parity and payload budgets
-3. task-059 - token-budgeted `recall_context`
-4. task-060 - rebuildable capture event log
-5. task-061 - capture hook onboarding
-6. task-062 - capture-backed `suggest_writeback`
-7. task-063 - recall profiles and session summaries
-8. task-064 - observability and replay report
-9. task-065 - local semantic provider experiment
-10. task-066 - optimization baseline and coverage audit
-11. task-067 - distractor-aware source ranking
-12. task-068 - budget-aware context packing
-13. task-069 - query context budget packing
+Task 081 shipped `codemap-mcp@0.10.0` on 2026-05-29 with the polyglot indexing
+release, benchmark fixture expansion, and Windows-safe setup verification.
 
-Keep the principle crisp: Codemap may capture evidence automatically, but graph
-memory stays explicit, curated, and anchored to real repo files.
+PR #83 merged the immediate post-release correctness fixes: stale-snapshot
+graph writes now merge safely, source anchors reject out-of-bounds ranges,
+Codex capture hooks work on native Windows, captured command text is redacted,
+capture summaries tolerate malformed JSONL, setup checks match the default init
+flow, and fallback C++ extraction stops indexing qualified call sites as
+declarations.
 
-Tasks 058-069 are now implemented. `benchmark-retrieval` has a `recall` profile
-for compact benchmark defaults plus payload/latency gates, `recall_context`
-provides compact budgeted recall, capture hooks can append rebuildable evidence,
-`suggest_writeback` can consume captured session evidence, `capture-summary`
-builds rebuildable session/profile summaries, and `capture-report` audits
-captured timelines, recall hits, writeback suggestions, graph writes, ignored
-events, and captured budget fields without touching graph memory. Task 065 adds
-`benchmark-retrieval --semantic-provider local-hash`, a dependency-free local
-hashing-vector experiment over the source index, plus lexical/graph/mixed/local
-variant metrics. The first local-vector experiment did not beat lexical recall,
-so semantic retrieval stays benchmark-only. Task 066 adds optimization guardrail
-metrics: forbidden file/node expectations, expected warning and result-source
-coverage, latency p50/p95, and small distractor/payload cases. Task 067 uses
-those measured misses to tune local source ranking: stop-word filtered
-structured boosts, token-aware path/symbol/import/export matching, archive-like
-content demotion, disconnected-file demotion for impact/review queries, and a
-weak-result floor. The Taskflow fixture's compact recall forbidden-file
-violation rate drops from `0.6000` to `0.0000` without adding runtime semantic
-retrieval. Task 068 makes `recall_context` spend mixed recall budget more
-predictably by interleaving graph, source, then optional capture-summary
-evidence and reporting compact per-lane packing stats. Task 069 adds opt-in
-byte-budget packing for the larger `query_context` planning surface through MCP
-`budget_bytes`, `codemap context --budget`, and
-`benchmark-retrieval --context-budget-bytes`, with per-lane packing stats while
-leaving unbudgeted planning output unchanged. The next natural slice is either
-another measured retrieval-quality optimization from the benchmark suite, or
-release bookkeeping if the user wants to ship the post-0.8 work first.
+Task 082 prepares those merged fixes for the `0.10.1` patch release. After that
+release ships, the next product work should return to the standing Phase 4
+priority: behavior consistency through measured dogfooding and
+benchmark-driven retrieval hardening, not visual surfaces.
 
 ## How to work in this repo (the conventions)
 
