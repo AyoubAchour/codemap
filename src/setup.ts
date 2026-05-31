@@ -87,15 +87,14 @@ export async function setupCodemap(
   options: SetupOptions = {},
 ): Promise<SetupResponse> {
   const command = options.command ?? "codemap-mcp";
-  const clients = options.clients?.length
-    ? unique(options.clients)
-    : DEFAULT_CLIENTS;
+  const requestedClients = options.clients?.length ? unique(options.clients) : [];
+  const clients = requestedClients.length ? requestedClients : DEFAULT_CLIENTS;
   const scope = options.scope ?? "global";
   const homeDir = options.homeDir ?? os.homedir();
   const health = await installHealth(
     command,
     options.repoRoot,
-    guidanceTargetsForClients(clients),
+    guidanceTargetsForClients(requestedClients),
   );
   const warnings: string[] = [];
   const results: SetupClientResult[] = [];

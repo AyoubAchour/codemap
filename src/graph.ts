@@ -72,15 +72,18 @@ export interface UpsertResult {
 export class GraphStore {
   private readonly path: string;
   private data: GraphFile;
+  private baseData: GraphFile;
   private lastValidation: ValidationResult | null;
 
   private constructor(
     graphPath: string,
     data: GraphFile,
     lastValidation: ValidationResult | null = null,
+    baseData: GraphFile = data,
   ) {
     this.path = graphPath;
     this.data = data;
+    this.baseData = cloneGraphFile(baseData);
     this.lastValidation = lastValidation;
   }
 
@@ -101,10 +104,12 @@ export class GraphStore {
       path.join(repoRoot, GRAPH_DIR, GRAPH_FILE);
 
     let data: GraphFile;
+    let baseData: GraphFile | undefined;
     try {
       const raw = await fs.readFile(graphPath, "utf8");
       const parsed = JSON.parse(raw);
       data = GraphFileSchema.parse(parsed);
+      baseData = cloneGraphFile(data);
     } catch (err: unknown) {
       if (
         err instanceof Error &&
@@ -119,6 +124,7 @@ export class GraphStore {
           nodes: {},
           edges: {},
         };
+        baseData = cloneGraphFile(data);
       } else {
         // Schema-parse failure or unexpected I/O error. Propagate so callers
         // (CLI / MCP server entry) can surface a structured error.
@@ -133,7 +139,7 @@ export class GraphStore {
       data = applyRepairs(data, lastValidation);
     }
 
-    return new GraphStore(graphPath, data, lastValidation);
+    return new GraphStore(graphPath, data, lastValidation, baseData);
   }
 
   /**
@@ -350,21 +356,24 @@ export class GraphStore {
   // ===========================================================
 
   async save(): Promise<void> {
-    await ensureSeedFile(this.path, {
+    const seed: GraphFile = {
       version: SCHEMA_VERSION,
       created_at: this.data.created_at,
       topics: {},
       nodes: {},
       edges: {},
-    });
+    };
+    await ensureSeedFile(this.path, seed);
 
     const release = await lock(this.path, {
       retries: { retries: 5, minTimeout: 50, maxTimeout: 200 },
       stale: 10_000,
     });
     try {
+      const latest = await readGraphFile(this.path, seed);
+      const next = mergeGraphDelta(latest, this.baseData, this.data);
       const tmp = `${this.path}.tmp`;
-      await fs.writeFile(tmp, this.serialize(), "utf8");
+      await fs.writeFile(tmp, this.serialize(next), "utf8");
       // Test-only debug pause between writeFile and rename. Used by the
       // atomic-save crash-injection test to land a SIGKILL during this window.
       // Belt-and-suspenders: gated on BOTH env vars to make accidental
@@ -376,6 +385,8 @@ export class GraphStore {
         await new Promise((r) => setTimeout(r, 1000));
       }
       await fs.rename(tmp, this.path);
+      this.data = next;
+      this.baseData = cloneGraphFile(next);
     } finally {
       await release();
     }
@@ -392,10 +403,117 @@ export class GraphStore {
   // Internal
   // ===========================================================
 
-  private serialize(): string {
-    return `${JSON.stringify(sortKeysDeep(this.data), null, 2)}\n`;
+  private serialize(data: GraphFile = this.data): string {
+    return `${JSON.stringify(sortKeysDeep(data), null, 2)}\n`;
   }
 }
+
+async function readGraphFile(
+  graphPath: string,
+  fallback: GraphFile,
+): Promise<GraphFile> {
+  try {
+    const raw = await fs.readFile(graphPath, "utf8");
+    return GraphFileSchema.parse(JSON.parse(raw));
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      (err as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      return cloneGraphFile(fallback);
+    }
+    throw err;
+  }
+}
+
+function mergeGraphDelta(
+  latest: GraphFile,
+  base: GraphFile,
+  current: GraphFile,
+): GraphFile {
+  const next = cloneGraphFile(latest);
+  if (changed(base.created_at, current.created_at)) {
+    next.created_at = current.created_at;
+  }
+  mergeRecordDelta(next.topics, base.topics, current.topics);
+  mergeObjectRecordDelta(next.nodes, base.nodes, current.nodes);
+  mergeRecordDelta(next.edges, base.edges, current.edges);
+  return next;
+}
+
+function mergeRecordDelta<T>(
+  target: Record<string, T>,
+  base: Record<string, T>,
+  current: Record<string, T>,
+): void {
+  const keys = new Set([...Object.keys(base), ...Object.keys(current)]);
+  for (const key of keys) {
+    if (!(key in current)) {
+      if (key in base) delete target[key];
+      continue;
+    }
+    if (!(key in base) || changed(base[key], current[key])) {
+      target[key] = cloneJsonValue(current[key]);
+    }
+  }
+}
+
+function mergeObjectRecordDelta<T extends Record<string, unknown>>(
+  target: Record<string, T>,
+  base: Record<string, T>,
+  current: Record<string, T>,
+): void {
+  const keys = new Set([...Object.keys(base), ...Object.keys(current)]);
+  for (const key of keys) {
+    if (!(key in current)) {
+      if (key in base) delete target[key];
+      continue;
+    }
+    if (!(key in base) || !(key in target)) {
+      target[key] = cloneJsonValue(current[key]);
+      continue;
+    }
+    if (changed(base[key], current[key])) {
+      target[key] = mergeObjectDelta(target[key], base[key], current[key]);
+    }
+  }
+}
+
+function mergeObjectDelta<T extends Record<string, unknown>>(
+  latest: T,
+  base: T,
+  current: T,
+): T {
+  const next = cloneJsonValue(latest) as Record<string, unknown>;
+  const keys = new Set([...Object.keys(base), ...Object.keys(current)]);
+  for (const key of keys) {
+    if (!(key in current)) {
+      if (key in base) delete next[key];
+      continue;
+    }
+    if (!(key in base) || changed(base[key], current[key])) {
+      next[key] = cloneJsonValue(current[key]);
+    }
+  }
+  return next as T;
+}
+
+function changed(left: unknown, right: unknown): boolean {
+  return stableJson(left) !== stableJson(right);
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(sortKeysDeep(value));
+}
+
+function cloneGraphFile(data: GraphFile): GraphFile {
+  return cloneJsonValue(data);
+}
+
+function cloneJsonValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 
 function scoreGraphNode(
   node: StoredNode,

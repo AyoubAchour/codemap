@@ -2553,6 +2553,31 @@ describe("CLI: setup", () => {
     expect(await fs.readFile(scriptPath, "utf8")).toBe(script);
   });
 
+  test("setup capture hooks writes Windows command overrides", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    await setupCodemap({
+      clients: ["codex"],
+      homeDir,
+      command: process.execPath,
+      captureHooks: true,
+      captureCommand: "codemap",
+    });
+
+    const hooksPath = path.join(homeDir, ".codex", "hooks.json");
+    const hooks = JSON.parse(await fs.readFile(hooksPath, "utf8"));
+    const commands = Object.values(hooks.hooks).flatMap((groups) =>
+      (groups as Array<{ hooks?: Array<{ commandWindows?: string }> }>).flatMap(
+        (group) => group.hooks ?? [],
+      ),
+    );
+
+    expect(commands).not.toHaveLength(0);
+    for (const command of commands) {
+      expect(command.commandWindows).toContain("capture-hook.mjs");
+      expect(command.commandWindows).not.toContain("CODEMAP_CAPTURE_COMMAND=");
+    }
+  });
+
   test("setup capture hooks check reports missing or stale without writing", async () => {
     const homeDir = path.join(tmpRoot, "home");
     const hooksPath = path.join(homeDir, ".codex", "hooks.json");
@@ -2733,6 +2758,87 @@ describe("CLI: setup", () => {
     await expect(fs.access(configPath)).rejects.toThrow();
     await expect(fs.access(hooksPath)).rejects.toThrow();
     await expect(fs.access(scriptPath)).rejects.toThrow();
+  });
+
+  test("default setup check accepts guidance from codemap init without CLAUDE.md", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    await init({ force: true }, { repoRoot: tmpRoot });
+
+    const current = await setupCodemap({
+      homeDir,
+      command: process.execPath,
+      repoRoot: tmpRoot,
+      check: true,
+    });
+
+    expect(current.health.guidance).toEqual(
+      expect.objectContaining({
+        checked: true,
+        status: "current",
+      }),
+    );
+    expect(current.health.guidance.files.map((file) => file.file)).toEqual([
+      "AGENTS.md",
+    ]);
+    expect(current.warnings.join("\n")).not.toContain("CLAUDE.md");
+  });
+
+  test("global setup check does not require repo guidance from current directory", async () => {
+    const homeDir = path.join(tmpRoot, "home");
+    const runSetup = (args: string[]) =>
+      new Promise<{ exitCode: number; stdout: string; stderr: string }>(
+        (resolve, reject) => {
+          const child = spawn(
+            process.execPath,
+            ["run", path.join(projectRoot, "bin/codemap.ts"), ...args],
+            {
+              cwd: tmpRoot,
+              env: { ...process.env, HOME: homeDir, USERPROFILE: homeDir },
+              stdio: ["ignore", "pipe", "pipe"],
+            },
+          );
+          let stdout = "";
+          let stderr = "";
+          child.stdout.on("data", (chunk) => {
+            stdout += chunk;
+          });
+          child.stderr.on("data", (chunk) => {
+            stderr += chunk;
+          });
+          child.on("error", reject);
+          child.on("close", (code) =>
+            resolve({ exitCode: code ?? 1, stdout, stderr }),
+          );
+        },
+      );
+
+    const install = await runSetup([
+      "setup",
+      "--client",
+      "codex",
+      "--command",
+      process.execPath,
+    ]);
+    expect(install.exitCode).toBe(0);
+
+    const check = await runSetup([
+      "setup",
+      "--check",
+      "--client",
+      "codex",
+      "--command",
+      process.execPath,
+    ]);
+
+    expect(check.exitCode).toBe(0);
+    expect(check.stderr).toBe("");
+    const parsed = JSON.parse(check.stdout);
+    expect(parsed.health.guidance).toEqual(
+      expect.objectContaining({
+        checked: false,
+        status: "unchecked",
+      }),
+    );
   });
 
   test("setup health reports generated guidance freshness when a repo root is supplied", async () => {

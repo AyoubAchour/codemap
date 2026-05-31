@@ -319,7 +319,7 @@ describe("buildRecallContext", () => {
       false,
     );
     expect(result.warnings.join("\n")).toContain(
-      "Capture summary recall unavailable:",
+      "Invalid capture event at line 1:",
     );
   });
 

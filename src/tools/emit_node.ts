@@ -13,7 +13,7 @@ import {
   NodeStatusSchema,
   SourceRefSchema,
 } from "../schema.js";
-import { hashBuffer, hashSourceRange } from "../staleness.js";
+import { hashBuffer, hashSourceRange, validateSourceLineRange } from "../staleness.js";
 import type { Node, NodeKind, NodeQualityMetadata } from "../types.js";
 import {
   getActiveTopic,
@@ -133,6 +133,14 @@ async function validateRepoSources(
       return {
         ok: false,
         message: `source.content_hash must match current file content for ${filePath}; expected ${currentHash}, got ${source.content_hash}`,
+      };
+    }
+
+    const rangeValidation = validateSourceLineRange(content, source.line_range);
+    if (!rangeValidation.ok) {
+      return {
+        ok: false,
+        message: `source.line_range must reference existing lines in ${filePath}: ${rangeValidation.message}`,
       };
     }
 
