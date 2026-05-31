@@ -59,7 +59,7 @@ format, or published CLI surface area.
 - [x] Release PR is merged.
 - [x] `codemap-mcp@0.10.1` is published to npm.
 - [x] Global install reports `codemap --version` as `0.10.1`.
-- [ ] GitHub release `v0.10.1` is published.
+- [x] GitHub release `v0.10.1` is published.
 
 ## Notes
 
@@ -101,3 +101,15 @@ Post-release verification passed on 2026-05-31:
   `version: "0.10.1"` and `latest: "0.10.1"`.
 - `npm i -g codemap-mcp@0.10.1 --prefer-online` completed successfully.
 - Installed `codemap --version` reports `0.10.1`.
+- Installed `codemap init --all --check` reports both generated guidance files
+  current.
+- Installed `codemap setup --client codex --capture-hooks --check --repo C:\Users\Admin\.config\superpowers\worktrees\releases\v0.10.1\codemap`
+  reports current MCP config, current capture hooks, and no warnings.
+- Installed `codemap setup --client claude --check --repo C:\Users\Admin\.config\superpowers\worktrees\releases\v0.10.1\codemap`
+  reports current generated guidance and no warnings.
+- `codex mcp get codemap` reports the Codex MCP server enabled with command
+  `codemap-mcp`.
+- `claude mcp get codemap` reports the local project server connected via
+  `codemap-mcp --repo C:\Users\Admin\Desktop\codemap`.
+- GitHub release published:
+  https://github.com/AyoubAchour/codemap/releases/tag/v0.10.1
